@@ -1,0 +1,53 @@
+/* Global rules ported from the prototype's <helmet> block. */
+
+body {
+  margin: 0;
+  background: #e9ecf0;
+  font-family: var(--font-barlow), Barlow, Helvetica, Arial, sans-serif;
+}
+
+/*
+ * The screens set `font: 600 14px/1 var(--font-barlow),Barlow,sans-serif` shorthand throughout, ported
+ * verbatim from the design. This maps that bare "Barlow" family onto the self-hosted
+ * next/font files so the shorthand keeps working without rewriting every rule.
+ */
+@font-face {
+  font-family: Barlow;
+  src: local("Barlow");
+  font-display: swap;
+}
+
+a { color: #177f8d; }
+a:hover { color: #023047; }
+
+input { font-family: inherit; }
+input::placeholder { color: #7a8597; opacity: 1; }
+
+/* Inputs that sit on a coloured header need a light placeholder. */
+.zt-dark-field::placeholder { color: rgba(255, 255, 255, .72); opacity: 1; }
+
+/* Hide scrollbars on the horizontal chip/carousel rails. */
+.zt-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.zt-no-scrollbar::-webkit-scrollbar { display: none; }
+
+@keyframes zt-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes zt-bolt {
+  0% { opacity: 0; transform: translateY(-18px) scale(.82) rotate(-6deg); }
+  55% { opacity: 1; transform: translateY(0) scale(1.04) rotate(0); }
+  70% { transform: translateY(0) scale(.98); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes zt-pulso {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.8); }
+}
+
+@keyframes zt-word {
+  0% { opacity: 0; transform: translateY(12px); letter-spacing: .4em; filter: blur(3px); }
+  100% { opacity: 1; transform: none; letter-spacing: normal; filter: none; }
+}
