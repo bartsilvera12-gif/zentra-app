@@ -112,9 +112,33 @@ Desde ahí se compila el APK/AAB como cualquier proyecto Gradle. Después de cad
 
 La carpeta `android/` está en `.gitignore`: se genera, no se versiona.
 
+## Datos
+
+Hoy la app corre con datos de ejemplo. El acceso a datos está detrás de una capa de
+puertos (`src/lib/repo/ports.ts`), así que conectar el backend real no toca ninguna
+pantalla:
+
+- `src/lib/repo/mock.ts` — implementación con los datos de ejemplo (la activa)
+- `src/lib/repo/http.ts` — implementación contra la API real (esqueleto)
+- `src/lib/repo/index.ts` — elige una según `NEXT_PUBLIC_BACKEND`
+
+Para apuntar a la API real, copiar `.env.example` a `.env.local` y poner
+`NEXT_PUBLIC_BACKEND=http` más la URL.
+
+**[`docs/BACKEND.md`](docs/BACKEND.md) tiene el contrato completo**: entidades,
+campos, operaciones, reglas de negocio que el backend debe respetar y las
+decisiones que quedan pendientes.
+
+> La app se empaqueta como APK y un APK se puede descompilar, así que **no puede
+> conectarse directo a la base de datos**: las credenciales quedarían expuestas.
+> Siempre tiene que haber una capa HTTP en el medio (API propia, la del ERP, o un
+> BaaS tipo Supabase).
+
 ## Pendiente
 
-- Conectar con la API del ERP en lugar de `src/lib/data.ts`.
+- Conectar la API real: completar `src/lib/repo/http.ts` (ver `docs/BACKEND.md`).
+- Migrar las pantallas a leer de `repo` en vez de `lib/data.ts` — es mecánico, pero
+  conviene hacerlo sabiendo ya cuál es el backend, para no rehacerlo dos veces.
 - Autenticación real (hoy el login sólo valida que los campos no estén vacíos).
 - Persistencia: el estado vive en memoria y se reinicia al recargar.
 - Los inputs de fecha en Reportes usan el control nativo del navegador, así que su

@@ -17,3 +17,7 @@ next-env.d.ts
 .DS_Store
 *.log
 npm-debug.log*
+
+# Variables de entorno locales
+.env.local
+.env*.local
