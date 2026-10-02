@@ -39,11 +39,12 @@ export function mensajeTenantError(e: unknown): string {
   if (e instanceof TenantError) {
     switch (e.kind) {
       case "no_encontrado":
-        return "No encontramos ese código de empresa. Revisalo o escribinos a soporte.";
+        // El enlace de WhatsApp ya está arriba del campo, no hace falta repetirlo.
+        return "No encontramos ese código de empresa. Revisalo e intentá de nuevo.";
       case "directorio_inaccesible":
         return "No pudimos verificar el código. Revisá tu conexión e intentá de nuevo.";
       case "respuesta_invalida":
-        return "Hubo un problema con la configuración de esa empresa. Escribinos a soporte.";
+        return "Hubo un problema con la configuración de esa empresa. Escribinos por WhatsApp.";
     }
   }
   return "No pudimos conectar. Revisá tu conexión e intentá de nuevo.";

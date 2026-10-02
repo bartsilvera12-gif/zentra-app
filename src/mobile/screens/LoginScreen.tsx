@@ -1,5 +1,6 @@
 "use client";
 
+import { linkWhatsapp } from "@/lib/config";
 import { VERSION } from "@/lib/data";
 import { useApp } from "@/store/AppContext";
 import { StatusBar } from "../layout/StatusBar";
@@ -22,6 +23,9 @@ export function LoginScreen() {
   };
 
   const tenantNombre = s.tenant && !s.tenant.publico ? s.tenant.nombre : null;
+  const waSoporte = linkWhatsapp(
+    "Hola, necesito el código de empresa para entrar a la app de Zentra.",
+  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1C8C84" }}>
@@ -155,9 +159,21 @@ export function LoginScreen() {
                 letterSpacing: ".06em",
               }}
             />
-            <span style={{ font: "400 11.5px/1.35 Barlow,sans-serif", color: "#65707f" }}>
-              Si no lo tenés a mano, escribinos a soporte.
-            </span>
+            {waSoporte && (
+              <span style={{ font: "400 11.5px/1.35 Barlow,sans-serif", color: "#65707f" }}>
+                ¿No tenés tu código?{" "}
+                {/* target/rel para que en el WebView del APK lo tome WhatsApp y no
+                    se abra dentro de la propia app. */}
+                <a
+                  href={waSoporte}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "#04617A", fontWeight: 600, textDecoration: "underline" }}
+                >
+                  Escribinos por WhatsApp
+                </a>
+              </span>
+            )}
             {tenantNombre && (
               <span style={{ font: "500 12px/1.3 Barlow,sans-serif", color: "#0C5F58" }}>
                 Vas a entrar a {tenantNombre}.

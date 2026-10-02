@@ -30,7 +30,22 @@ export const config = {
   /** Supabase público: el de quien baja la app de la tienda y se registra. */
   supabaseUrl: (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, ""),
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+
+  /**
+   * WhatsApp de soporte, en formato internacional y sólo dígitos (595981000450).
+   * Vacío oculta los enlaces de contacto en vez de abrir un chat a la nada.
+   */
+  soporteWhatsapp: (process.env.NEXT_PUBLIC_SOPORTE_WHATSAPP || "595981000450").replace(/\D/g, ""),
 } as const;
+
+/**
+ * Enlace a WhatsApp con un mensaje ya escrito. Devuelve null si no hay número
+ * configurado, para que quien lo use sepa que no tiene que mostrar el enlace.
+ */
+export function linkWhatsapp(mensaje: string): string | null {
+  if (!config.soporteWhatsapp) return null;
+  return `https://wa.me/${config.soporteWhatsapp}?text=${encodeURIComponent(mensaje)}`;
+}
 
 export function assertConfig(): void {
   if (config.backend === "http" && !config.apiUrl) {

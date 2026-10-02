@@ -281,6 +281,9 @@ direcciones, no una caja fuerte.
   claro para el usuario.
 - **Sin `NEXT_PUBLIC_DIRECTORIO_URL`** se usa un directorio demo incluido (`JM` y
   `FERRE`), para poder probar el flujo sin levantar el servicio real.
+- **Enlace a soporte**: debajo del campo hay un enlace a WhatsApp con el mensaje ya
+  escrito, para quien no tiene su código a mano. El número sale de
+  `NEXT_PUBLIC_SOPORTE_WHATSAPP`; si se deja vacío, el enlace no se muestra.
 
 Ver `src/lib/tenant/`.
 
