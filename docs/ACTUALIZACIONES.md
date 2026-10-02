@@ -176,13 +176,66 @@ obligatorio:
 
 ---
 
+## iOS está en el alcance
+
+Decidido: se publica en las dos tiendas. Lo que eso trae:
+
+### Hace falta una Mac
+
+Xcode sólo corre en macOS, y sin Xcode no se compila ni se firma un `.ipa`. No hay
+forma de saltearlo: ni Windows ni Linux pueden generar un paquete de iOS.
+
+Tres caminos:
+
+| Camino | Costo aproximado | Cuándo conviene |
+|---|---|---|
+| Comprar una Mac (Mac mini) | pago único | Si se va a mantener la app por años |
+| Mac en la nube (MacStadium, MacinCloud) | mensual | Para arrancar sin invertir de golpe |
+| Compilar en CI (GitHub Actions trae runners de macOS) | por minuto, con capa gratis | Lo más práctico: no hay máquina que mantener |
+
+**GitHub Actions es la opción más razonable para empezar.** El repositorio ya está
+en GitHub: se configura un flujo que compile y firme el `.ipa` en cada versión, y
+nadie necesita una Mac en el escritorio. Para abrir Xcode y depurar algo nativo sí
+hace falta una, pero eso es raro en una app Capacitor.
+
+### Costos de las cuentas
+
+- Apple Developer Program: 99 USD por año, se renueva.
+- Google Play: 25 USD una sola vez.
+
+### Apple revisa más estricto
+
+Lo que más importa en nuestro caso:
+
+- **4.2 Minimum Functionality.** Ya está cubierto: la app lleva el código adentro,
+  anda sin señal y usa el dispositivo. No es un sitio web envuelto.
+- **Borrado de cuenta.** Apple lo exige y lo hace cumplir. Hoy no está.
+- **Etiquetas de privacidad.** Hay que declarar qué datos se recogen y para qué.
+- **Cuenta de prueba con datos cargados** para los revisores.
+
+### Lo que NO hace falta
+
+**Sign in with Apple** sólo es obligatorio si la app ofrece login con servicios de
+terceros (Google, Facebook). Como entramos con correo y contraseña, no aplica.
+
+Si algún día se agrega "entrar con Google", ahí sí hay que sumar Sign in with Apple.
+Conviene tenerlo en cuenta antes de agregarlo, no después.
+
+### El enlace de recuperación en iOS
+
+El correo de recuperación tiene que abrir la app, no el navegador. En Android se
+resuelve con un *deep link*; en iOS con **Universal Links**, que además exige subir
+un archivo de verificación al dominio. Es trabajo aparte del de Android.
+
+---
+
 ## Decisiones pendientes
 
-1. **¿iOS entra en el alcance?** Cambia el costo y el riesgo. Si es sólo Android al
-   principio, se puede publicar antes y con menos fricción.
+1. **¿Cómo se compila iOS?** GitHub Actions, Mac en la nube, o una Mac propia.
 2. **¿Cuándo se suma Capgo?** No hace falta para desarrollar. Conviene montarlo
    antes de la primera publicación, no después.
-3. **Borrado de cuenta**: hay que implementarlo antes de mandar a revisión.
+3. **Borrado de cuenta**: hay que implementarlo antes de mandar a revisión. Es
+   requisito de las dos tiendas.
 
 ---
 
