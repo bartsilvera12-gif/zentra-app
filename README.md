@@ -177,6 +177,10 @@ en runtime) están en [`docs/DEPLOY.md`](docs/DEPLOY.md).
 Para el APK no hace falta deployar nada: el código va adentro del paquete y habla
 directo con Supabase.
 
+Cómo actualizar la app sin pasar por la revisión de las tiendas, qué permiten
+realmente Apple y Google, y por qué Android e iOS van en el mismo repositorio:
+[`docs/ACTUALIZACIONES.md`](docs/ACTUALIZACIONES.md).
+
 ## Pendiente
 
 - Conectar la API real: completar `src/lib/repo/http.ts` (ver `docs/BACKEND.md`).
