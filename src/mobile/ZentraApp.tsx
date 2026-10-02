@@ -53,18 +53,12 @@ function CurrentScreen() {
 
 export function ZentraApp() {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 18,
-        padding: "36px 20px 48px",
-        boxSizing: "border-box",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#4b5a5a" }}>
+    /* En el celular esto no es una maqueta que se presenta: es la app. El
+       encabezado, el texto explicativo y los márgenes se van (ver globals.css). */
+    <div className="zt-pagina">
+      {/* El estilo va en globals.css, no inline: un `display` inline le gana a la
+          media query y el encabezado no se iría nunca en el celular. */}
+      <div className="zt-maqueta zt-encabezado">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/assets/zentra-mark-teal.png"
@@ -86,14 +80,7 @@ export function ZentraApp() {
         <CurrentScreen />
       </PhoneFrame>
 
-      <div
-        style={{
-          font: "400 12.5px/1.5 var(--font-barlow),Barlow,sans-serif",
-          color: "#65707f",
-          textAlign: "center",
-          maxWidth: 380,
-        }}
-      >
+      <div className="zt-maqueta zt-ayuda">
         Tocá <strong style={{ fontWeight: 600 }}>Entrar</strong> para entrar al inicio. En{" "}
         <strong style={{ fontWeight: 600 }}>Configuración</strong> se cambia entre modo claro y oscuro y se manejan las
         notificaciones.

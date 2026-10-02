@@ -6,6 +6,92 @@ body {
   font-family: var(--font-barlow), Barlow, Helvetica, Arial, sans-serif;
 }
 
+.zt-pagina {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 36px 20px 48px;
+  box-sizing: border-box;
+}
+
+/* La presentación de la maqueta: encabezado arriba y texto de ayuda abajo. Van
+ * acá y no inline porque un `display` inline le ganaría a la media query que los
+ * esconde en el celular. */
+.zt-encabezado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #4b5a5a;
+}
+
+.zt-ayuda {
+  font: 400 12.5px/1.5 var(--font-barlow), Barlow, sans-serif;
+  color: #65707f;
+  text-align: center;
+  max-width: 380px;
+}
+
+/* ---------- el marco del teléfono ----------
+ *
+ * En pantalla grande es la maqueta del diseño. En un celular se va entero y la
+ * app ocupa todo: un teléfono dibujado dentro de un teléfono se ve de juguete.
+ */
+
+.zt-marco {
+  width: 372px;
+  max-width: 100%;
+  background: #0b0f1c;
+  border-radius: 44px;
+  padding: 11px;
+  box-sizing: border-box;
+  box-shadow: 0 26px 60px rgba(14, 19, 48, .3), 0 2px 6px rgba(0, 0, 0, .2);
+}
+
+.zt-pantalla {
+  position: relative;
+  height: 740px;
+  border-radius: 34px;
+  overflow: hidden;
+  background: #f3f5f8;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Celular, o la app agregada a la pantalla de inicio.
+ *
+ * `100dvh` y no `100vh`: en el navegador del celular la barra de direcciones
+ * aparece y desaparece al hacer scroll, y `vh` no la tiene en cuenta — la parte
+ * de abajo de la app, que es donde está la barra de navegación, queda tapada.
+ */
+@media (max-width: 440px), (display-mode: standalone) {
+  /* El encabezado y el texto de ayuda son la presentación de la maqueta: en el
+     celular la app es la app, no una demostración de la app. */
+  .zt-maqueta { display: none; }
+
+  .zt-pagina {
+    min-height: 100dvh;
+    padding: 0;
+    gap: 0;
+  }
+
+  .zt-marco {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #f3f5f8;
+  }
+
+  .zt-pantalla {
+    height: 100dvh;
+    border-radius: 0;
+  }
+}
+
 /*
  * The screens set `font: 600 14px/1 var(--font-barlow),Barlow,sans-serif` shorthand throughout, ported
  * verbatim from the design. This maps that bare "Barlow" family onto the self-hosted

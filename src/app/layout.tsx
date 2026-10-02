@@ -15,8 +15,10 @@ const barlow = Barlow({
 
 export const metadata: Metadata = {
   title: "Zentra Móvil",
-  description:
-    "App móvil de ventas para Distribuidora JM: ventas, clientes, compras, inventario y reportes.",
+  description: "App móvil de ventas: ventas, clientes, compras, inventario y reportes.",
+  // iOS no lee los íconos del manifiesto para la pantalla de inicio: usa éste.
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Zentra", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
