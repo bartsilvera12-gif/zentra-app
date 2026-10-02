@@ -63,6 +63,18 @@ cualquier lado; ver `.env.example`. No hay que tocar código.
 
 ## 3. Probarlo en la computadora primero
 
+Primero la verificación, que tarda dos segundos y evita la mitad de los dolores:
+
+```bash
+npm run check
+```
+
+Tiene que decir, de cada proyecto, que responde, que el schema está expuesto, que
+están las doce tablas y las dos funciones, y que el RLS está activo. Si marca algo
+en rojo, arreglalo antes de seguir. Si configuraste los dos proyectos, también te
+avisa si quedaron apuntando al mismo — que es el error que hace parecer que el
+aislamiento entre empresas no funciona.
+
 ```bash
 npm run dev
 ```
@@ -131,3 +143,5 @@ celular, más lo que no se puede probar en la computadora:
 | El código JM "no existe" | El JSON del `.env.local`; reiniciá `npm run dev` después de cambiarlo |
 | Las dos empresas ven lo mismo | Las dos URLs del `.env.local` apuntan al mismo proyecto |
 | En el APK aparecen datos de ejemplo | Compilaste sin `.env.local`; ver [`APK.md`](APK.md) |
+
+Casi todo eso lo detecta `npm run check` antes de que te pase.

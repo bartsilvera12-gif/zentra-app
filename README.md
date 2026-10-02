@@ -26,7 +26,14 @@ Otros comandos:
 npm run build      # build de producción → ./out (export estático)
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
+npm test           # pruebas del código de empresa (sin red ni navegador)
+npm run check      # verifica .env.local y el Supabase antes de compilar
 ```
+
+`npm run check` es el que ahorra tiempo: revisa que Supabase responda, que el
+schema `zentra` esté expuesto, que estén las tablas y las funciones del servidor,
+y que el RLS esté activo. Dos segundos, en vez de compilar un APK para descubrir
+que faltaba correr un script.
 
 ## Pantallas
 

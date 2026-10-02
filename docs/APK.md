@@ -34,13 +34,27 @@ NEXT_PUBLIC_SOPORTE_WHATSAPP=595981000450
 > no hay forma de arreglarlo sin recompilar. Mismo problema en Coolify, donde van
 > como *build args* y no como variables de runtime (ver [`DEPLOY.md`](DEPLOY.md)).
 
-Para confirmar que quedó bien, después de compilar:
+Antes de compilar, verificá que todo esté en su lugar:
+
+```bash
+npm run check
+```
+
+Revisa el `.env.local`, que Supabase responda, que el schema `zentra` esté
+expuesto, que estén las doce tablas y las dos funciones del servidor, y que el RLS
+esté activo. Dos segundos acá ahorran compilar un APK para descubrir que faltaba
+un script.
+
+No da por bueno lo que no pudo comprobar: si contesta un proxy o un portal de
+wifi en el medio, lo dice en vez de aprobar.
+
+Y después de compilar, para confirmar que las variables se hornearon:
 
 ```bash
 grep -c "supabase.co" out/_next/static/chunks/*.js | grep -v ":0" | head
 ```
 
-Si no aparece nada, la URL no se horneó: revisá `.env.local` y volvé a compilar.
+Si no aparece nada, la URL no quedó adentro: revisá `.env.local` y volvé a compilar.
 
 ## 2. Generar el proyecto Android
 

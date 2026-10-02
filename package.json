@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "check": "node scripts/check.mjs",
     "dev:lan": "next dev -H 0.0.0.0",
     "sync": "npm run build && npx cap sync",
     "android": "npm run sync && npx cap open android",
