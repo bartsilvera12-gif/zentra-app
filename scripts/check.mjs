@@ -65,6 +65,11 @@ function leerEnv(archivo) {
  * una página de login de wifi— no sirve ni para aprobar ni para rechazar.
  */
 async function pedir(url, anonKey, ruta) {
+  // AbortController a mano, y no AbortSignal.timeout, para poder apagar el
+  // temporizador: uno vivo mantiene el proceso en pie y, en Windows, salir con
+  // handles pendientes revienta libuv con una aserción.
+  const ctrl = new AbortController();
+  const corte = setTimeout(() => ctrl.abort(), 20000);
   try {
     const res = await fetch(`${url}/rest/v1/${ruta}`, {
       headers: {
@@ -72,7 +77,7 @@ async function pedir(url, anonKey, ruta) {
         Authorization: `Bearer ${anonKey}`,
         "Accept-Profile": SCHEMA,
       },
-      signal: AbortSignal.timeout(20000),
+      signal: ctrl.signal,
     });
     const texto = await res.text();
     let json = null;
@@ -88,7 +93,24 @@ async function pedir(url, anonKey, ruta) {
 
     return { status: res.status, texto, json, deSupabase: Boolean(esResultado || esErrorSuyo || esMetodo) };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    const m = e instanceof Error ? e.message : String(e);
+    return { error: ctrl.signal.aborted ? "el servidor no respondió en 20 segundos" : m };
+  } finally {
+    clearTimeout(corte);
+  }
+}
+
+/**
+ * Cierra las conexiones que `fetch` deja abiertas para reusar. Sin esto el
+ * proceso queda en pie hasta que vencen solas, y forzar la salida con
+ * `process.exit()` teniéndolas abiertas es lo que rompe en Windows.
+ */
+async function cerrarRed() {
+  try {
+    const d = globalThis[Symbol.for("undici.globalDispatcher.1")];
+    if (d && typeof d.close === "function") await d.close();
+  } catch {
+    // Si esta versión de node no lo expone, se cierran solas al terminar.
   }
 }
 
@@ -168,8 +190,15 @@ async function revisarProyecto(etiqueta, url, anonKey) {
   }
   const msgIndice = mensajeDe(indice).toLowerCase();
   if (msgIndice.includes("invalid api key") || indice.status === 401) {
-    mal("La anon key no es válida para este proyecto",
-        "¿Mezclaste la key de un proyecto con la URL de otro? Settings → API, los dos del mismo.");
+    const esJwt = anonKey.startsWith("eyJ");
+    mal("Supabase rechaza esa clave", [
+      "Copiala de nuevo del panel: Settings → API Keys. Las tres causas, en orden:",
+      "  1. Quedó cortada al copiar, o se coló un espacio o un salto de línea.",
+      esJwt
+        ? "  2. El proyecto desactivó las claves viejas (las que empiezan con eyJ): ahora usa\n       las nuevas, que empiezan con sb_publishable_. Copiá esa."
+        : "  2. Es de otro proyecto, o no es la 'publishable'.",
+      "  3. La key es de un proyecto y la URL de otro. Los dos del mismo.",
+    ].join("\n    "));
     return;
   }
   if (msgIndice.includes("schema must be one of") || msgIndice.includes("not exposed")) {
@@ -257,82 +286,93 @@ async function revisarUnaPorUna(url, anonKey) {
 
 // ---------------------------------------------------------------- arranque
 
-console.log("\nVerificación de configuración — Zentra Móvil");
+/**
+ * Devuelve el código de salida en vez de llamar a `process.exit()`: salir a la
+ * fuerza con pedidos de red todavía abiertos hace que node aborte con una
+ * aserción de libuv en Windows, justo después de imprimir el resultado.
+ */
+async function main() {
+  console.log("\nVerificación de configuración — Zentra Móvil");
 
-const env = leerEnv(".env.local");
-if (!env) {
-  console.log(`\n  ${ROJO}✗${FIN} No existe .env.local`);
-  console.log(`    ${GRIS}cp .env.example .env.local   y completá los valores${FIN}\n`);
-  process.exit(1);
-}
-
-const backend = env.NEXT_PUBLIC_BACKEND || "mock";
-console.log(`\nBackend: ${backend}`);
-if (backend === "mock") {
-  console.log(`  ${AMAR}!${FIN} Está en 'mock': datos de ejemplo, sin tocar la base.`);
-  console.log(`    ${GRIS}Para probar contra Supabase: NEXT_PUBLIC_BACKEND=supabase${FIN}`);
-  console.log(`    ${GRIS}Un APK compilado así queda con datos de ejemplo para siempre.${FIN}\n`);
-  process.exit(0);
-}
-if (backend !== "supabase") {
-  console.log(`  ${AMAR}!${FIN} '${backend}' no se verifica acá; esto revisa el backend 'supabase'.\n`);
-  process.exit(0);
-}
-
-const urlPub = (env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
-if (urlPub) {
-  await revisarProyecto("Instalación pública (quien no pone código)", urlPub, env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
-} else {
-  console.log("\nInstalación pública");
-  aviso("Sin NEXT_PUBLIC_SUPABASE_URL",
-        "Quien entre sin código de empresa no va a tener a dónde ir. Es el caso de la app de la tienda.");
-}
-
-// Cada empresa del directorio es un proyecto más que tiene que estar bien.
-if (env.NEXT_PUBLIC_DIRECTORIO_JSON) {
-  let mapa = null;
-  try { mapa = JSON.parse(env.NEXT_PUBLIC_DIRECTORIO_JSON); } catch (e) {
-    console.log("\nDirectorio escrito en el paquete");
-    mal(`El JSON está mal escrito: ${e.message}`,
-        'Tiene que ir todo en UNA línea: {"JM":{"nombre":"…","supabaseUrl":"https://…","anonKey":"eyJ…"}}');
+  const env = leerEnv(".env.local");
+  if (!env) {
+    console.log(`\n  ${ROJO}✗${FIN} No existe .env.local`);
+    console.log(`    ${GRIS}cp .env.example .env.local   y completá los valores${FIN}\n`);
+    return 1;
   }
-  if (mapa) {
-    for (const [codigo, v] of Object.entries(mapa)) {
-      const c = codigo.trim().toUpperCase().replace(/[\s-]/g, "");
-      if (!v || typeof v !== "object" || !v.supabaseUrl || !v.anonKey) {
-        console.log(`\nCódigo ${c}`);
-        mal("La entrada no tiene supabaseUrl y anonKey", "La app va a rechazar ese código.");
-        continue;
+
+  const backend = env.NEXT_PUBLIC_BACKEND || "mock";
+  console.log(`\nBackend: ${backend}`);
+  if (backend === "mock") {
+    console.log(`  ${AMAR}!${FIN} Está en 'mock': datos de ejemplo, sin tocar la base.`);
+    console.log(`    ${GRIS}Para probar contra Supabase: NEXT_PUBLIC_BACKEND=supabase${FIN}`);
+    console.log(`    ${GRIS}Un APK compilado así queda con datos de ejemplo para siempre.${FIN}\n`);
+    return 0;
+  }
+  if (backend !== "supabase") {
+    console.log(`  ${AMAR}!${FIN} '${backend}' no se verifica acá; esto revisa el backend 'supabase'.\n`);
+    return 0;
+  }
+
+  const urlPub = (env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+  if (urlPub) {
+    await revisarProyecto("Instalación pública (quien no pone código)", urlPub, env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
+  } else {
+    console.log("\nInstalación pública");
+    aviso("Sin NEXT_PUBLIC_SUPABASE_URL",
+          "Quien entre sin código de empresa no va a tener a dónde ir. Es el caso de la app de la tienda.");
+  }
+
+  // Cada empresa del directorio es un proyecto más que tiene que estar bien.
+  if (env.NEXT_PUBLIC_DIRECTORIO_JSON) {
+    let mapa = null;
+    try { mapa = JSON.parse(env.NEXT_PUBLIC_DIRECTORIO_JSON); } catch (e) {
+      console.log("\nDirectorio escrito en el paquete");
+      mal(`El JSON está mal escrito: ${e.message}`,
+          'Tiene que ir todo en UNA línea: {"JM":{"nombre":"…","supabaseUrl":"https://…","anonKey":"eyJ…"}}');
+    }
+    if (mapa) {
+      for (const [codigo, v] of Object.entries(mapa)) {
+        const c = codigo.trim().toUpperCase().replace(/[\s-]/g, "");
+        if (!v || typeof v !== "object" || !v.supabaseUrl || !v.anonKey) {
+          console.log(`\nCódigo ${c}`);
+          mal("La entrada no tiene supabaseUrl y anonKey", "La app va a rechazar ese código.");
+          continue;
+        }
+        await revisarProyecto(
+          `Código ${c}${v.nombre ? ` — ${v.nombre}` : ""}`,
+          String(v.supabaseUrl).replace(/\/$/, ""),
+          String(v.anonKey),
+        );
       }
-      await revisarProyecto(
-        `Código ${c}${v.nombre ? ` — ${v.nombre}` : ""}`,
-        String(v.supabaseUrl).replace(/\/$/, ""),
-        String(v.anonKey),
-      );
+      // Dos destinos al mismo proyecto es el error que hace parecer que el
+      // aislamiento entre empresas no funciona.
+      const urls = Object.values(mapa).map((v) => v && v.supabaseUrl).filter(Boolean).map((u) => String(u).replace(/\/$/, ""));
+      const todas = urlPub ? [urlPub, ...urls] : urls;
+      if (new Set(todas).size !== todas.length) {
+        console.log("");
+        mal("Dos destinos apuntan al MISMO proyecto",
+            "Las dos empresas van a ver los mismos datos, y va a parecer que el aislamiento está roto.");
+      }
     }
-    // Dos destinos al mismo proyecto es el error que hace parecer que el
-    // aislamiento entre empresas no funciona.
-    const urls = Object.values(mapa).map((v) => v && v.supabaseUrl).filter(Boolean).map((u) => String(u).replace(/\/$/, ""));
-    const todas = urlPub ? [urlPub, ...urls] : urls;
-    if (new Set(todas).size !== todas.length) {
-      console.log("");
-      mal("Dos destinos apuntan al MISMO proyecto",
-          "Las dos empresas van a ver los mismos datos, y va a parecer que el aislamiento está roto.");
-    }
+  } else if (env.NEXT_PUBLIC_DIRECTORIO_URL) {
+    console.log("\nDirectorio por red");
+    console.log(`  ${GRIS}${env.NEXT_PUBLIC_DIRECTORIO_URL}${FIN}`);
+    aviso("No se verifica desde acá", "Probalo entrando con un código real una vez levantada la app.");
+  } else {
+    console.log("\nCódigo de empresa");
+    aviso("Sin directorio configurado: se usa el demo (JM y FERRE)",
+          "Apunta a URLs inventadas: sirve para ver la pantalla, no para entrar.");
   }
-} else if (env.NEXT_PUBLIC_DIRECTORIO_URL) {
-  console.log("\nDirectorio por red");
-  console.log(`  ${GRIS}${env.NEXT_PUBLIC_DIRECTORIO_URL}${FIN}`);
-  aviso("No se verifica desde acá", "Probalo entrando con un código real una vez levantada la app.");
-} else {
-  console.log("\nCódigo de empresa");
-  aviso("Sin directorio configurado: se usa el demo (JM y FERRE)",
-        "Apunta a URLs inventadas: sirve para ver la pantalla, no para entrar.");
+
+  console.log("");
+  if (problemas) {
+    console.log(`${ROJO}${problemas} problema(s) que hay que arreglar antes de compilar.${FIN}\n`);
+    return 1;
+  }
+  console.log(avisos ? `${VERDE}Sin problemas${FIN} (${avisos} aviso/s).\n` : `${VERDE}Todo en orden.${FIN}\n`);
+  return 0;
 }
 
-console.log("");
-if (problemas) {
-  console.log(`${ROJO}${problemas} problema(s) que hay que arreglar antes de compilar.${FIN}\n`);
-  process.exit(1);
-}
-console.log(avisos ? `${VERDE}Sin problemas${FIN} (${avisos} aviso/s).\n` : `${VERDE}Todo en orden.${FIN}\n`);
+process.exitCode = await main();
+await cerrarRed();
