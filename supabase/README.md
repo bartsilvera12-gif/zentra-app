@@ -9,12 +9,33 @@ pisarle nada de lo suyo.
 
 ## Cómo correrlo
 
-En el panel de Supabase, **SQL Editor** → pegar cada archivo y ejecutar, **en este
-orden y uno por vez**:
+### Opción recomendada: desde la terminal
+
+Evita los problemas de pegado en el editor web. En el panel, botón **Connect** →
+copiar la cadena de conexión (la de *Session pooler* o *Direct connection*), y:
+
+```bash
+psql "LA_CADENA_DE_CONEXION" -f supabase/todo_en_uno.sql
+```
+
+La contraseña de la base va en esa cadena: es local tuya, no la compartas.
+
+### Opción B: el editor web
+
+`supabase/todo_en_uno.sql` tiene los tres scripts juntos, así es un solo pegado.
+Antes de ejecutar, asegurate de que **no haya texto seleccionado** en el editor:
+si hay una selección, Supabase corre sólo eso y el script se parte al medio.
+
+### Opción C: de a uno
+
+En **SQL Editor**, pegar cada archivo y ejecutar, **en este orden y uno por vez**:
 
 1. `01_schema.sql` — tablas, tipos e índices
 2. `02_funciones.sql` — numeración, stock, alta automática al registrarse, totales
 3. `03_permisos.sql` — Row Level Security
+
+`todo_en_uno.sql` se genera a partir de los otros tres: si cambiás algo, cambialo
+en los sueltos y volvé a generarlo.
 
 Los tres son **idempotentes**: si tenés que correrlos de nuevo no rompen nada ni
 borran datos. Van a aparecer avisos tipo `does not exist, skipping`; son normales.
