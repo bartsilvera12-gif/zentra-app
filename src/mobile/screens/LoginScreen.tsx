@@ -2,12 +2,18 @@
 
 import { linkWhatsapp } from "@/lib/config";
 import { VERSION } from "@/lib/data";
+import { registrar, repo, usaSupabase } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { StatusBar } from "../layout/StatusBar";
 import { Field } from "../ui/primitives";
+import { RegistroScreen } from "./RegistroScreen";
 
 export function LoginScreen() {
   const { s, set, runDash, elegirInstalacion } = useApp();
+
+  /** Mensaje legible de cualquier error de autenticación. */
+  const motivo = (e: unknown) =>
+    e instanceof Error && e.message ? e.message : "No pudimos conectar. Probá de nuevo.";
 
   const entrar = async () => {
     if (!s.user.trim() || !s.pass.trim()) {
@@ -18,14 +24,66 @@ export function LoginScreen() {
     // validar las credenciales. Código vacío = instalación pública.
     const ok = await elegirInstalacion(s.tieneErp ? s.codigoEmpresa : "");
     if (!ok) return;
-    set({ screen: "home", error: false });
-    runDash();
+
+    if (!usaSupabase) {
+      set({ screen: "home", error: false });
+      runDash();
+      return;
+    }
+
+    set({ entrando: true, authError: "" });
+    try {
+      const sesion = await repo.auth.login(s.user, s.pass);
+      set({ screen: "home", error: false, entrando: false, sesion: sesion.usuario, pass: "" });
+      runDash();
+    } catch (e) {
+      set({ entrando: false, authError: motivo(e) });
+    }
+  };
+
+  const crearCuenta = async () => {
+    if (!s.regMail.trim() || !s.regPass.trim() || s.regNombre.trim().length < 2) {
+      set({ authError: "Completá tu nombre, correo y contraseña." });
+      return;
+    }
+    // El registro siempre va a la instalación pública: en la de un cliente con
+    // ERP los usuarios los da de alta el dueño.
+    const ok = await elegirInstalacion("");
+    if (!ok) return;
+
+    set({ entrando: true, authError: "" });
+    try {
+      const { necesitaConfirmar } = await registrar(
+        s.regMail,
+        s.regPass,
+        s.regNombre,
+        s.regEmpresa || s.regNombre,
+      );
+      if (necesitaConfirmar) {
+        set({ entrando: false, regConfirmar: true, authError: "" });
+        return;
+      }
+      const sesion = await repo.auth.login(s.regMail, s.regPass);
+      set({
+        screen: "home",
+        entrando: false,
+        sesion: sesion.usuario,
+        regPass: "",
+        authError: "",
+      });
+      runDash();
+    } catch (e) {
+      set({ entrando: false, authError: motivo(e) });
+    }
   };
 
   const tenantNombre = s.tenant && !s.tenant.publico ? s.tenant.nombre : null;
+  const ocupado = s.tenantResolviendo || s.entrando;
   const waSoporte = linkWhatsapp(
     "Hola, necesito el código de empresa para entrar a la app de Zentra.",
   );
+
+  if (s.modoAcceso === "registro") return <RegistroScreen onCrear={crearCuenta} />;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1C8C84" }}>
@@ -182,9 +240,9 @@ export function LoginScreen() {
           </label>
         )}
 
-        {s.tenantError && (
+        {(s.tenantError || s.authError) && (
           <div style={{ font: "500 12.5px/1.35 Barlow,sans-serif", color: "#9e3b3b" }}>
-            {s.tenantError}
+            {s.tenantError || s.authError}
           </div>
         )}
 
@@ -196,18 +254,19 @@ export function LoginScreen() {
 
         <button
           onClick={entrar}
+          disabled={ocupado}
           style={{
             height: 52,
             border: 0,
             borderRadius: 14,
-            background: "#023047",
+            background: ocupado ? "#5C7A85" : "#023047",
             color: "#fff",
             font: "600 16px/1 var(--font-barlow),Barlow,sans-serif",
             letterSpacing: ".04em",
-            cursor: "pointer",
+            cursor: ocupado ? "default" : "pointer",
           }}
         >
-          Entrar
+          {s.tenantResolviendo ? "Conectando…" : s.entrando ? "Entrando…" : "Entrar"}
         </button>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -227,6 +286,25 @@ export function LoginScreen() {
           </button>
           <span style={{ font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: "#65707f" }}>{VERSION}</span>
         </div>
+
+        {/* Crear cuenta sólo tiene sentido en la instalación pública: en la de un
+            cliente con ERP los usuarios los da de alta el dueño. */}
+        {usaSupabase && !s.tieneErp && (
+          <button
+            onClick={() => set({ modoAcceso: "registro", authError: "", regConfirmar: false })}
+            style={{
+              height: 46,
+              borderRadius: 13,
+              cursor: "pointer",
+              font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+              background: "transparent",
+              border: "1.5px solid #04617A",
+              color: "#04617A",
+            }}
+          >
+            Crear una cuenta
+          </button>
+        )}
       </div>
     </div>
   );

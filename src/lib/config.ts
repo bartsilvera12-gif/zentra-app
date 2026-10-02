@@ -11,10 +11,10 @@
  */
 
 /** Qué fuente de datos usa la app. */
-export type Backend = "mock" | "http";
+export type Backend = "mock" | "supabase" | "http";
 
 export const config = {
-  /** "mock" usa los datos de ejemplo; "http" pega contra la API real. */
+  /** "mock" datos de ejemplo · "supabase" el proyecto real · "http" una API propia. */
   backend: (process.env.NEXT_PUBLIC_BACKEND as Backend) || "mock",
   /** URL base de la API, sin barra final. Ej: https://api.zentra.com.py */
   apiUrl: (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, ""),
@@ -51,6 +51,13 @@ export function assertConfig(): void {
   if (config.backend === "http" && !config.apiUrl) {
     throw new Error(
       "NEXT_PUBLIC_BACKEND=http requiere NEXT_PUBLIC_API_URL. Revisá tu .env.local.",
+    );
+  }
+  if (config.backend === "supabase" && !config.supabaseUrl && !config.directorioUrl) {
+    throw new Error(
+      "NEXT_PUBLIC_BACKEND=supabase requiere NEXT_PUBLIC_SUPABASE_URL (la instalación " +
+        "pública) o NEXT_PUBLIC_DIRECTORIO_URL (para resolver por código de empresa). " +
+        "Revisá tu .env.local.",
     );
   }
 }

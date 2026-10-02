@@ -116,7 +116,10 @@ export function HomeScreen() {
   const roleInk = s.theme === "oscuro" ? "#FFB701" : "#8A5F00";
   // Con código de empresa el nombre sale de la instalación resuelta; en la
   // instalación pública todavía sale de los datos de ejemplo.
-  const empresa = s.tenant && !s.tenant.publico ? s.tenant.nombre : EMPRESA;
+  // Con sesión real, empresa y usuario salen del perfil; si no, de los datos de ejemplo.
+  const empresa = s.sesion?.empresa || (s.tenant && !s.tenant.publico ? s.tenant.nombre : EMPRESA);
+  const usuario = s.sesion ?? USUARIO;
+  const inicial = (s.sesion?.nombre || USUARIO.nombre).slice(0, 1).toUpperCase();
   const pct = 82 * p;
   const barras = [38, 54, 44, 70, 60, 82, 100];
 
@@ -169,9 +172,9 @@ export function HomeScreen() {
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-            <span style={{ font: "600 13px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{USUARIO.nombre}</span>
+            <span style={{ font: "600 13px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{usuario.nombre}</span>
             <span style={{ font: "600 10.5px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".12em", color: roleInk }}>
-              {USUARIO.rol}
+              {usuario.rol}
             </span>
           </div>
           <IconCampana stroke={t.ink2} />
@@ -188,7 +191,7 @@ export function HomeScreen() {
               font: "600 13px/1 var(--font-barlow),Barlow,sans-serif",
             }}
           >
-            {USUARIO.inicial}
+            {inicial}
           </div>
         </div>
       </div>

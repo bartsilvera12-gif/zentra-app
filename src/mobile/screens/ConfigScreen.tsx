@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
+import { repo, usaSupabase } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
@@ -193,7 +194,11 @@ export function ConfigScreen() {
         </Card>
 
         <button
-          onClick={() => set({ screen: "login", user: "", pass: "" })}
+          onClick={async () => {
+            // Cerrar la sesión en Supabase, si no el próximo arranque la reabre.
+            if (usaSupabase) await repo.auth.logout().catch(() => {});
+            set({ screen: "login", user: "", pass: "", sesion: null, authError: "", modoAcceso: "login" });
+          }}
           style={{
             borderRadius: 14,
             padding: 15,

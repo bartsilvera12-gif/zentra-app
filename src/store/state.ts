@@ -54,6 +54,22 @@ export interface AppState {
   /** Mensaje listo para mostrar; cadena vacía cuando no hay error. */
   tenantError: string;
 
+  /** Pantalla de entrada: iniciar sesión o crear cuenta. */
+  modoAcceso: "login" | "registro";
+  /** Perfil de la sesión abierta. null mientras no haya login. */
+  sesion: { nombre: string; rol: string; empresa: string } | null;
+  /** Mensaje de error de autenticación, listo para mostrar. */
+  authError: string;
+  entrando: boolean;
+
+  /* Alta de cuenta (sólo en la instalación pública) */
+  regNombre: string;
+  regEmpresa: string;
+  regMail: string;
+  regPass: string;
+  /** true cuando Supabase pide confirmar el correo antes de entrar. */
+  regConfirmar: boolean;
+
   /* Password recovery */
   mail: string;
   sent: boolean;
@@ -232,6 +248,17 @@ export const initialState: AppState = {
   tenant: null,
   tenantResolviendo: false,
   tenantError: "",
+
+  modoAcceso: "login",
+  sesion: null,
+  authError: "",
+  entrando: false,
+
+  regNombre: "",
+  regEmpresa: "",
+  regMail: "",
+  regPass: "",
+  regConfirmar: false,
 
   mail: "",
   sent: false,

@@ -12,6 +12,8 @@ import {
 } from "react";
 import { IVAS } from "@/lib/data";
 import { MODULES, THEME } from "@/lib/theme";
+import { usaSupabase } from "@/lib/repo";
+import { activarTenant } from "@/lib/supabase/client";
 import { resolverTenant } from "@/lib/tenant/directory";
 import { leerUltimoCodigo } from "@/lib/tenant/storage";
 import { mensajeTenantError } from "@/lib/tenant/types";
@@ -99,6 +101,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setS((prev) => ({ ...prev, tenantResolviendo: true, tenantError: "" }));
     try {
       const tenant = await resolverTenant(codigo);
+      // Con Supabase hay que dejar el cliente apuntando a esa instalación ANTES
+      // de validar las credenciales: la cuenta vive en ese proyecto, no en otro.
+      if (usaSupabase) activarTenant(tenant);
       setS((prev) => ({
         ...prev,
         tenant,

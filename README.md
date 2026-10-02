@@ -146,6 +146,22 @@ decisiones que quedan pendientes.
 > Siempre tiene que haber una capa HTTP en el medio (API propia, la del ERP, o un
 > BaaS tipo Supabase).
 
+## Conectar con Supabase
+
+El SQL de la base está en [`supabase/`](supabase/). Una vez corrido, en `.env.local`:
+
+```
+NEXT_PUBLIC_BACKEND=supabase
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+```
+
+Con eso el login, el registro y los datos salen del proyecto real. Volvé a
+`NEXT_PUBLIC_BACKEND=mock` para trabajar sin red.
+
+El código de empresa decide a qué proyecto se conecta: vacío va al de arriba, con
+código va al que devuelva el directorio.
+
 ## Pendiente
 
 - Conectar la API real: completar `src/lib/repo/http.ts` (ver `docs/BACKEND.md`).
