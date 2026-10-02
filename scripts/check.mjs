@@ -167,6 +167,7 @@ async function revisarProyecto(etiqueta, url, anonKey) {
         "Supabase → Settings → API → Exposed schemas → agregar 'zentra'. Sin esto la app no ve ninguna tabla.");
     return;
   }
+  if (permisoDenegado(primera)) return;
   if (await claveRechazada(url, anonKey, primera)) return;
   if (esFalta(primera)) {
     mal("No existen las tablas: falta correr el SQL",
@@ -234,6 +235,32 @@ async function revisarProyecto(etiqueta, url, anonKey) {
   } else {
     aviso(`No pude interpretar la prueba de RLS (HTTP ${sinSesion.status})`, loQueDijo(sinSesion));
   }
+}
+
+/**
+ * Postgres contestó "permiso denegado". No tiene nada que ver con la clave: la
+ * clave identificó bien al rol, y el rol no tiene permisos. Se mira antes que
+ * cualquier sospecha sobre la clave, porque es mucho más probable y el arreglo
+ * es otro.
+ */
+function permisoDenegado(r) {
+  const m = mensajeDe(r).toLowerCase();
+  if (!m.includes("permission denied")) return false;
+
+  if (m.includes("for schema")) {
+    mal(`Falta darle permiso al schema '${SCHEMA}'`, [
+      `Supabase dijo: ${loQueDijo(r)}`,
+      "No es la clave: el rol se reconoció bien, pero no puede ni mirar el schema.",
+      "Falta correr supabase/03_permisos.sql, que es el que da los permisos y activa el RLS.",
+      "Lo más simple: correr supabase/todo_en_uno.sql entero. Es idempotente, no borra datos.",
+    ].join("\n    "));
+  } else {
+    mal("Faltan permisos sobre las tablas", [
+      `Supabase dijo: ${loQueDijo(r)}`,
+      "No es la clave. Falta correr supabase/03_permisos.sql (o todo_en_uno.sql entero).",
+    ].join("\n    "));
+  }
+  return true;
 }
 
 /** ¿La respuesta dice que esa tabla no existe? */
@@ -310,7 +337,20 @@ function validarClave(url, anonKey) {
 /** ¿Supabase rechazó la clave? Devuelve true si ya informó el problema. */
 async function claveRechazada(url, anonKey, r) {
   const m = mensajeDe(r).toLowerCase();
-  if (!(m.includes("invalid api key") || m.includes("secret api key") || r.status === 401)) return false;
+  // Sólo cuando Supabase realmente habla de la clave. Un 401 suelto no alcanza:
+  // PostgREST también lo usa para errores de permisos de Postgres, y culpar a la
+  // clave manda a buscar en el lugar equivocado.
+  if (!(m.includes("invalid api key") || m.includes("secret api key") || m.includes("jwt") ||
+        m.includes("api key"))) {
+    if (r.status === 401 || r.status === 403) {
+      mal(`Supabase rechazó el pedido (HTTP ${r.status})`, [
+        `Supabase dijo: ${loQueDijo(r)}`,
+        "No dice que sea la clave, así que no voy a suponerlo. Pegame esta salida y lo miramos.",
+      ].join("\n    "));
+      return true;
+    }
+    return false;
+  }
 
   const dijo = loQueDijo(r);
 
