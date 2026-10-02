@@ -175,6 +175,10 @@ Con eso el login, el registro y los datos salen del proyecto real. Volvé a
 El código de empresa decide a qué proyecto se conecta: vacío va al de arriba, con
 código va al que devuelva el directorio.
 
+Para probar los dos caminos con dos empresas de verdad —sin levantar ningún
+servicio ni tocar ningún ERP— están los pasos en
+[`docs/PRUEBA-COMPLETA.md`](docs/PRUEBA-COMPLETA.md).
+
 ## Deploy
 
 La app compila a estático, así que se sirve con nginx y no necesita Node en el
@@ -198,7 +202,7 @@ realmente Apple y Google, y por qué Android e iOS van en el mismo repositorio:
 - Conectar la API real: completar `src/lib/repo/http.ts` (ver `docs/BACKEND.md`).
 - Migrar las pantallas a leer de `repo` en vez de `lib/data.ts` — es mecánico, pero
   conviene hacerlo sabiendo ya cuál es el backend, para no rehacerlo dos veces.
-- Autenticación real (hoy el login sólo valida que los campos no estén vacíos).
-- Persistencia: el estado vive en memoria y se reinicia al recargar.
+- Persistencia del estado de pantalla: vive en memoria y se reinicia al recargar
+  (la sesión y las preferencias sí se guardan).
 - Los inputs de fecha en Reportes usan el control nativo del navegador, así que su
   formato depende del idioma del dispositivo.

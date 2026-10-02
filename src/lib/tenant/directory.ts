@@ -7,12 +7,17 @@
  *
  * Orden de resolución:
  *   1. Código vacío        → tenant público.
- *   2. Consulta al directorio.
- *   3. Si el directorio no responde, lo guardado en el dispositivo.
+ *   2. Directorio escrito en el paquete (`NEXT_PUBLIC_DIRECTORIO_JSON`), si lo hay.
+ *   3. Consulta al directorio por red (`NEXT_PUBLIC_DIRECTORIO_URL`).
+ *   4. Si la red falló, lo guardado en el dispositivo.
  *
- * El paso 3 es lo que evita que el directorio sea un punto único de falla: una vez
- * que el celular resolvió un código, puede volver a entrar aunque el directorio
- * esté caído.
+ * El paso 2 permite arrancar sin montar ningún servicio: con dos o tres clientes
+ * con ERP alcanza, y no hay nada que se pueda caer. El costo es que agregar una
+ * empresa pide recompilar.
+ *
+ * El paso 4 es lo que evita que el directorio por red sea un punto único de falla:
+ * una vez que el celular resolvió un código, puede volver a entrar aunque el
+ * directorio esté caído.
  */
 import { config } from "../config";
 import { guardarTenant, guardarUltimoCodigo, leerTenantGuardado } from "./storage";
@@ -69,33 +74,84 @@ function parseRespuesta(codigo: string, json: unknown): TenantConfig {
   };
 }
 
-async function consultarDirectorio(codigo: string): Promise<TenantConfig> {
-  if (!config.directorioUrl) {
-    const demo = DIRECTORIO_DEMO[codigo];
-    if (!demo) throw new TenantError("no_encontrado", `Código ${codigo} no está en el directorio demo`);
-    return { ...demo, publico: false };
+/**
+ * Directorio escrito en el paquete. `assertConfig()` ya verificó que el JSON
+ * parsea, así que acá un error de formato sólo puede ser de una entrada suelta.
+ */
+function buscarEnJson(codigo: string): TenantConfig | null {
+  if (!config.directorioJson) return null;
+  let mapa: Record<string, unknown>;
+  try {
+    mapa = JSON.parse(config.directorioJson) as Record<string, unknown>;
+  } catch {
+    return null;
   }
+  // Las claves se normalizan igual que lo que escribe el usuario, así que da lo
+  // mismo si en el JSON quedó "jm" o " JM ".
+  const entrada = Object.entries(mapa).find(([k]) => normalizarCodigo(k) === codigo);
+  if (!entrada) return null;
+  return parseRespuesta(codigo, entrada[1]);
+}
+
+/**
+ * Directorio servido por red. Dos formas, según cómo termine la URL:
+ *
+ *   .../empresas/{CODIGO}   un endpoint por código (un servicio de verdad)
+ *   .../empresas.json       un solo archivo con todas (un estático en cualquier CDN)
+ *
+ * La segunda existe porque no hace falta un servicio para esto: un JSON subido a
+ * cualquier lado alcanza, y se actualiza sin recompilar la app.
+ */
+async function consultarPorRed(codigo: string): Promise<TenantConfig> {
+  const esArchivo = /\.json$/i.test(config.directorioUrl);
+  const url = esArchivo
+    ? config.directorioUrl
+    : `${config.directorioUrl}/${encodeURIComponent(codigo)}`;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), config.timeoutMs);
   try {
-    const res = await fetch(`${config.directorioUrl}/${encodeURIComponent(codigo)}`, {
-      signal: ctrl.signal,
-      headers: { Accept: "application/json" },
-    });
-    if (res.status === 404) {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+    if (res.status === 404 && !esArchivo) {
       throw new TenantError("no_encontrado", `Código ${codigo} no existe`);
     }
     if (!res.ok) {
       throw new TenantError("directorio_inaccesible", `Directorio respondió ${res.status}`);
     }
-    return parseRespuesta(codigo, await res.json());
+    const json = await res.json();
+    if (!esArchivo) return parseRespuesta(codigo, json);
+
+    const mapa = (json ?? {}) as Record<string, unknown>;
+    const entrada = Object.entries(mapa).find(([k]) => normalizarCodigo(k) === codigo);
+    if (!entrada) throw new TenantError("no_encontrado", `Código ${codigo} no está en el archivo`);
+    return parseRespuesta(codigo, entrada[1]);
   } catch (e) {
     if (e instanceof TenantError) throw e;
     throw new TenantError("directorio_inaccesible", "No se pudo consultar el directorio");
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function consultarDirectorio(codigo: string): Promise<TenantConfig> {
+  // Lo que está en el paquete gana: no depende de la red ni se puede caer.
+  const local = buscarEnJson(codigo);
+  if (local) return local;
+
+  if (config.directorioUrl) return consultarPorRed(codigo);
+
+  // Si hay un directorio escrito en el paquete y el código no está ahí, el código
+  // no existe. Caer al demo acá sería peor que fallar: mandaría al vendedor a una
+  // URL inventada y el error aparecería recién al intentar entrar.
+  if (config.directorioJson) {
+    throw new TenantError("no_encontrado", `Código ${codigo} no está en el directorio`);
+  }
+
+  // Sin directorio configurado de ninguna forma, queda el demo: sirve para ver el
+  // flujo de la pantalla, pero apunta a URLs inventadas.
+  const demo = DIRECTORIO_DEMO[codigo];
+  if (!demo) throw new TenantError("no_encontrado", `Código ${codigo} no está en el directorio`);
+  return { ...demo, publico: false };
 }
 
 /**

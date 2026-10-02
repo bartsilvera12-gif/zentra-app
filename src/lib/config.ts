@@ -27,6 +27,21 @@ export const config = {
    */
   directorioUrl: (process.env.NEXT_PUBLIC_DIRECTORIO_URL || "").replace(/\/$/, ""),
 
+  /**
+   * Directorio escrito a mano, como JSON, para no depender de ningún servicio.
+   *
+   *   {"JM":{"nombre":"Distribuidora JM","supabaseUrl":"https://...","anonKey":"eyJ..."}}
+   *
+   * Sirve para probar el código de empresa hoy, y alcanza en producción mientras
+   * los clientes con ERP se cuenten con los dedos. Tiene un costo: agregar una
+   * empresa pide recompilar la app, porque esto se hornea en el paquete. Cuando
+   * eso moleste, se pasa a `directorioUrl`.
+   *
+   * Gana sobre `directorioUrl` si están los dos: lo de adentro del paquete no
+   * depende de la red.
+   */
+  directorioJson: process.env.NEXT_PUBLIC_DIRECTORIO_JSON || "",
+
   /** Supabase público: el de quien baja la app de la tienda y se registra. */
   supabaseUrl: (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, ""),
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
@@ -53,11 +68,30 @@ export function assertConfig(): void {
       "NEXT_PUBLIC_BACKEND=http requiere NEXT_PUBLIC_API_URL. Revisá tu .env.local.",
     );
   }
-  if (config.backend === "supabase" && !config.supabaseUrl && !config.directorioUrl) {
+  if (
+    config.backend === "supabase" &&
+    !config.supabaseUrl &&
+    !config.directorioUrl &&
+    !config.directorioJson
+  ) {
     throw new Error(
       "NEXT_PUBLIC_BACKEND=supabase requiere NEXT_PUBLIC_SUPABASE_URL (la instalación " +
-        "pública) o NEXT_PUBLIC_DIRECTORIO_URL (para resolver por código de empresa). " +
-        "Revisá tu .env.local.",
+        "pública), o NEXT_PUBLIC_DIRECTORIO_JSON o NEXT_PUBLIC_DIRECTORIO_URL (para " +
+        "resolver por código de empresa). Revisá tu .env.local.",
     );
+  }
+  // Un JSON mal escrito dejaría el código de empresa roto sin que nadie se entere
+  // hasta que un vendedor no pueda entrar. Mejor que la app no arranque.
+  if (config.directorioJson) {
+    try {
+      const d = JSON.parse(config.directorioJson);
+      if (!d || typeof d !== "object" || Array.isArray(d)) throw new Error("no es un objeto");
+    } catch (e) {
+      throw new Error(
+        `NEXT_PUBLIC_DIRECTORIO_JSON no es un JSON válido (${
+          e instanceof Error ? e.message : "error"
+        }). Tiene que ser un objeto {"CODIGO": {...}}.`,
+      );
+    }
   }
 }

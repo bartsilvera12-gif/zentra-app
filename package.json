@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "dev:lan": "next dev -H 0.0.0.0",
     "sync": "npm run build && npx cap sync",
-    "android": "npm run sync && npx cap open android"
+    "android": "npm run sync && npx cap open android",
+    "test": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/directorio.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.5.2",
