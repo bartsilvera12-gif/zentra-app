@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "309397491560",
+    "project_id": "zentra-app-android",
+    "storage_bucket": "zentra-app-android.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:309397491560:android:88106007417f8bf8ced0dd",
+        "android_client_info": {
+          "package_name": "py.com.zentra.movil"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSjNFKEpO1kVMCZ4i_RIr0SJ09ua4MXPo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

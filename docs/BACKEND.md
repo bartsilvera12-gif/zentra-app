@@ -195,6 +195,16 @@ Devuelve serie temporal, total, KPIs, composición de la dona, ranking y tabla.
 **Conviene que lo calcule el backend**: hoy la app agrega en memoria sobre los
 datos de ejemplo, lo que no escala a un histórico real.
 
+### Dispositivos (notificaciones push)
+- `registrar({ token, plataforma })` — se llama en cada entrada
+- `baja(token)` — al apagar los avisos y al cerrar sesión
+
+El token lo da Firebase e identifica al **teléfono**, no a la persona: cambia al
+reinstalar la app, y el mismo aparato puede pasar de un empleado a otro. El
+backend tiene que: tratar el token como clave única (reasignarlo, no duplicarlo),
+decidir el dueño por la sesión y nunca por lo que manda el cliente, y borrarlo con
+la cuenta. Detalle en [`NOTIFICACIONES.md`](NOTIFICACIONES.md).
+
 ---
 
 ## Decisiones pendientes

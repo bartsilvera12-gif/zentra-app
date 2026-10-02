@@ -233,6 +233,10 @@ export interface AppState {
   stock: boolean;
   resumen: boolean;
   sonido: boolean;
+  /** Mientras se pide el permiso y el token al sistema. */
+  pushOcupado: boolean;
+  /** Por qué no se pudieron activar los avisos. Vacío = sin problema. */
+  pushAviso: string;
 
   /* Home dashboard */
   hover: ModuleKey | null;
@@ -408,10 +412,14 @@ export const initialState: AppState = {
   fPlazoCli: "30",
 
   auto: false,
-  push: true,
+  // Arranca apagado: activarlo pide permiso al sistema, y el sistema sólo
+  // pregunta una vez. Mostrarlo encendido sin haber pedido nada sería mentir.
+  push: false,
   stock: true,
   resumen: false,
   sonido: true,
+  pushOcupado: false,
+  pushAviso: "",
 
   hover: null,
   dash: 0,

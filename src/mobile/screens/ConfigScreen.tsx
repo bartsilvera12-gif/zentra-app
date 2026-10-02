@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
+import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
 import { repo, usaSupabase } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -35,7 +36,7 @@ export function ConfigScreen() {
         <div style={{ font: "600 14.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{titulo}</div>
         <div style={{ font: "400 12px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>{detalle}</div>
       </div>
-      <Toggle on={on} onToggle={() => set({ [key]: !on } as Partial<typeof s>)} />
+      <Toggle on={on} onToggle={() => set({ [key]: !on } as Partial<typeof s>)} label={titulo} />
     </div>
   );
 
@@ -64,6 +65,50 @@ export function ConfigScreen() {
         borrando: false,
         borrarError:
           e instanceof Error && e.message ? e.message : "No pudimos borrar la cuenta.",
+      });
+    }
+  };
+
+  /**
+   * El switch de avisos push no es una preferencia local: prender pide permiso al
+   * sistema y guarda el token del teléfono; apagar borra ese token. Si sólo
+   * cambiara el switch, el servidor seguiría mandando avisos que el teléfono
+   * mostraría igual.
+   */
+  const cambiarPush = async () => {
+    if (s.pushOcupado) return;
+    const prender = !s.push;
+
+    if (!pushDisponible()) {
+      // En el navegador no hay plugin nativo. Se deja cambiar el switch para que
+      // la pantalla se pueda probar, pero se avisa que no va a llegar nada.
+      set({ push: prender, pushAviso: prender ? "En el navegador no llegan avisos: hace falta la app instalada." : "" });
+      return;
+    }
+
+    set({ pushOcupado: true, pushAviso: "" });
+    try {
+      if (prender) {
+        const ok = await activarPush();
+        guardarPreferenciaPush(ok);
+        set({
+          push: ok,
+          pushOcupado: false,
+          // Si lo rechazaron, el sistema no vuelve a preguntar: hay que mandarlos
+          // a los ajustes del teléfono.
+          pushAviso: ok ? "" : "Falta el permiso de notificaciones. Se habilita en los ajustes del teléfono.",
+        });
+      } else {
+        await desactivarPush();
+        guardarPreferenciaPush(false);
+        set({ push: false, pushOcupado: false, pushAviso: "" });
+      }
+    } catch (e) {
+      guardarPreferenciaPush(false);
+      set({
+        push: false,
+        pushOcupado: false,
+        pushAviso: e instanceof Error && e.message ? e.message : "No pudimos activar los avisos.",
       });
     }
   };
@@ -156,13 +201,26 @@ export function ConfigScreen() {
               <div style={{ font: "600 14.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>Seguir al sistema</div>
               <div style={{ font: "400 12px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>Usar el tema del teléfono</div>
             </div>
-            <Toggle on={s.auto} onToggle={() => set({ auto: !s.auto })} />
+            <Toggle on={s.auto} onToggle={() => set({ auto: !s.auto })} label="Seguir al sistema" />
           </div>
         </Card>
 
         <Card gap={14}>
           <SectionLabel>Notificaciones</SectionLabel>
-          {row("Avisos push", "Ventas, cobros y entregas", s.push, "push")}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ font: "600 14.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>Avisos push</div>
+              <div style={{ font: "400 12px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                {s.pushOcupado ? "Pidiendo permiso…" : "Ventas, cobros y entregas"}
+              </div>
+            </div>
+            <Toggle on={s.push} onToggle={cambiarPush} label="Avisos push" />
+          </div>
+          {s.pushAviso ? (
+            <Notice bg={claro ? "#fdf1f1" : "#3a2328"} ink="#9e3b3b">
+              {s.pushAviso}
+            </Notice>
+          ) : null}
           {row("Stock bajo", "Alertar bajo el mínimo", s.stock, "stock")}
           {row("Resumen diario", "Todos los días a las 19:00", s.resumen, "resumen")}
           {row("Sonido y vibración", "Al recibir un aviso", s.sonido, "sonido")}
@@ -319,6 +377,9 @@ export function ConfigScreen() {
 
         <button
           onClick={async () => {
+            // Dar de baja el token antes de salir: si queda, el próximo que entre
+            // en este teléfono recibiría los avisos de quien se fue.
+            await desactivarPush().catch(() => {});
             // Cerrar la sesión en Supabase, si no el próximo arranque la reabre.
             if (usaSupabase) await repo.auth.logout().catch(() => {});
             set({ screen: "login", user: "", pass: "", sesion: null, authError: "", modoAcceso: "login" });

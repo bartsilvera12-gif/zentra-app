@@ -329,12 +329,22 @@ export function BackButton({ onClick, onDark = false }: { onClick: () => void; o
   );
 }
 
-export function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+export function Toggle({
+  on,
+  onToggle,
+  label,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  /** Qué controla el switch. Sin esto el lector de pantalla sólo dice "botón". */
+  label?: string;
+}) {
   const { s } = useApp();
   return (
     <button
       onClick={onToggle}
       aria-pressed={on}
+      aria-label={label}
       style={{
         width: 50,
         height: 29,

@@ -2,6 +2,7 @@
 
 import { linkWhatsapp } from "@/lib/config";
 import { VERSION } from "@/lib/data";
+import { pushPreferido, reanudarPush } from "@/lib/push";
 import { registrar, repo, usaSupabase } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { StatusBar } from "../layout/StatusBar";
@@ -36,6 +37,13 @@ export function LoginScreen() {
       const sesion = await repo.auth.login(s.user, s.pass);
       set({ screen: "home", error: false, entrando: false, sesion: sesion.usuario, pass: "" });
       runDash();
+      // El token de Firebase está atado al usuario de la sesión y cambia al
+      // reinstalar la app, así que se vuelve a guardar en cada entrada. Va sin
+      // `await`: que los avisos tarden no tiene que demorar el inicio.
+      if (pushPreferido()) {
+        set({ push: true });
+        void reanudarPush().then((ok) => set({ push: ok }));
+      }
     } catch (e) {
       set({ entrando: false, authError: motivo(e) });
     }

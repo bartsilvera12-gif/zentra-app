@@ -28,6 +28,8 @@ import type {
   ProductoInput,
   ProveedorInput,
   ProveedoresRepo,
+  DispositivoInput,
+  DispositivosRepo,
   ReportesRepo,
   VentaInput,
   VentasRepo,
@@ -794,5 +796,27 @@ export const reportesRepo: ReportesRepo = {
     throw new AuthError(
       "Los reportes todavía no están conectados: falta la agregación del lado del servidor.",
     );
+  },
+};
+
+/* -------------------------------------------------------- dispositivos */
+
+export const dispositivosRepo: DispositivosRepo = {
+  async registrar(input: DispositivoInput) {
+    // El alta la hace el servidor: la app pasa sólo el token y la plataforma, y
+    // de quién es la fila lo decide la sesión. Así no hay forma de registrar un
+    // teléfono a nombre de otro, y el servidor puede reasignar un token que era
+    // de otro empleado —cosa que la política de la tabla no permite desde acá—.
+    const { error } = await sb().rpc("registrar_dispositivo", {
+      p_token: input.token,
+      p_plataforma: input.plataforma,
+    });
+    if (error) reventar("registrando el dispositivo", error);
+  },
+
+  async baja(token: string) {
+    // Borrar sí va directo: la política sólo deja borrar los propios.
+    const { error } = await sb().from("dispositivos").delete().eq("token", token);
+    if (error) reventar("dando de baja el dispositivo", error);
   },
 };

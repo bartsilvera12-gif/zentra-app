@@ -137,4 +137,8 @@ export const httpRepo: Repo = {
   reportes: {
     resumen: () => pendiente("reportes.resumen"),
   },
+  dispositivos: {
+    registrar: () => pendiente("dispositivos.registrar"),
+    baja: () => pendiente("dispositivos.baja"),
+  },
 };

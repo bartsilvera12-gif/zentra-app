@@ -10,6 +10,7 @@ import {
   chatsRepo,
   clientesRepo,
   comprasRepo,
+  dispositivosRepo,
   inventarioRepo,
   proveedoresRepo,
   reportesRepo,
@@ -25,6 +26,7 @@ export const supabaseRepo: Repo = {
   compras: comprasRepo,
   chats: chatsRepo,
   reportes: reportesRepo,
+  dispositivos: dispositivosRepo,
 };
 
 export { registrar } from "./supabase-auth";

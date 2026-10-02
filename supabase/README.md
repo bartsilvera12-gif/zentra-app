@@ -22,7 +22,7 @@ La contraseña de la base va en esa cadena: es local tuya, no la compartas.
 
 ### Opción B: el editor web
 
-`supabase/todo_en_uno.sql` tiene los tres scripts juntos, así es un solo pegado.
+`supabase/todo_en_uno.sql` tiene todos los scripts juntos, así es un solo pegado.
 Antes de ejecutar, asegurate de que **no haya texto seleccionado** en el editor:
 si hay una selección, Supabase corre sólo eso y el script se parte al medio.
 
@@ -34,11 +34,12 @@ En **SQL Editor**, pegar cada archivo y ejecutar, **en este orden y uno por vez*
 2. `02_funciones.sql` — numeración, stock, alta automática al registrarse, totales
 3. `03_permisos.sql` — Row Level Security
 4. `04_borrar_cuenta.sql` — borrado de cuenta (requisito de las tiendas)
+5. `05_dispositivos.sql` — tokens de notificaciones push
 
-`todo_en_uno.sql` se genera a partir de los otros tres: si cambiás algo, cambialo
-en los sueltos y volvé a generarlo.
+`todo_en_uno.sql` se genera a partir de los sueltos: si cambiás algo, cambialo ahí
+y volvé a correr `./generar_todo_en_uno.sh`.
 
-Los tres son **idempotentes**: si tenés que correrlos de nuevo no rompen nada ni
+Todos son **idempotentes**: si tenés que correrlos de nuevo no rompen nada ni
 borran datos. Van a aparecer avisos tipo `does not exist, skipping`; son normales.
 
 No corras `test/00_stub_auth.sql` en Supabase: ese archivo recrea lo que Supabase
@@ -121,12 +122,21 @@ psql -f supabase/test/00_stub_auth.sql   # recrea lo que aporta Supabase
 psql -f supabase/01_schema.sql
 psql -f supabase/02_funciones.sql
 psql -f supabase/03_permisos.sql
-psql -f supabase/test/01_pruebas.sql     # las pruebas
+psql -f supabase/04_borrar_cuenta.sql
+psql -f supabase/05_dispositivos.sql
+
+psql -f supabase/test/01_pruebas.sql            # las pruebas
 ```
 
-Verifican el alta al registrarse, que una empresa no vea ni escriba lo de otra, la
-numeración correlativa, el IVA contenido, el stock y las reglas de crédito. Cada
-una falla ruidosamente si la regla se rompe.
+Hay tres juegos, y cada uno quiere una base limpia (dejan datos de prueba):
+
+| | |
+|---|---|
+| `test/01_pruebas.sql` | alta al registrarse, aislamiento entre empresas, numeración correlativa, IVA contenido, stock, reglas de crédito |
+| `test/02_pruebas_borrado.sql` | el último usuario se lleva la empresa; si quedan compañeros, no |
+| `test/03_pruebas_dispositivos.sql` | un token es un teléfono, el alta pasa por el servidor, se van con la cuenta |
+
+Cada prueba falla ruidosamente si la regla se rompe.
 
 ## Borrado de cuenta
 
@@ -140,6 +150,29 @@ movimientos. Si quedan compañeros, sólo se va esa persona y la empresa sigue.
 
 En la app está en **Configuración → Cuenta**, y pide escribir ELIMINAR para
 habilitar el botón: un toque accidental no puede borrar un negocio.
+
+## Notificaciones push
+
+`zentra.dispositivos` guarda qué token de Firebase corresponde a qué usuario y
+empresa. El token identifica al teléfono, no a la persona: cambia al reinstalar la
+app, así que es la clave primaria y la app lo vuelve a guardar en cada entrada.
+
+La política es más estricta que la del resto de las tablas: cada uno ve y da de
+baja sólo sus propios dispositivos. Un compañero de empresa no tiene por qué poder
+dar de baja el teléfono de otro ni redirigirle los avisos al suyo.
+
+El alta va por `zentra.registrar_dispositivo(token, plataforma)` y no por un
+`insert`: la app pasa sólo esos dos datos y el servidor decide de quién es la fila.
+Si la app pudiera escribirla, podría poner el id de otro y robarle los avisos; y
+reasignar el teléfono que era de otro empleado exige tocar una fila ajena, que
+ninguna política razonable permite desde el cliente. Por eso `insert` y `update`
+están revocados para `authenticated`.
+
+`zentra.tokens_de_empresa(empresa)` es para el servidor que envía, con la clave de
+servicio. A propósito **no** tiene permiso para `authenticated`: un vendedor no
+necesita la lista de teléfonos de sus compañeros.
+
+El detalle completo está en [`docs/NOTIFICACIONES.md`](../docs/NOTIFICACIONES.md).
 
 ## Lo que falta
 

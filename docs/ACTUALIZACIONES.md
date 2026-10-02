@@ -156,9 +156,14 @@ Es lo que hace tu ERP, y está bien.
 
 ### ¿Se versionan esas carpetas?
 
-Hoy están en `.gitignore` porque se regeneran. Conviene empezar a versionarlas
-cuando haga falta tocar cosas nativas: notificaciones push, íconos, permisos,
-pantalla de carga. A partir de ahí, regenerarlas borraría esos cambios.
+Siguen en `.gitignore` porque se regeneran, **con una excepción ya en vigor**: la
+configuración de Firebase (`android/app/google-services.json`, y el
+`GoogleService-Info.plist` cuando llegue iOS) sí se versiona. Ésa no se regenera,
+se descarga de la consola, y si se pierde la app deja de recibir notificaciones.
+
+El resto —íconos, permisos, pantalla de carga— se puede seguir regenerando. Cuando
+haga falta tocar alguno a mano, se agrega la excepción que corresponda, en vez de
+versionar las carpetas enteras: así `npx cap sync` sigue siendo seguro de correr.
 
 ---
 
@@ -168,7 +173,7 @@ Esto no depende de las actualizaciones, pero si hay registro de usuarios es
 obligatorio:
 
 - **Borrado de cuenta desde la app.** Las dos tiendas lo exigen si se puede crear
-  cuenta. Hoy no está implementado.
+  cuenta. Ya está, en Configuración → Cuenta.
 - **Política de privacidad** publicada, y el formulario de datos de Google Play.
 - **Cuenta de prueba** para los revisores, con datos cargados: si abren la app y
   ven todo vacío, puede caer por 4.2.
@@ -209,7 +214,7 @@ Lo que más importa en nuestro caso:
 
 - **4.2 Minimum Functionality.** Ya está cubierto: la app lleva el código adentro,
   anda sin señal y usa el dispositivo. No es un sitio web envuelto.
-- **Borrado de cuenta.** Apple lo exige y lo hace cumplir. Hoy no está.
+- **Borrado de cuenta.** Apple lo exige y lo hace cumplir. Ya está.
 - **Etiquetas de privacidad.** Hay que declarar qué datos se recogen y para qué.
 - **Cuenta de prueba con datos cargados** para los revisores.
 
@@ -234,8 +239,8 @@ un archivo de verificación al dominio. Es trabajo aparte del de Android.
 1. **¿Cómo se compila iOS?** GitHub Actions, Mac en la nube, o una Mac propia.
 2. **¿Cuándo se suma Capgo?** No hace falta para desarrollar. Conviene montarlo
    antes de la primera publicación, no después.
-3. **Borrado de cuenta**: hay que implementarlo antes de mandar a revisión. Es
-   requisito de las dos tiendas.
+3. **El servidor que manda las notificaciones.** La app ya sabe recibirlas, pero
+   nada las dispara. Ver [`NOTIFICACIONES.md`](NOTIFICACIONES.md).
 
 ---
 

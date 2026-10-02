@@ -48,6 +48,8 @@ const extra = {
   mensajes: {} as Record<string, ChatMsg[]>,
   /** Ajustes de stock aplicados, por id de producto. */
   deltas: {} as Record<string, number>,
+  /** Tokens de notificaciones registrados, por token. */
+  dispositivos: {} as Record<string, "android" | "ios" | "web">,
 };
 
 /**
@@ -402,6 +404,19 @@ export const mockRepo: Repo = {
         ranking: m.rank.map((r) => ({ label: r.label, valor: r.v, sub: r.sub })),
         tabla,
       });
+    },
+  },
+
+  dispositivos: {
+    // Sin backend no hay a quién avisar; se guarda en memoria para que la
+    // pantalla de Configuración se comporte igual que contra Supabase.
+    async registrar(input) {
+      extra.dispositivos[input.token] = input.plataforma;
+      await demora(null);
+    },
+    async baja(token) {
+      delete extra.dispositivos[token];
+      await demora(null);
     },
   },
 };

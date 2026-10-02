@@ -4,9 +4,18 @@ out/
 build/
 dist/
 
-# Capacitor native projects are generated; keep the repo to the web source.
+# Los proyectos nativos los genera Capacitor, así que no se versionan...
 android/
 ios/
+
+# ...con una excepción: la configuración de Firebase no se regenera, se descarga
+# de la consola. Si se pierde, la app deja de recibir notificaciones.
+!android/app/
+android/app/*
+!android/app/google-services.json
+!ios/App/App/
+ios/App/App/*
+!ios/App/App/GoogleService-Info.plist
 
 *.tsbuildinfo
 next-env.d.ts

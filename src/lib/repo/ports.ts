@@ -186,6 +186,24 @@ export interface ChatsRepo {
   marcarLeido(chatId: string): Promise<void>;
 }
 
+/* ---------- dispositivos (notificaciones push) ---------- */
+
+export interface DispositivoInput {
+  /** Token que entrega Firebase Cloud Messaging. Identifica al teléfono, no a la persona. */
+  token: string;
+  plataforma: "android" | "ios" | "web";
+}
+
+export interface DispositivosRepo {
+  /**
+   * Guarda el token del dispositivo para el usuario de la sesión. Se llama en cada
+   * arranque: el token cambia al reinstalar la app, así que hay que refrescarlo.
+   */
+  registrar(input: DispositivoInput): Promise<void>;
+  /** Da de baja el token: al apagar los avisos o al cerrar sesión. */
+  baja(token: string): Promise<void>;
+}
+
 /* ---------- reportes ---------- */
 
 export interface ResumenReporte {
@@ -213,4 +231,5 @@ export interface Repo {
   compras: ComprasRepo;
   chats: ChatsRepo;
   reportes: ReportesRepo;
+  dispositivos: DispositivosRepo;
 }

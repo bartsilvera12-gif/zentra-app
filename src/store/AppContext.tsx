@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { IVAS } from "@/lib/data";
+import { escucharAvisos, pushPreferido } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
 import { usaSupabase } from "@/lib/repo";
 import { activarTenant } from "@/lib/supabase/client";
@@ -18,7 +19,17 @@ import { resolverTenant } from "@/lib/tenant/directory";
 import { leerUltimoCodigo } from "@/lib/tenant/storage";
 import { mensajeTenantError } from "@/lib/tenant/types";
 import type { ChatMsg, ModuleKey, ThemeTokens } from "@/lib/types";
-import { initialState, type AppState } from "./state";
+import { initialState, type AppState, type Screen } from "./state";
+
+/** Pantallas a las que un aviso push puede llevar. */
+const PANTALLAS_AVISO: Screen[] = [
+  "home",
+  "detventas",
+  "inventario",
+  "clientes",
+  "compras",
+  "conversaciones",
+];
 
 type Patch = Partial<AppState>;
 
@@ -95,6 +106,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const ultimo = leerUltimoCodigo();
     // Si este celular ya entró con un código, damos por contestada la pregunta.
     if (ultimo) setS((prev) => ({ ...prev, codigoEmpresa: ultimo, tieneErp: true }));
+    // La preferencia de avisos también vive en el dispositivo. Acá sólo se refleja
+    // en el switch; el token se vuelve a registrar al entrar (ver LoginScreen).
+    if (pushPreferido()) setS((prev) => ({ ...prev, push: true }));
+  }, []);
+
+  // Tocar un aviso desde la bandeja tiene que abrir la pantalla que corresponde,
+  // no dejar la app donde estaba. El servidor manda a dónde ir en `data.pantalla`.
+  useEffect(() => {
+    void escucharAvisos((pantalla) => {
+      // Lista blanca: lo que manda el servidor no decide a qué pantalla saltar sin
+      // pasar por acá, y "login" o "recupero" nunca son destino de un aviso.
+      if (!PANTALLAS_AVISO.includes(pantalla as Screen)) return;
+      setS((prev) => (prev.screen === "login" ? prev : { ...prev, screen: pantalla as Screen }));
+    });
   }, []);
 
   const elegirInstalacion = useCallback(async (codigo: string) => {

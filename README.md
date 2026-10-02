@@ -115,7 +115,9 @@ npx cap open android      # abre el proyecto en Android Studio
 Desde ahí se compila el APK/AAB como cualquier proyecto Gradle. Después de cada
 `npm run build`, correr `npx cap sync` para copiar el web build al proyecto nativo.
 
-La carpeta `android/` está en `.gitignore`: se genera, no se versiona.
+La carpeta `android/` está en `.gitignore`: se genera, no se versiona. La única
+excepción es `android/app/google-services.json`, la configuración de Firebase: ésa
+no se regenera, se descarga de la consola, y sin ella no llegan las notificaciones.
 
 ## Código de empresa
 
@@ -176,6 +178,10 @@ en runtime) están en [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 Para el APK no hace falta deployar nada: el código va adentro del paquete y habla
 directo con Supabase.
+
+Las notificaciones push van por Firebase Cloud Messaging, con la tabla
+`zentra.dispositivos` guardando qué teléfono es de quién:
+[`docs/NOTIFICACIONES.md`](docs/NOTIFICACIONES.md).
 
 Cómo actualizar la app sin pasar por la revisión de las tiendas, qué permiten
 realmente Apple y Google, y por qué Android e iOS van en el mismo repositorio:
