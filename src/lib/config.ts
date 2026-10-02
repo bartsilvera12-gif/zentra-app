@@ -20,6 +20,16 @@ export const config = {
   apiUrl: (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, ""),
   /** Timeout de red en milisegundos. */
   timeoutMs: Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS || 15000),
+
+  /**
+   * Directorio que traduce código de empresa → a qué Supabase conectarse.
+   * Vacío usa el directorio demo incluido, para poder probar sin el servicio real.
+   */
+  directorioUrl: (process.env.NEXT_PUBLIC_DIRECTORIO_URL || "").replace(/\/$/, ""),
+
+  /** Supabase público: el de quien baja la app de la tienda y se registra. */
+  supabaseUrl: (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, ""),
+  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
 } as const;
 
 export function assertConfig(): void {

@@ -112,6 +112,18 @@ Desde ahí se compila el APK/AAB como cualquier proyecto Gradle. Después de cad
 
 La carpeta `android/` está en `.gitignore`: se genera, no se versiona.
 
+## Código de empresa
+
+La app sirve a dos públicos con un solo APK. En el login se pregunta si la empresa
+ya tiene un ERP con nosotros, y el campo del código aparece sólo si contesta que sí:
+
+- **No** → instalación pública (registro abierto, arranca en blanco).
+- **Sí + código** → instalación del cliente que ya tiene ERP (sus datos, su login).
+
+El código se normaliza, se guarda en el dispositivo y tolera que el directorio se
+caiga. Está en `src/lib/tenant/`; el contrato del directorio está en
+[`docs/BACKEND.md`](docs/BACKEND.md).
+
 ## Datos
 
 Hoy la app corre con datos de ejemplo. El acceso a datos está detrás de una capa de

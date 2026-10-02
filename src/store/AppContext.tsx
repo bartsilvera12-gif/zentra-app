@@ -12,6 +12,9 @@ import {
 } from "react";
 import { IVAS } from "@/lib/data";
 import { MODULES, THEME } from "@/lib/theme";
+import { resolverTenant } from "@/lib/tenant/directory";
+import { leerUltimoCodigo } from "@/lib/tenant/storage";
+import { mensajeTenantError } from "@/lib/tenant/types";
 import type { ChatMsg, ModuleKey, ThemeTokens } from "@/lib/types";
 import { initialState, type AppState } from "./state";
 
@@ -36,6 +39,11 @@ interface AppApi {
   startGrab: () => void;
   stopGrab: () => void;
   go: (k: ModuleKey) => void;
+  /**
+   * Resuelve el código de empresa a una instalación concreta.
+   * Devuelve true si se pudo; en caso contrario deja el mensaje en `s.tenantError`.
+   */
+  elegirInstalacion: (codigo: string) => Promise<boolean>;
 }
 
 const Ctx = createContext<AppApi | null>(null);
@@ -76,6 +84,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (grabTimer.current) {
       clearInterval(grabTimer.current);
       grabTimer.current = null;
+    }
+  }, []);
+
+  // El último código usado vive en el dispositivo, así que se lee después del
+  // montaje: leerlo durante el render rompería la hidratación.
+  useEffect(() => {
+    const ultimo = leerUltimoCodigo();
+    // Si este celular ya entró con un código, damos por contestada la pregunta.
+    if (ultimo) setS((prev) => ({ ...prev, codigoEmpresa: ultimo, tieneErp: true }));
+  }, []);
+
+  const elegirInstalacion = useCallback(async (codigo: string) => {
+    setS((prev) => ({ ...prev, tenantResolviendo: true, tenantError: "" }));
+    try {
+      const tenant = await resolverTenant(codigo);
+      setS((prev) => ({
+        ...prev,
+        tenant,
+        codigoEmpresa: tenant.codigo,
+        tenantResolviendo: false,
+        tenantError: "",
+      }));
+      return true;
+    } catch (e) {
+      setS((prev) => ({
+        ...prev,
+        tenant: null,
+        tenantResolviendo: false,
+        tenantError: mensajeTenantError(e),
+      }));
+      return false;
     }
   }, []);
 
@@ -174,8 +213,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startGrab,
       stopGrab,
       go,
+      elegirInstalacion,
     }),
-    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, startGrab, stopGrab, go],
+    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, startGrab, stopGrab, go, elegirInstalacion],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -228,3 +228,66 @@ Cosas que no se pueden resolver desde el diseño y hay que definir:
    implementación que indique la variable de entorno.
 
 Para volver a los datos de ejemplo, `NEXT_PUBLIC_BACKEND=mock`.
+
+---
+
+## El directorio de empresas (código de empresa)
+
+En el login se pregunta **"¿Tu empresa ya tiene un ERP con nosotros?"**. El campo
+del código sólo aparece si contesta que sí — a quien no tiene ERP, un campo suelto
+llamado "código de empresa" sólo lo confunde.
+
+- **No** → instalación pública: quien baja la app de la tienda, se registra y
+  arranca con todo en blanco.
+- **Sí + código** → instalación de un cliente que ya tiene ERP: entra con el mismo
+  usuario y contraseña que usa en la web y ve sus datos ya cargados.
+
+Un solo APK sirve para los dos. Lo único que cambia es a qué Supabase le habla.
+
+### Qué tiene que exponer el directorio
+
+Un endpoint público de sólo lectura:
+
+```
+GET {NEXT_PUBLIC_DIRECTORIO_URL}/{CODIGO}
+```
+
+Respuesta `200`:
+
+```json
+{
+  "nombre": "Distribuidora JM",
+  "supabaseUrl": "https://jm.supabase.ejemplo",
+  "anonKey": "eyJ..."
+}
+```
+
+Respuesta `404` si el código no existe.
+
+**Nada de esto es secreto.** La URL y la anon key son los mismos datos que viajan
+dentro de cualquier APK que use Supabase; lo que protege los datos es RLS del lado
+del servidor, no esconder estos valores. El directorio es una libreta de
+direcciones, no una caja fuerte.
+
+### Reglas que ya implementa la app
+
+- **Normalización**: `  j-m  ` y `jm` resuelven al mismo código `JM`.
+- **Se guarda en el dispositivo**: el vendedor escribe su código una sola vez. Al
+  reabrir la app, la pregunta ya viene contestada y el código precargado.
+- **Tolera que el directorio se caiga**: si el celular ya resolvió ese código antes,
+  usa lo guardado y entra igual. El directorio sólo hace falta la primera vez —
+  así no es un punto único de falla para el login.
+- **Un código inexistente no usa la caché**: es un error definitivo, con mensaje
+  claro para el usuario.
+- **Sin `NEXT_PUBLIC_DIRECTORIO_URL`** se usa un directorio demo incluido (`JM` y
+  `FERRE`), para poder probar el flujo sin levantar el servicio real.
+
+Ver `src/lib/tenant/`.
+
+### Lo que falta definir
+
+- **Dos modelos de datos.** La instalación pública tiene registro abierto, así que
+  va multi-tenant con `empresa_id` + RLS. Las instalaciones de ERP ya usan un
+  schema de Postgres por empresa. Son dos implementaciones del mismo puerto.
+- **Quién administra el directorio**: hoy no existe. Puede ser una tabla con un
+  endpoint, o incluso un JSON estático servido por CDN.

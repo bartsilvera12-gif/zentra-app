@@ -1,3 +1,4 @@
+import type { TenantConfig } from "@/lib/tenant/types";
 import type {
   CompraLinea,
   Compra,
@@ -38,6 +39,20 @@ export interface AppState {
   error: boolean;
   mod: ModuleKey | null;
   theme: ThemeName;
+
+  /* Elección de instalación (código de empresa) */
+  /**
+   * Respuesta a "¿ya tenés un ERP con nosotros?". En false la app entra a la
+   * instalación pública y ni se muestra el campo del código, que a quien no tiene
+   * ERP sólo lo confunde.
+   */
+  tieneErp: boolean;
+  codigoEmpresa: string;
+  /** Instalación resuelta. null hasta que se resuelve el código en el login. */
+  tenant: TenantConfig | null;
+  tenantResolviendo: boolean;
+  /** Mensaje listo para mostrar; cadena vacía cuando no hay error. */
+  tenantError: string;
 
   /* Password recovery */
   mail: string;
@@ -211,6 +226,12 @@ export const initialState: AppState = {
   error: false,
   mod: null,
   theme: "claro",
+
+  tieneErp: false,
+  codigoEmpresa: "",
+  tenant: null,
+  tenantResolviendo: false,
+  tenantError: "",
 
   mail: "",
   sent: false,

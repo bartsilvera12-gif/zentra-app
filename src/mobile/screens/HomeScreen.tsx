@@ -114,6 +114,9 @@ export function HomeScreen() {
   const p = s.dashP;
 
   const roleInk = s.theme === "oscuro" ? "#FFB701" : "#8A5F00";
+  // Con código de empresa el nombre sale de la instalación resuelta; en la
+  // instalación pública todavía sale de los datos de ejemplo.
+  const empresa = s.tenant && !s.tenant.publico ? s.tenant.nombre : EMPRESA;
   const pct = 82 * p;
   const barras = [38, 54, 44, 70, 60, 82, 100];
 
@@ -158,7 +161,7 @@ export function HomeScreen() {
             style={{ height: 20, width: "auto", display: "block", flex: "0 0 auto" }}
           />
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-            <span style={{ font: "600 15.5px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{EMPRESA}</span>
+            <span style={{ font: "600 15.5px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{empresa}</span>
             <span style={{ font: "400 11px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink2, whiteSpace: "nowrap" }}>
               {FECHA_LARGA}
             </span>

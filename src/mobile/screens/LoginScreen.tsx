@@ -6,16 +6,22 @@ import { StatusBar } from "../layout/StatusBar";
 import { Field } from "../ui/primitives";
 
 export function LoginScreen() {
-  const { s, set, runDash } = useApp();
+  const { s, set, runDash, elegirInstalacion } = useApp();
 
-  const entrar = () => {
+  const entrar = async () => {
     if (!s.user.trim() || !s.pass.trim()) {
       set({ error: true });
       return;
     }
+    // Primero resolvemos a qué instalación entra; sin eso no sabemos contra qué
+    // validar las credenciales. Código vacío = instalación pública.
+    const ok = await elegirInstalacion(s.tieneErp ? s.codigoEmpresa : "");
+    if (!ok) return;
     set({ screen: "home", error: false });
     runDash();
   };
+
+  const tenantNombre = s.tenant && !s.tenant.publico ? s.tenant.nombre : null;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1C8C84" }}>
@@ -82,6 +88,89 @@ export function LoginScreen() {
           onChange={(v) => set({ pass: v, error: false })}
           placeholder="••••••••"
         />
+
+        {/* Preguntamos antes de pedir el código: a quien no tiene ERP, un campo
+            suelto llamado "código de empresa" sólo lo confunde. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ font: "500 13px/1.3 Barlow,sans-serif", color: "#4b5563" }}>
+            ¿Tu empresa ya tiene un ERP con nosotros?
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { label: "No", on: !s.tieneErp, pick: () => set({ tieneErp: false, tenantError: "", tenant: null }) },
+              { label: "Sí", on: s.tieneErp, pick: () => set({ tieneErp: true, tenantError: "", tenant: null }) },
+            ].map((o) => (
+              <button
+                key={o.label}
+                onClick={o.pick}
+                aria-pressed={o.on}
+                style={{
+                  flex: 1,
+                  height: 42,
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  font: "600 14px/1 Barlow,sans-serif",
+                  background: o.on ? "#E2F0F4" : "#fff",
+                  color: o.on ? "#04617A" : "#65707f",
+                  border: `2px solid ${o.on ? "#04617A" : "#d6dbe3"}`,
+                }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {s.tieneErp && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span
+              style={{
+                font: "600 11px/1 Barlow,sans-serif",
+                letterSpacing: ".12em",
+                textTransform: "uppercase",
+                color: "#65707f",
+              }}
+            >
+              Código de empresa
+            </span>
+            <input
+              type="text"
+              value={s.codigoEmpresa}
+              onChange={(e) =>
+                set({ codigoEmpresa: e.target.value.toUpperCase(), tenantError: "", tenant: null })
+              }
+              placeholder="El que te dimos, ej. JM"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              style={{
+                height: 46,
+                border: "1px solid #d6dbe3",
+                borderRadius: 12,
+                background: "#fff",
+                padding: "0 14px",
+                fontSize: 15,
+                color: "#141a2e",
+                outline: "none",
+                letterSpacing: ".06em",
+              }}
+            />
+            <span style={{ font: "400 11.5px/1.35 Barlow,sans-serif", color: "#65707f" }}>
+              Si no lo tenés a mano, escribinos a soporte.
+            </span>
+            {tenantNombre && (
+              <span style={{ font: "500 12px/1.3 Barlow,sans-serif", color: "#0C5F58" }}>
+                Vas a entrar a {tenantNombre}.
+              </span>
+            )}
+          </label>
+        )}
+
+        {s.tenantError && (
+          <div style={{ font: "500 12.5px/1.35 Barlow,sans-serif", color: "#9e3b3b" }}>
+            {s.tenantError}
+          </div>
+        )}
 
         {s.error && (
           <div style={{ font: "500 12.5px/1.3 var(--font-barlow),Barlow,sans-serif", color: "#9e3b3b" }}>
