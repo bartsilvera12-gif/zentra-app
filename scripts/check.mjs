@@ -156,21 +156,45 @@ async function revisarProyecto(etiqueta, url, anonKey) {
     aviso("Conexión sin cifrar (http://) a la red local",
           "Está bien para probar; para la app publicada tiene que ser https://.");
   }
-  if (!anonKey || anonKey.length < 40) {
-    mal("Falta la anon key, o está cortada",
-        "Settings → API → 'anon public'. Es larga: empieza con eyJ y sigue.");
+  if (!anonKey) {
+    mal("Falta la clave pública",
+        "Supabase → Settings → API Keys. La 'publishable' (sb_publishable_…) o, en proyectos viejos, la 'anon public' (eyJ…).");
     return;
   }
-  // La service_role abre la base entera, y la app se descompila.
-  try {
-    const cuerpo = JSON.parse(Buffer.from(anonKey.split(".")[1] || "", "base64").toString());
-    if (cuerpo.role && cuerpo.role !== "anon") {
-      mal(`Esa clave es '${cuerpo.role}', no 'anon'`,
-          "Una service_role dentro de un APK deja la base abierta a cualquiera que lo descompile. Usá la 'anon public'.");
+
+  // Lo primero y más importante: que no sea una clave privada. Va adentro de un
+  // APK, y un APK se descompila. Una clave secreta ahí deja la base entera
+  // abierta a cualquiera que se baje la app, con el RLS sin efecto.
+  if (anonKey.startsWith("sb_secret_")) {
+    mal("Esa es la clave SECRETA, no la pública",
+        "Nunca puede ir en la app: salta el RLS y deja la base abierta a cualquiera que descompile el APK.\n    Usá la que empieza con sb_publishable_. Y como ésta ya estuvo en un archivo, conviene rotarla en el panel.");
+    return;
+  }
+  if (anonKey.startsWith("eyJ")) {
+    try {
+      const cuerpo = JSON.parse(Buffer.from(anonKey.split(".")[1] || "", "base64").toString());
+      if (cuerpo.role && cuerpo.role !== "anon") {
+        mal(`Esa clave es '${cuerpo.role}', no 'anon'`,
+            "Una service_role dentro de un APK deja la base abierta a cualquiera que lo descompile.\n    Usá la 'anon public'. Y como ésta ya estuvo en un archivo, conviene rotarla en el panel.");
+        return;
+      }
+    } catch {
+      mal("La clave empieza con eyJ pero no se puede leer: está cortada",
+          "Copiala de nuevo con el botón de copiar del panel, no seleccionándola con el mouse.");
       return;
     }
-  } catch {
-    // Las claves nuevas (sb_publishable_…) no son JWT: no se puede mirar adentro.
+    if (anonKey.length < 100) {
+      mal("La clave quedó cortada", "Las claves eyJ… son bastante más largas. Copiala con el botón del panel.");
+      return;
+    }
+  } else if (anonKey.startsWith("sb_publishable_")) {
+    if (anonKey.length < 30) {
+      mal("La clave publishable quedó cortada", "Copiala de nuevo con el botón de copiar del panel.");
+      return;
+    }
+  } else {
+    aviso("La clave no tiene un formato conocido",
+          "Se esperaba sb_publishable_… o eyJ… . Si Supabase la acepta, está bien igual.");
   }
 
   // --- 1. ¿Nos está contestando Supabase, y está el schema expuesto? ---
