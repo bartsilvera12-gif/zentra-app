@@ -30,3 +30,6 @@ npm-debug.log*
 # Variables de entorno locales
 .env.local
 .env*.local
+
+# Copia temporal que usa scripts/android-init.mjs
+.google-services.json.bak

@@ -116,8 +116,7 @@ que es lo que necesita Capacitor, y `capacitor.config.ts` ya está configurado:
 
 ```bash
 npm install
-npm run build
-npx cap add android   # sólo la primera vez en cada máquina
+npm run android:init  # sólo la primera vez en cada máquina
 npm run android       # build + cap sync + abre Android Studio
 ```
 

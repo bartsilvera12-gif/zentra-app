@@ -70,22 +70,32 @@ Si no aparece nada, la URL no quedó adentro: revisá `.env.local` y volvé a co
 
 ## 2. Generar el proyecto Android
 
-La primera vez:
+La primera vez, en cada máquina:
 
 ```bash
-npm run build
-npx cap add android
+npm run android:init
 ```
 
-`android/` no se versiona, así que esto hay que correrlo en cada máquina nueva. La
-excepción es `android/app/google-services.json`, que sí está en el repo: `cap add`
-no lo toca, y sin él no hay notificaciones.
+Compila la web y genera `android/`. **No corras `npx cap add android` a secas**:
+falla, porque la carpeta ya existe en el repo con un archivo adentro.
+
+Ese archivo es `android/app/google-services.json`, la configuración de Firebase:
+`android/` no se versiona —se regenera— pero éste sí, porque no se regenera, se
+baja de la consola. `android:init` lo guarda antes de borrar la carpeta y lo
+devuelve después. La copia va a un archivo, no a memoria, así que si el comando
+se corta a la mitad la configuración no se pierde.
+
+El Gradle que genera Capacitor ya se ocupa del resto: detecta el
+`google-services.json` y aplica solo el plugin de Firebase. No hay que editar
+nada a mano.
 
 ## 3. Compilar
 
 ```bash
 npm run android     # build + cap sync + abre Android Studio
 ```
+
+(La primera vez `android:init` ya dejó todo listo; esto es para las siguientes.)
 
 En Android Studio: **Build → Build Bundle(s) / APK(s) → Build APK(s)**. El archivo
 sale en `android/app/build/outputs/apk/debug/app-debug.apk`. Se pasa al celular y
