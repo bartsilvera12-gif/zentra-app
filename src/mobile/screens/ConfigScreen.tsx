@@ -6,7 +6,7 @@ import { repo, usaSupabase } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
-import { Card, SectionLabel, Toggle } from "../ui/primitives";
+import { Card, Notice, SectionLabel, Toggle } from "../ui/primitives";
 
 function IconSol({ stroke }: { stroke: string }) {
   return (
@@ -40,6 +40,33 @@ export function ConfigScreen() {
   );
 
   const claro = s.theme === "claro";
+
+  // Escribir la palabra evita el borrado accidental de un toque. Es irreversible.
+  const confirmado = s.borrarTexto.trim().toUpperCase() === "ELIMINAR";
+
+  const eliminarCuenta = async () => {
+    if (!confirmado || s.borrando) return;
+    set({ borrando: true, borrarError: "" });
+    try {
+      await repo.auth.eliminarCuenta();
+      set({
+        borrando: false,
+        borrarAbierto: false,
+        borrarTexto: "",
+        screen: "login",
+        user: "",
+        pass: "",
+        sesion: null,
+        modoAcceso: "login",
+      });
+    } catch (e) {
+      set({
+        borrando: false,
+        borrarError:
+          e instanceof Error && e.message ? e.message : "No pudimos borrar la cuenta.",
+      });
+    }
+  };
 
   const temaBtn = (
     activo: boolean,
@@ -191,6 +218,103 @@ export function ConfigScreen() {
           >
             Zentra ERP · versión {VERSION.replace("v ", "")} · {EMPRESA}
           </div>
+        </Card>
+
+        {/* Borrar la cuenta es requisito de las dos tiendas cuando la app permite
+            registrarse, y Apple lo hace cumplir. */}
+        <Card gap={12}>
+          <SectionLabel>Cuenta</SectionLabel>
+
+          {!s.borrarAbierto ? (
+            <button
+              onClick={() => set({ borrarAbierto: true, borrarTexto: "", borrarError: "" })}
+              style={{
+                borderRadius: 12,
+                padding: "13px 14px",
+                textAlign: "left",
+                cursor: "pointer",
+                font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+                background: "transparent",
+                border: `1px solid ${t.border}`,
+                color: "#9e3b3b",
+              }}
+            >
+              Eliminar mi cuenta
+            </button>
+          ) : (
+            <>
+              <Notice bg="#FBE9E7" ink="#8C2F2B" border="#E8B4AE">
+                Se borran tu cuenta y todos tus datos: clientes, productos, ventas,
+                compras y movimientos. <strong>No se puede deshacer.</strong>
+              </Notice>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                  Escribí ELIMINAR para confirmar
+                </span>
+                <input
+                  type="text"
+                  value={s.borrarTexto}
+                  onChange={(e) => set({ borrarTexto: e.target.value, borrarError: "" })}
+                  placeholder="ELIMINAR"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  style={{
+                    height: 44,
+                    borderRadius: 11,
+                    padding: "0 13px",
+                    fontSize: 14.5,
+                    outline: "none",
+                    background: t.bg,
+                    border: `1px solid ${t.border}`,
+                    color: t.ink,
+                    letterSpacing: ".08em",
+                  }}
+                />
+              </label>
+
+              {s.borrarError && (
+                <span style={{ font: "500 12.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#9e3b3b" }}>
+                  {s.borrarError}
+                </span>
+              )}
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => set({ borrarAbierto: false, borrarTexto: "", borrarError: "" })}
+                  style={{
+                    flex: 1,
+                    height: 46,
+                    borderRadius: 13,
+                    cursor: "pointer",
+                    font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+                    background: t.card,
+                    border: `1px solid ${t.border}`,
+                    color: t.ink,
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={eliminarCuenta}
+                  disabled={!confirmado || s.borrando}
+                  style={{
+                    flex: 1,
+                    height: 46,
+                    border: 0,
+                    borderRadius: 13,
+                    cursor: confirmado && !s.borrando ? "pointer" : "default",
+                    font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+                    background: confirmado && !s.borrando ? "#B0322F" : "#C9A8A6",
+                    color: "#fff",
+                  }}
+                >
+                  {s.borrando ? "Borrando…" : "Eliminar"}
+                </button>
+              </div>
+            </>
+          )}
         </Card>
 
         <button

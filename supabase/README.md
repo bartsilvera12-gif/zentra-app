@@ -33,6 +33,7 @@ En **SQL Editor**, pegar cada archivo y ejecutar, **en este orden y uno por vez*
 1. `01_schema.sql` — tablas, tipos e índices
 2. `02_funciones.sql` — numeración, stock, alta automática al registrarse, totales
 3. `03_permisos.sql` — Row Level Security
+4. `04_borrar_cuenta.sql` — borrado de cuenta (requisito de las tiendas)
 
 `todo_en_uno.sql` se genera a partir de los otros tres: si cambiás algo, cambialo
 en los sueltos y volvé a generarlo.
@@ -126,6 +127,19 @@ psql -f supabase/test/01_pruebas.sql     # las pruebas
 Verifican el alta al registrarse, que una empresa no vea ni escriba lo de otra, la
 numeración correlativa, el IVA contenido, el stock y las reglas de crédito. Cada
 una falla ruidosamente si la regla se rompe.
+
+## Borrado de cuenta
+
+`zentra.eliminar_mi_cuenta()` borra la cuenta y sus datos. Las dos tiendas lo
+exigen cuando la app permite registrarse, y Apple lo hace cumplir.
+
+Lo hace una función del servidor porque la clave pública de la app no puede tocar
+`auth.users`. La regla: si el que se va es el **último** usuario de su empresa, se
+borra la empresa entera y con ella clientes, productos, ventas, compras y
+movimientos. Si quedan compañeros, sólo se va esa persona y la empresa sigue.
+
+En la app está en **Configuración → Cuenta**, y pide escribir ELIMINAR para
+habilitar el botón: un toque accidental no puede borrar un negocio.
 
 ## Lo que falta
 

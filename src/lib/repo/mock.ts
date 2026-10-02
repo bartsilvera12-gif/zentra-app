@@ -87,6 +87,11 @@ export const mockRepo: Repo = {
     async recuperarPassword() {
       await demora(null);
     },
+    async eliminarCuenta() {
+      // Sin backend no hay nada que borrar: se cierra la sesión y listo.
+      sesion = null;
+      await demora(null);
+    },
   },
 
   clientes: {

@@ -39,6 +39,11 @@ export interface AuthRepo {
   /** Sesión guardada, si la hay. Se usa para no pedir login en cada arranque. */
   sesionActual(): Promise<Sesion | null>;
   recuperarPassword(correo: string): Promise<void>;
+  /**
+   * Borra la cuenta y sus datos. Es irreversible, y las dos tiendas lo exigen
+   * para apps que permiten registrarse.
+   */
+  eliminarCuenta(): Promise<void>;
 }
 
 /* ---------- clientes ---------- */

@@ -105,6 +105,15 @@ export const supabaseAuth: AuthRepo = {
     };
   },
 
+  async eliminarCuenta() {
+    // El borrado lo hace una función del servidor: la clave pública de la app no
+    // puede tocar `auth.users`.
+    const { error } = await sb().rpc("eliminar_mi_cuenta");
+    if (error) throw new AuthError(traducir(error.message));
+    // La sesión apunta a un usuario que ya no existe: hay que soltarla.
+    await sb().auth.signOut().catch(() => {});
+  },
+
   async recuperarPassword(correo) {
     // `redirectTo` tiene que estar en la lista de URLs permitidas de Supabase.
     // En el APK es el deep link; en web, la propia página.

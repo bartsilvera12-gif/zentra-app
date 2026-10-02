@@ -95,6 +95,7 @@ export const httpRepo: Repo = {
     logout: () => pendiente("auth.logout"),
     sesionActual: () => pendiente("auth.sesionActual"),
     recuperarPassword: () => pendiente("auth.recuperarPassword"),
+    eliminarCuenta: () => pendiente("auth.eliminarCuenta"),
   },
   clientes: {
     list: () => pendiente("clientes.list"),

@@ -70,6 +70,13 @@ export interface AppState {
   /** true cuando Supabase pide confirmar el correo antes de entrar. */
   regConfirmar: boolean;
 
+  /* Borrado de cuenta */
+  borrarAbierto: boolean;
+  /** Hay que escribir ELIMINAR para habilitar el botón: evita el toque accidental. */
+  borrarTexto: string;
+  borrando: boolean;
+  borrarError: string;
+
   /* Password recovery */
   mail: string;
   sent: boolean;
@@ -259,6 +266,11 @@ export const initialState: AppState = {
   regMail: "",
   regPass: "",
   regConfirmar: false,
+
+  borrarAbierto: false,
+  borrarTexto: "",
+  borrando: false,
+  borrarError: "",
 
   mail: "",
   sent: false,
