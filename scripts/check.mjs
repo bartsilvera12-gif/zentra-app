@@ -64,21 +64,19 @@ function leerEnv(archivo) {
  * resultado o un error suyo. Lo que contesta otra cosa —un proxy, un cortafuegos,
  * una página de login de wifi— no sirve ni para aprobar ni para rechazar.
  */
-async function pedir(url, anonKey, ruta) {
+async function pedir(url, anonKey, ruta, opts = {}) {
   // AbortController a mano, y no AbortSignal.timeout, para poder apagar el
   // temporizador: uno vivo mantiene el proceso en pie y, en Windows, salir con
   // handles pendientes revienta libuv con una aserción.
   const ctrl = new AbortController();
   const corte = setTimeout(() => ctrl.abort(), 20000);
   try {
-    const res = await fetch(`${url}/rest/v1/${ruta}`, {
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-        "Accept-Profile": SCHEMA,
-      },
-      signal: ctrl.signal,
-    });
+    // `Authorization` se puede omitir a propósito: sirve para distinguir una
+    // clave equivocada de una clave buena que el cliente manda de una forma que
+    // el servidor no acepta.
+    const headers = { apikey: anonKey, "Accept-Profile": SCHEMA };
+    if (!opts.sinAuthorization) headers.Authorization = `Bearer ${anonKey}`;
+    const res = await fetch(`${url}/rest/v1/${ruta}`, { headers, signal: ctrl.signal });
     const texto = await res.text();
     let json = null;
     try { json = JSON.parse(texto); } catch { /* no es JSON */ }
@@ -114,9 +112,16 @@ async function cerrarRed() {
   }
 }
 
-/** El mensaje de error, de donde PostgREST lo haya puesto. */
+/** Todo junto, para buscar palabras clave adentro. */
 const mensajeDe = (r) =>
   `${r.json?.message ?? ""} ${r.json?.hint ?? ""} ${r.json?.details ?? ""} ${r.texto ?? ""}`;
+
+/** Lo mismo pero para mostrar: sin repetir el cuerpo crudo si ya hay mensaje. */
+function loQueDijo(r) {
+  const partes = [r.json?.message, r.json?.hint, r.json?.details].filter(Boolean);
+  const texto = partes.length ? partes.join(" — ") : (r.texto || "");
+  return texto.replace(/\s+/g, " ").trim().slice(0, 200) || "(sin mensaje)";
+}
 
 const TABLAS = [
   "empresas", "usuarios", "clientes", "proveedores", "productos",
@@ -213,15 +218,34 @@ async function revisarProyecto(etiqueta, url, anonKey) {
     return;
   }
   const msgIndice = mensajeDe(indice).toLowerCase();
-  if (msgIndice.includes("invalid api key") || indice.status === 401) {
-    const esJwt = anonKey.startsWith("eyJ");
+  if (msgIndice.includes("invalid api key") || indice.status === 401 || indice.status === 403) {
+    const dijo = loQueDijo(indice);
+
+    // ¿Es la clave, o es cómo se la mandamos? El cliente manda la clave en dos
+    // cabeceras: `apikey` y `Authorization: Bearer`. Si sacando la segunda pasa,
+    // la clave está bien y el problema es el cliente.
+    const soloApikey = await pedir(url, anonKey, "", { sinAuthorization: true });
+    const pasaSinAuth = soloApikey.deSupabase && soloApikey.status < 400;
+
+    if (pasaSinAuth) {
+      mal("La clave es válida, pero el servidor la rechaza en la cabecera Authorization", [
+        `Supabase dijo: ${dijo}`,
+        "Con sólo `apikey` pasa; al agregar `Authorization: Bearer` falla. La librería manda las dos,",
+        "y no expone una opción para cambiarlo.",
+        "Salida práctica: usar la clave vieja 'anon public' (eyJ…), si el proyecto la tiene activa.",
+        "Si llegaste acá, avisame: es un caso raro y conviene mirarlo bien antes de tocar nada.",
+      ].join("\n    "));
+      return;
+    }
+
     mal("Supabase rechaza esa clave", [
-      "Copiala de nuevo del panel: Settings → API Keys. Las tres causas, en orden:",
+      `Supabase dijo: ${dijo}`,
+      "Copiala de nuevo del panel: Settings → API Keys. Las causas, en orden:",
       "  1. Quedó cortada al copiar, o se coló un espacio o un salto de línea.",
-      esJwt
-        ? "  2. El proyecto desactivó las claves viejas (las que empiezan con eyJ): ahora usa\n       las nuevas, que empiezan con sb_publishable_. Copiá esa."
+      anonKey.startsWith("eyJ")
+        ? "  2. El proyecto desactivó las claves viejas (eyJ…): copiá la sb_publishable_."
         : "  2. Es de otro proyecto, o no es la 'publishable'.",
-      "  3. La key es de un proyecto y la URL de otro. Los dos del mismo.",
+      "  3. El proyecto está pausado. En el panel diría 'Project paused'; se reanuda desde ahí.",
     ].join("\n    "));
     return;
   }
