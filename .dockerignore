@@ -1,0 +1,10 @@
+node_modules
+.next
+out
+.git
+android
+ios
+supabase/test
+*.log
+.env*
+!.env.example

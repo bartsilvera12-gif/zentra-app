@@ -167,6 +167,16 @@ Con eso el login, el registro y los datos salen del proyecto real. Volvé a
 El código de empresa decide a qué proyecto se conecta: vacío va al de arriba, con
 código va al que devuelva el directorio.
 
+## Deploy
+
+La app compila a estático, así que se sirve con nginx y no necesita Node en el
+servidor. Hay `Dockerfile` y `nginx.conf` listos para Coolify; los pasos y el
+error más común (las variables tienen que estar disponibles en **build**, no sólo
+en runtime) están en [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+Para el APK no hace falta deployar nada: el código va adentro del paquete y habla
+directo con Supabase.
+
 ## Pendiente
 
 - Conectar la API real: completar `src/lib/repo/http.ts` (ver `docs/BACKEND.md`).
