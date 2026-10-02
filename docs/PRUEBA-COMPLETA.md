@@ -69,11 +69,18 @@ Primero la verificación, que tarda dos segundos y evita la mitad de los dolores
 npm run check
 ```
 
-Tiene que decir, de cada proyecto, que responde, que el schema está expuesto, que
-están las doce tablas y las dos funciones, y que el RLS está activo. Si marca algo
-en rojo, arreglalo antes de seguir. Si configuraste los dos proyectos, también te
-avisa si quedaron apuntando al mismo — que es el error que hace parecer que el
-aislamiento entre empresas no funciona.
+Tiene que decir, de cada proyecto, que responde, que el schema está expuesto y que
+sin sesión no se puede leer nada. Si marca algo en rojo, arreglalo antes de seguir.
+Si configuraste los dos proyectos, también te avisa si quedaron apuntando al
+mismo — que es el error que hace parecer que el aislamiento entre empresas no
+funciona.
+
+Una vez que tengas una cuenta creada (paso 3), repetilo con credenciales para que
+revise también las tablas y las funciones, que desde afuera no se ven:
+
+```bash
+npm run check -- tu@correo.com tuContraseña
+```
 
 ```bash
 npm run dev

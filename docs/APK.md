@@ -41,9 +41,21 @@ npm run check
 ```
 
 Revisa el `.env.local`, que Supabase responda, que el schema `zentra` esté
-expuesto, que estén las doce tablas y las dos funciones del servidor, y que el RLS
-esté activo. Dos segundos acá ahorran compilar un APK para descubrir que faltaba
+expuesto, que la clave sirva, y —lo más importante— que **sin sesión no se pueda
+leer nada**. Dos segundos acá ahorran compilar un APK para descubrir que faltaba
 un script.
+
+Las tablas y las funciones no se pueden ver desde afuera, y así tiene que ser: el
+rol anónimo no tiene permiso sobre ninguna tabla. Para revisarlas, pasale una
+cuenta de prueba de ese proyecto:
+
+```bash
+npm run check -- tu@correo.com tuContraseña
+```
+
+Entra, verifica el perfil, las doce tablas y las dos funciones del servidor, y no
+escribe nada. La contraseña va por la línea de comandos y nunca en `.env.local`,
+para que no termine horneada dentro del APK.
 
 No da por bueno lo que no pudo comprobar: si contesta un proxy o un portal de
 wifi en el medio, lo dice en vez de aprobar.

@@ -31,9 +31,10 @@ npm run check      # verifica .env.local y el Supabase antes de compilar
 ```
 
 `npm run check` es el que ahorra tiempo: revisa que Supabase responda, que el
-schema `zentra` esté expuesto, que estén las tablas y las funciones del servidor,
-y que el RLS esté activo. Dos segundos, en vez de compilar un APK para descubrir
-que faltaba correr un script.
+schema `zentra` esté expuesto, que la clave sirva y que sin sesión no se pueda leer
+nada. Con una cuenta de prueba (`npm run check -- correo contraseña`) revisa además
+las tablas, las funciones del servidor y el perfil, que desde afuera no se ven.
+Dos segundos, en vez de compilar un APK para descubrir que faltaba correr un script.
 
 ## Pantallas
 

@@ -75,7 +75,8 @@ async function pedir(url, anonKey, ruta, opts = {}) {
     // clave equivocada de una clave buena que el cliente manda de una forma que
     // el servidor no acepta.
     const headers = { apikey: anonKey, "Accept-Profile": SCHEMA };
-    if (!opts.sinAuthorization) headers.Authorization = `Bearer ${anonKey}`;
+    if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+    else if (!opts.sinAuthorization) headers.Authorization = `Bearer ${anonKey}`;
     const res = await fetch(`${url}/rest/v1/${ruta}`, { headers, signal: ctrl.signal });
     const texto = await res.text();
     let json = null;
@@ -136,51 +137,125 @@ const DE_QUE_SCRIPT = {
   eliminar_mi_cuenta: "04_borrar_cuenta.sql",
 };
 
-/** Revisa un proyecto de Supabase de punta a punta. */
-async function revisarProyecto(etiqueta, url, anonKey) {
+/**
+ * Revisa un proyecto de Supabase.
+ *
+ * Hay un límite que conviene entender: sin iniciar sesión **no se puede ver
+ * nada**, y eso es lo correcto. El rol anónimo no tiene permiso sobre ninguna
+ * tabla, justamente para que la clave pública que viaja dentro del APK no sirva
+ * para leer datos de nadie.
+ *
+ * Así que la revisión tiene dos niveles:
+ *
+ *   sin credenciales  comprueba lo que importa para la seguridad: que responda,
+ *                     que el schema esté expuesto, que la clave sirva y que sin
+ *                     sesión no se pueda leer nada.
+ *   con credenciales  además entra de verdad y verifica tablas, funciones y
+ *                     perfil, que es lo único que no se puede ver desde afuera.
+ */
+async function revisarProyecto(etiqueta, url, anonKey, credenciales) {
   console.log(`\n${etiqueta}`);
   console.log(`  ${GRIS}${url}${FIN}`);
 
   if (!validarClave(url, anonKey)) return;
 
-  // --- 1. ¿Nos contesta Supabase, y está el schema expuesto? ---
+  // --- 1. ¿Nos contesta Supabase, está el schema expuesto, sirve la clave? ---
   //
   // Se pregunta por una tabla y no por el índice de la API: ese índice sólo se
-  // puede leer con la clave secreta, que jamás puede estar en la app. Con la
-  // clave pública hay que ir tabla por tabla, que es más lento y es lo correcto.
-  const primera = await pedir(url, anonKey, "clientes?limit=0");
-  if (primera.error) {
-    mal(`No se pudo conectar: ${primera.error}`,
+  // puede leer con la clave secreta, que jamás puede estar en la app.
+  const anon = await pedir(url, anonKey, "clientes?select=id&limit=1");
+  if (anon.error) {
+    mal(`No se pudo conectar: ${anon.error}`,
         "Revisá la URL y tu conexión. Si el proyecto estuvo dormido, Supabase tarda unos segundos en despertarlo.");
     return;
   }
-  if (!primera.deSupabase) {
-    const muestra = (primera.texto || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    mal(`Contestó algo que no es Supabase (HTTP ${primera.status})`,
+  if (!anon.deSupabase) {
+    const muestra = (anon.texto || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    mal(`Contestó algo que no es Supabase (HTTP ${anon.status})`,
         `No puedo verificar nada así. Suele ser un proxy, un cortafuegos o un portal de wifi en el medio.\n    Respuesta: ${muestra || "(vacía)"}`);
     return;
   }
 
-  const msg = mensajeDe(primera).toLowerCase();
-  if (msg.includes("schema must be one of") || msg.includes("not exposed")) {
+  const m = mensajeDe(anon).toLowerCase();
+  if (m.includes("schema must be one of") || m.includes("not exposed")) {
     mal(`El schema '${SCHEMA}' no está expuesto`,
         "Supabase → Settings → API → Exposed schemas → agregar 'zentra'. Sin esto la app no ve ninguna tabla.");
     return;
   }
-  if (permisoDenegado(primera)) return;
-  if (await claveRechazada(url, anonKey, primera)) return;
-  if (esFalta(primera)) {
+  if (m.includes("permission denied for schema")) {
+    mal(`Falta darle permiso al schema '${SCHEMA}'`, [
+      `Supabase dijo: ${loQueDijo(anon)}`,
+      "No es la clave: el rol se reconoció bien, pero no puede ni mirar el schema.",
+      "Falta correr supabase/03_permisos.sql, que es el que da los permisos y activa el RLS.",
+    ].join("\n    "));
+    return;
+  }
+  if (await claveRechazada(url, anonKey, anon)) return;
+  ok(`Responde Supabase, y el schema '${SCHEMA}' está expuesto`);
+
+  // --- 2. Lo más importante: que sin sesión no se pueda leer nada ---
+  //
+  // La clave pública viaja dentro del APK. Si con ella sola se leyeran datos, la
+  // base estaría abierta a cualquiera que lo descompile.
+  if (m.includes("permission denied for table")) {
+    // El rol anónimo ni siquiera tiene permiso de lectura. Es la garantía más
+    // fuerte posible, más que devolver una lista vacía.
+    ok("Sin sesión no se puede leer nada (permisos correctos)");
+  } else if (esFalta(anon)) {
     mal("No existen las tablas: falta correr el SQL",
         "SQL Editor → correr supabase/todo_en_uno.sql.");
     return;
+  } else if (Array.isArray(anon.json) && anon.json.length > 0) {
+    mal("Se pueden leer clientes SIN estar logueado",
+        "Falta el RLS: correr supabase/03_permisos.sql. La clave pública está dentro del APK, así que esto es la base abierta.");
+  } else if (Array.isArray(anon.json)) {
+    ok("Sin sesión no se ve nada (RLS activo)");
+    aviso("El rol anónimo igual tiene permiso de lectura sobre las tablas",
+          "Anda bien porque el RLS filtra, pero 03_permisos.sql no se lo da. Si lo agregaste a mano, sacalo: una política mal escrita dejaría de ser inofensiva.");
+  } else {
+    aviso(`No pude interpretar la prueba sin sesión (HTTP ${anon.status})`, loQueDijo(anon));
   }
-  ok(`Responde Supabase, y el schema '${SCHEMA}' está expuesto`);
 
-  // --- 2. Tablas ---
+  // --- 3. Lo de adentro, que sólo se ve con sesión ---
+  if (!credenciales) {
+    aviso("Tablas y funciones no se verifican sin credenciales", [
+      "Sin sesión no se puede mirar adentro, y así tiene que ser.",
+      "Para la revisión completa:  npm run check -- tu@correo.com tuContraseña",
+      "Usá una cuenta de prueba de ese proyecto; sólo lee.",
+    ].join("\n    "));
+    return;
+  }
+  await revisarConSesion(url, anonKey, credenciales);
+}
+
+/** Entra con una cuenta real y verifica lo que sólo se ve desde adentro. */
+async function revisarConSesion(url, anonKey, { correo, clave }) {
+  const sesion = await entrar(url, anonKey, correo, clave);
+  if (!sesion.token) {
+    mal(`No se pudo entrar con ${correo}`, [
+      `Supabase dijo: ${sesion.motivo}`,
+      "Si el correo y la contraseña son correctos, puede faltar confirmar el correo.",
+    ].join("\n    "));
+    return;
+  }
+  ok(`Entró como ${correo}`);
+
+  // El perfil lo crea un disparador al registrarse. Si falta, la app entra pero
+  // no sabe de qué empresa es, y todo lo demás falla con un mensaje confuso.
+  const perfil = await pedir(url, anonKey, "usuarios?select=id,empresa_id,rol&limit=1", { token: sesion.token });
+  if (Array.isArray(perfil.json) && perfil.json.length === 1 && perfil.json[0].empresa_id) {
+    ok("La cuenta tiene perfil y empresa");
+  } else if (Array.isArray(perfil.json)) {
+    mal("La cuenta entró pero no tiene perfil en zentra.usuarios",
+        "Lo crea un disparador al registrarse: falta correr supabase/02_funciones.sql.");
+  } else {
+    aviso("No se pudo leer el perfil", loQueDijo(perfil));
+  }
+
+  // --- tablas ---
   const faltan = [], dudosas = [];
   for (const t of TABLAS) {
-    if (t === "clientes") continue; // ya la preguntamos
-    const r = await pedir(url, anonKey, `${t}?limit=0`);
+    const r = await pedir(url, anonKey, `${t}?limit=0`, { token: sesion.token });
     if (r.error || !r.deSupabase) { dudosas.push(t); continue; }
     if (esFalta(r)) faltan.push(t);
   }
@@ -195,72 +270,52 @@ async function revisarProyecto(etiqueta, url, anonKey) {
     ok(`Las ${TABLAS.length} tablas están creadas`);
   }
 
-  // --- 3. Funciones del servidor ---
-  // Sin ellas la app falla en el peor momento: al activar las notificaciones, o
-  // al borrar la cuenta.
-  //
-  // Se preguntan con GET y con los nombres de sus parámetros. Las dos son
-  // volátiles —escriben—, y PostgREST no ejecuta una función volátil por GET:
-  // contesta 405. O sea que un 405 prueba que existe, sin llegar a correrla.
-  // Si no existiera, contestaría 404 con PGRST202.
+  // --- funciones ---
+  // Se preguntan con GET y con los nombres de sus parámetros. Las dos escriben,
+  // y PostgREST no ejecuta una función volátil por GET: contesta 405. O sea que
+  // un 405 prueba que existe sin llegar a correrla.
   for (const [fn, args, para] of [
     ["registrar_dispositivo", "?p_token=x&p_plataforma=web", "activar las notificaciones"],
     ["eliminar_mi_cuenta", "", "borrar la cuenta (requisito de las dos tiendas)"],
   ]) {
-    const r = await pedir(url, anonKey, `rpc/${fn}${args}`);
+    const r = await pedir(url, anonKey, `rpc/${fn}${args}`, { token: sesion.token });
     if (r.error || !r.deSupabase) { aviso(`No se pudo verificar ${fn}()`, r.error || ""); continue; }
     if (r.status === 405) { ok(`${fn}() existe`); continue; }
-    const m = mensajeDe(r).toLowerCase();
-    if (r.status === 404 || m.includes("could not find the function")) {
+    const msg = mensajeDe(r).toLowerCase();
+    if (r.status === 404 || msg.includes("could not find the function")) {
       mal(`Falta la función ${fn}()`,
           `Sin esto no se puede ${para}. Correr supabase/${DE_QUE_SCRIPT[fn]}.`);
     } else {
-      // Cualquier otra respuesta significa que la función resolvió.
       ok(`${fn}() existe`);
     }
   }
-
-  // --- 4. RLS ---
-  // Es lo único que separa una empresa de otra. La clave pública viaja dentro
-  // del APK, así que si lee sin sesión, la base está abierta a cualquiera que lo
-  // descompile.
-  const sinSesion = await pedir(url, anonKey, "clientes?select=id&limit=1");
-  if (sinSesion.error || !sinSesion.deSupabase) {
-    aviso("No se pudo comprobar el RLS", "Reintentá; es la verificación que más importa.");
-  } else if (Array.isArray(sinSesion.json) && sinSesion.json.length > 0) {
-    mal("Se pueden leer clientes SIN estar logueado",
-        "Falta el RLS: correr supabase/03_permisos.sql. La clave pública está dentro del APK, así que esto es la base abierta.");
-  } else if (Array.isArray(sinSesion.json)) {
-    ok("Sin sesión no se ve nada (RLS activo)");
-  } else {
-    aviso(`No pude interpretar la prueba de RLS (HTTP ${sinSesion.status})`, loQueDijo(sinSesion));
-  }
 }
 
-/**
- * Postgres contestó "permiso denegado". No tiene nada que ver con la clave: la
- * clave identificó bien al rol, y el rol no tiene permisos. Se mira antes que
- * cualquier sospecha sobre la clave, porque es mucho más probable y el arreglo
- * es otro.
- */
-function permisoDenegado(r) {
-  const m = mensajeDe(r).toLowerCase();
-  if (!m.includes("permission denied")) return false;
-
-  if (m.includes("for schema")) {
-    mal(`Falta darle permiso al schema '${SCHEMA}'`, [
-      `Supabase dijo: ${loQueDijo(r)}`,
-      "No es la clave: el rol se reconoció bien, pero no puede ni mirar el schema.",
-      "Falta correr supabase/03_permisos.sql, que es el que da los permisos y activa el RLS.",
-      "Lo más simple: correr supabase/todo_en_uno.sql entero. Es idempotente, no borra datos.",
-    ].join("\n    "));
-  } else {
-    mal("Faltan permisos sobre las tablas", [
-      `Supabase dijo: ${loQueDijo(r)}`,
-      "No es la clave. Falta correr supabase/03_permisos.sql (o todo_en_uno.sql entero).",
-    ].join("\n    "));
+/** Inicia sesión con correo y contraseña. Devuelve el token, o el motivo. */
+async function entrar(url, anonKey, correo, clave) {
+  const ctrl = new AbortController();
+  const corte = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: correo, password: clave }),
+      signal: ctrl.signal,
+    });
+    const texto = await res.text();
+    let json = null;
+    try { json = JSON.parse(texto); } catch { /* no es JSON */ }
+    if (json && json.access_token) return { token: json.access_token };
+    return {
+      token: null,
+      motivo: (json?.error_description || json?.msg || json?.message || texto || `HTTP ${res.status}`)
+        .toString().replace(/\s+/g, " ").trim().slice(0, 160),
+    };
+  } catch (e) {
+    return { token: null, motivo: e instanceof Error ? e.message : String(e) };
+  } finally {
+    clearTimeout(corte);
   }
-  return true;
 }
 
 /** ¿La respuesta dice que esa tabla no existe? */
@@ -337,6 +392,11 @@ function validarClave(url, anonKey) {
 /** ¿Supabase rechazó la clave? Devuelve true si ya informó el problema. */
 async function claveRechazada(url, anonKey, r) {
   const m = mensajeDe(r).toLowerCase();
+  // "permiso denegado" nunca es un problema de la clave: la clave identificó
+  // bien al rol, y el rol no tiene permisos. Lo interpreta quien llama, que
+  // sabe si eso era lo esperado (sin sesión lo es) o no.
+  if (m.includes("permission denied")) return false;
+
   // Sólo cuando Supabase realmente habla de la clave. Un 401 suelto no alcanza:
   // PostgREST también lo usa para errores de permisos de Postgres, y culpar a la
   // clave manda a buscar en el lugar equivocado.
@@ -402,6 +462,12 @@ async function claveRechazada(url, anonKey, r) {
 async function main() {
   console.log("\nVerificación de configuración — Zentra Móvil");
 
+  // Opcionales: con ellas se puede mirar adentro, que sin sesión no se puede.
+  // Van por la línea de comandos y no en el .env.local, para que una contraseña
+  // no termine horneada dentro del APK.
+  const [correo, clave] = process.argv.slice(2);
+  const credenciales = correo && clave ? { correo, clave } : null;
+
   const env = leerEnv(".env.local");
   if (!env) {
     console.log(`\n  ${ROJO}✗${FIN} No existe .env.local`);
@@ -424,7 +490,7 @@ async function main() {
 
   const urlPub = (env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
   if (urlPub) {
-    await revisarProyecto("Instalación pública (quien no pone código)", urlPub, env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
+    await revisarProyecto("Instalación pública (quien no pone código)", urlPub, env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "", credenciales);
   } else {
     console.log("\nInstalación pública");
     aviso("Sin NEXT_PUBLIC_SUPABASE_URL",
