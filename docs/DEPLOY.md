@@ -30,11 +30,34 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 Opcionales:
 
 ```
-NEXT_PUBLIC_DIRECTORIO_URL=https://...     # resolver el código de empresa
 NEXT_PUBLIC_SOPORTE_WHATSAPP=595981000450  # enlace de soporte en el login
+
+# Código de empresa — una de las dos, no las dos:
+NEXT_PUBLIC_DIRECTORIO_JSON={"JM":{"nombre":"…","supabaseUrl":"https://…","anonKey":"…"}}
+NEXT_PUBLIC_DIRECTORIO_URL=https://…
 ```
 
 6. Deploy
+
+## Leer el log del build
+
+El Dockerfile imprime qué variables llegaron, antes de compilar:
+
+```
+---- variables en el build ----
+  NEXT_PUBLIC_BACKEND         = supabase
+  NEXT_PUBLIC_SUPABASE_URL    = https://xxxx.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = presente
+...
+OK: la URL de Supabase quedó dentro del build.
+```
+
+Si ahí dice `BACKEND = mock` o la URL sale `(vacía)`, las variables quedaron como
+de runtime: el deploy va a salir bien igual, pero con datos de ejemplo. Es
+exactamente el error de más arriba, visible antes de abrir la app.
+
+Y si la URL estaba pero no quedó horneada, el build **falla** en vez de publicar
+una imagen que parece andar.
 
 ## Después del primer deploy
 
