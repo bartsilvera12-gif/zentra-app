@@ -515,6 +515,18 @@ grant select, insert, update, delete on all tables in schema zentra to authentic
 grant usage, select on all sequences in schema zentra to authenticated;
 grant execute on function zentra.siguiente_numero(uuid, text) to authenticated;
 
+-- `dispositivos` es la excepción: la app no escribe esa tabla, el alta la hace
+-- zentra.registrar_dispositivo(). El permiso se quita acá además de en 05 para
+-- que el orden no importe: sin esto, correr 03 después de 05 le devolvería a la
+-- app el permiso de insertar, y con él la posibilidad de registrar un teléfono a
+-- nombre de otro usuario.
+do $$
+begin
+  if to_regclass('zentra.dispositivos') is not null then
+    revoke insert, update on zentra.dispositivos from authenticated;
+  end if;
+end $$;
+
 -- ---------- empresas ----------
 -- Cada uno ve y edita sólo la suya. Nadie crea ni borra empresas desde la app:
 -- las crea el disparador de registro.
