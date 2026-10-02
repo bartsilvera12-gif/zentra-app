@@ -11,7 +11,12 @@ empaquetarla como app Android con Capacitor.
 ```bash
 npm install
 npm run dev        # http://localhost:3000
+npm run dev:lan    # además accesible desde el celular en la misma red
 ```
+
+Para verlo en un celular sin deployar: `npm run dev:lan`, averiguá la IP de la
+computadora (`ipconfig` en Windows) y abrí `http://TU_IP:3000` desde el teléfono.
+Si no carga, suele ser el firewall de Windows bloqueando el puerto 3000.
 
 Otros comandos:
 
