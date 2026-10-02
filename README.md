@@ -1,7 +1,9 @@
 # Zentra Móvil
 
-App móvil de ventas para **Distribuidora JM**, implementada a partir del prototipo
-`Zentra Movil.dc.html` exportado desde [Claude Design](https://claude.ai/design).
+App móvil de ventas, implementada a partir del prototipo `Zentra Movil.dc.html`
+exportado desde [Claude Design](https://claude.ai/design). Es un producto: la misma
+app sirve a varias empresas, y los datos de ejemplo del diseño son de Distribuidora
+JM sólo porque fue el caso con el que se dibujó.
 
 Next.js 15 (App Router) + React 19 + TypeScript, con **export estático** para poder
 empaquetarla como app Android con Capacitor.
@@ -101,19 +103,23 @@ tiempo de render desde `useApp().t`.
 
 ## App Android
 
-El proyecto ya compila como sitio estático (`output: "export"` en `next.config.ts`),
-que es lo que necesita Capacitor:
+El proyecto compila como sitio estático (`output: "export"` en `next.config.ts`),
+que es lo que necesita Capacitor, y `capacitor.config.ts` ya está configurado:
 
 ```bash
-npm install @capacitor/core @capacitor/cli @capacitor/android
-npx cap init "Zentra Móvil" py.com.zentra.movil --web-dir=out
+npm install
 npm run build
-npx cap add android
-npx cap open android      # abre el proyecto en Android Studio
+npx cap add android   # sólo la primera vez en cada máquina
+npm run android       # build + cap sync + abre Android Studio
 ```
 
 Desde ahí se compila el APK/AAB como cualquier proyecto Gradle. Después de cada
-`npm run build`, correr `npx cap sync` para copiar el web build al proyecto nativo.
+cambio, `npm run sync`.
+
+**Antes de compilar hay que tener `.env.local` completo**: Next hornea las
+variables adentro del JavaScript, así que un APK compilado en `mock` queda con
+datos de ejemplo para siempre. Los pasos completos y qué probar primero están en
+[`docs/APK.md`](docs/APK.md).
 
 La carpeta `android/` está en `.gitignore`: se genera, no se versiona. La única
 excepción es `android/app/google-services.json`, la configuración de Firebase: ésa

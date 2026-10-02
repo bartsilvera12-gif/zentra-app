@@ -299,8 +299,74 @@ Ver `src/lib/tenant/`.
 
 ### Lo que falta definir
 
-- **Dos modelos de datos.** La instalación pública tiene registro abierto, así que
-  va multi-tenant con `empresa_id` + RLS. Las instalaciones de ERP ya usan un
-  schema de Postgres por empresa. Son dos implementaciones del mismo puerto.
 - **Quién administra el directorio**: hoy no existe. Puede ser una tabla con un
   endpoint, o incluso un JSON estático servido por CDN.
+
+---
+
+## Conectar la app a un ERP que ya existe
+
+El mecanismo del código de empresa está hecho y se puede probar. Lo que **todavía
+no se puede** es apuntar la app al Supabase de un ERP en producción y esperar que
+funcione, y conviene entender por qué antes de intentarlo.
+
+### Por qué no alcanza con cambiar la URL
+
+El código del ERP de Distribuidora JM deja ver tres desajustes, en orden de
+gravedad:
+
+**1. No existe el schema `zentra`.** El adaptador de la app, después de validar la
+contraseña, lee el perfil de `zentra.usuarios` para saber a qué empresa pertenece la
+persona. En un proyecto de ERP ese schema no está, así que **el login falla ahí
+mismo** con "tu cuenta no tiene perfil en esta instalación" — ni se llega a los
+datos. El login en sí sí anda: los dos usan Supabase Auth, así que la contraseña se
+valida bien. Es el segundo paso el que se cae.
+
+**2. Las columnas son otras.** Los nombres de tabla coinciden de casualidad
+(`clientes`, `productos`, `ventas`, `compras`), pero adentro no se parecen. El ERP
+guarda un cliente con `tipo_cliente`, `empresa`, `nombre_contacto`, `razon_social`;
+la app espera `nombre`, `doc`, `contacto`, `zona`, `lista_precios`,
+`credito_limite`. Ningún `select` de la app funciona contra esas tablas.
+
+**3. Algunos schemas no son alcanzables desde un celular.** El ERP pone cada
+empresa en su propio schema (`empresas.data_schema` → `erp_*`) y esos **no están
+expuestos en PostgREST**: su propio código los lee con un pool de Postgres desde el
+servidor. Un celular no puede abrir una conexión a Postgres —y no debería, ver el
+primer punto de este documento—, así que para esas empresas no hay forma de que la
+app hable directo con la base, por mucho que se arregle lo anterior.
+
+### Las tres salidas, de peor a mejor
+
+**(a) Instalar el schema `zentra` dentro del proyecto del ERP.** Funciona hoy: se
+corren los mismos SQL ahí y listo. El login pasa a ser compartido —el vendedor entra
+con la contraseña que ya usa— pero **los datos quedan separados**: la app no vería
+los clientes ni los productos del ERP, arrancaría en blanco. Sirve si lo que se
+quiere es compartir usuarios, no datos. Para "ver mis datos del ERP en el celular",
+no sirve.
+
+**(b) Un adaptador que traduzca a las tablas del ERP.** Una cuarta implementación de
+los puertos que mapee `nombre` → `razon_social` y así con todo. Es trabajo real pero
+acotado, y **no resuelve el punto 3**: las empresas con schema `erp_*` seguirían
+fuera de alcance.
+
+**(c) Una API HTTP en el ERP que hable el contrato de este documento.** La app pasa a
+`NEXT_PUBLIC_BACKEND=http` y no se toca nada más: `src/lib/repo/http.ts` está para
+eso. El ERP ya tiene el acceso a Postgres resuelto, incluido el caso `erp_*`, así
+que es el único camino que cubre a todas las empresas. **Es la salida correcta.**
+
+Esa pieza va **del lado del ERP**, no acá: es su base y su código. Lo que este
+repositorio aporta es el contrato —las operaciones listadas más arriba— para que
+quien la escriba sepa exactamente qué tiene que devolver.
+
+### Qué se puede probar hoy, entonces
+
+El mecanismo del código, sin tocar ningún ERP: creás un segundo proyecto de
+Supabase, le corrés los mismos SQL, y lo publicás en el directorio con un código.
+Entrar con ese código tiene que llevarte a ese proyecto, con su propio login y sus
+propios datos, y entrar sin código a la instalación pública. Eso valida lo que hay
+que validar: la resolución del código, el cambio de proyecto y que las dos sesiones
+no se pisen (cada instalación guarda su sesión con una clave distinta).
+
+Sin levantar nada, el directorio demo incluido (códigos `JM` y `FERRE`) deja ver el
+flujo de la pantalla, pero apunta a URLs inventadas: sirve para la pregunta y el
+campo, no para entrar.
