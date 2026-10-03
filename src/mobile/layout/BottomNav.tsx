@@ -5,7 +5,7 @@ import { IconConfig, IconInicio, IconReportes } from "../ui/Icons";
 
 /** The three-up tab bar. Active colour comes from the screen the app is on. */
 export function BottomNav() {
-  const { s, t, set } = useApp();
+  const { s, t, set, runDash } = useApp();
 
   const activo = "#209EBB";
   const navInicio = s.screen === "home" ? activo : t.ink3;
@@ -42,7 +42,10 @@ export function BottomNav() {
         borderTop: `1px solid ${t.border}`,
       }}
     >
-      {tab(navInicio, "Inicio", <IconInicio stroke={navInicio} />, () => set({ screen: "home" }))}
+      {tab(navInicio, "Inicio", <IconInicio stroke={navInicio} />, () => {
+        set({ screen: "home" });
+        runDash();
+      })}
       {tab(navReportes, "Reportes", <IconReportes stroke={navReportes} />, () =>
         set({ screen: "reportes" }),
       )}

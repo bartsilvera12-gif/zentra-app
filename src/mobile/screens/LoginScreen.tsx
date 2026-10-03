@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import { linkWhatsapp } from "@/lib/config";
 import { VERSION } from "@/lib/data";
 import { pushPreferido, reanudarPush } from "@/lib/push";
@@ -11,6 +12,47 @@ import { RegistroScreen } from "./RegistroScreen";
 
 export function LoginScreen() {
   const { s, set, elegirInstalacion } = useApp();
+
+  /*
+   * La animación del logo se dispara cuando hay algo que mirar, no al montar.
+   *
+   * Al montar no sirve: las dos imágenes todavía no cargaron y el celular puede
+   * no haber pintado nada —en el APK hay una pantalla de arranque del sistema
+   * por delante—. La animación corría igual, y para cuando aparecía la pantalla
+   * ya había terminado. Se veía el logo quieto, como si no hubiera animación.
+   *
+   * Por eso espera a que las dos imágenes estén cargadas y a que la pantalla
+   * esté visible. Si la app arranca en segundo plano, espera a que vuelva.
+   */
+  const [cargadas, setCargadas] = useState(0);
+  const [visible, setVisible] = useState(true);
+  const logoCargado = useCallback(() => setCargadas((n) => n + 1), []);
+
+  /*
+   * `onLoad` por sí solo no alcanza, y es el detalle que hace que esto funcione:
+   * la página se sirve como HTML estático, así que las dos imágenes pueden estar
+   * cargadas antes de que React se enganche. En ese caso el evento ya pasó y el
+   * `onLoad` no llega nunca — la animación no arrancaría jamás. Por eso al
+   * montar se pregunta directamente si la imagen ya está.
+   */
+  const alMontar = useCallback(
+    (el: HTMLImageElement | null) => {
+      if (el && el.complete && el.naturalWidth > 0) logoCargado();
+    },
+    [logoCargado],
+  );
+
+  const listo = cargadas >= 2;
+  const animar = listo && visible;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const mirar = () => setVisible(document.visibilityState === "visible");
+    mirar();
+    document.addEventListener("visibilitychange", mirar);
+    return () => document.removeEventListener("visibilitychange", mirar);
+  }, []);
+
 
   /** Mensaje legible de cualquier error de autenticación. */
   const motivo = (e: unknown) =>
@@ -109,23 +151,36 @@ export function LoginScreen() {
         <img
           src="/assets/zentra-mark-white.png"
           alt=""
+          ref={alMontar}
+          onLoad={logoCargado}
+          onError={logoCargado}
           style={{
             width: 132,
             height: "auto",
             display: "block",
-            animation: "zt-bolt .85s cubic-bezier(.22,1.2,.36,1) both",
+            // `both` deja la imagen invisible antes de arrancar, así que mientras
+            // no se anime hay que dejarla a la vista: si no, un dispositivo con
+            // las animaciones apagadas no mostraría nunca el logo.
+            ...(animar
+              ? { animation: "zt-bolt .85s cubic-bezier(.22,1.2,.36,1) both" }
+              : { opacity: listo ? 1 : 0 }),
           }}
         />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/assets/zentra-wordmark-white.png"
           alt="Zentra"
+          ref={alMontar}
+          onLoad={logoCargado}
+          onError={logoCargado}
           style={{
             width: 212,
             height: "auto",
             display: "block",
             marginTop: 2,
-            animation: "zt-word .7s cubic-bezier(.22,1,.36,1) .42s both",
+            ...(animar
+              ? { animation: "zt-word .7s cubic-bezier(.22,1,.36,1) .42s both" }
+              : { opacity: listo ? 1 : 0 }),
           }}
         />
       </div>
@@ -156,49 +211,64 @@ export function LoginScreen() {
           placeholder="••••••••"
         />
 
-        {/* Preguntamos antes de pedir el código: a quien no tiene ERP, un campo
-            suelto llamado "código de empresa" sólo lo confunde. */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ font: "500 13px/1.3 Barlow,sans-serif", color: "#4b5563" }}>
-            ¿Tu empresa ya tiene un ERP con nosotros?
-          </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            {[
-              { label: "No", on: !s.tieneErp, pick: () => set({ tieneErp: false, tenantError: "", tenant: null }) },
-              { label: "Sí", on: s.tieneErp, pick: () => set({ tieneErp: true, tenantError: "", tenant: null }) },
-            ].map((o) => (
-              <button
-                key={o.label}
-                onClick={o.pick}
-                aria-pressed={o.on}
-                style={{
-                  flex: 1,
-                  height: 42,
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  font: "600 14px/1 Barlow,sans-serif",
-                  background: o.on ? "#E2F0F4" : "#fff",
-                  color: o.on ? "#04617A" : "#65707f",
-                  border: `2px solid ${o.on ? "#04617A" : "#d6dbe3"}`,
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/*
+          El código de empresa es para los pocos que ya tienen un ERP con
+          nosotros. Preguntarlo de entrada —con un "¿Tu empresa ya tiene un ERP
+          con nosotros?" y dos botones Sí/No— le ponía el caso raro adelante a
+          todo el mundo y llenaba la pantalla.
 
-        {s.tieneErp && (
+          Ahora es un enlace chico: quien no lo necesita ni lo lee, y quien sí lo
+          necesita lo encuentra. El campo aparece sólo al tocarlo.
+        */}
+        {!s.tieneErp ? (
+          <button
+            onClick={() => set({ tieneErp: true, tenantError: "", tenant: null })}
+            style={{
+              alignSelf: "flex-start",
+              border: 0,
+              background: "none",
+              padding: 0,
+              cursor: "pointer",
+              font: "500 12.5px/1.3 var(--font-barlow),Barlow,sans-serif",
+              color: "#04617A",
+              textDecoration: "underline",
+            }}
+          >
+            Mi empresa ya tiene un ERP con nosotros
+          </button>
+        ) : (
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span
               style={{
-                font: "600 11px/1 Barlow,sans-serif",
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 8,
+                font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
                 letterSpacing: ".12em",
                 textTransform: "uppercase",
                 color: "#65707f",
               }}
             >
               Código de empresa
+              {/* Salida: sin esto, quien lo abre por curiosidad queda obligado a
+                  completarlo o a reiniciar la app. */}
+              <button
+                onClick={() => set({ tieneErp: false, codigoEmpresa: "", tenantError: "", tenant: null })}
+                style={{
+                  border: 0,
+                  background: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  font: "500 11px/1 var(--font-barlow),Barlow,sans-serif",
+                  letterSpacing: "normal",
+                  textTransform: "none",
+                  color: "#04617A",
+                  textDecoration: "underline",
+                }}
+              >
+                No tengo
+              </button>
             </span>
             <input
               type="text"
@@ -223,7 +293,7 @@ export function LoginScreen() {
               }}
             />
             {waSoporte && (
-              <span style={{ font: "400 11.5px/1.35 Barlow,sans-serif", color: "#65707f" }}>
+              <span style={{ font: "400 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#65707f" }}>
                 ¿No tenés tu código?{" "}
                 {/* target/rel para que en el WebView del APK lo tome WhatsApp y no
                     se abra dentro de la propia app. */}
@@ -238,7 +308,7 @@ export function LoginScreen() {
               </span>
             )}
             {tenantNombre && (
-              <span style={{ font: "500 12px/1.3 Barlow,sans-serif", color: "#0C5F58" }}>
+              <span style={{ font: "500 12px/1.3 var(--font-barlow),Barlow,sans-serif", color: "#0C5F58" }}>
                 Vas a entrar a {tenantNombre}.
               </span>
             )}
