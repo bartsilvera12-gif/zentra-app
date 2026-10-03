@@ -287,6 +287,31 @@ create table if not exists zentra.numeracion (
   primary key (empresa_id, tipo)
 );
 
+-- ---------- instalación compartida ----------
+-- Estas tablas pueden vivir solas, en un proyecto propio de la app, o adentro
+-- del proyecto de un cliente que ya tiene un ERP. El segundo caso comparte el
+-- `auth` con el ERP, y eso cambia dos comportamientos: ver abajo.
+
+create table if not exists zentra.instalacion (
+  -- Una sola fila. El check lo garantiza.
+  id          boolean primary key default true check (id),
+  -- true cuando este proyecto es el de un ERP y la app es un invitado.
+  compartida  boolean not null default false
+);
+
+insert into zentra.instalacion (id, compartida) values (true, false)
+  on conflict (id) do nothing;
+
+create or replace function zentra.es_compartida()
+returns boolean
+language sql
+stable
+security definer
+set search_path = zentra, pg_catalog
+as $$
+  select coalesce((select compartida from zentra.instalacion where id), false)
+$$;
+
 
 -- >>>>>>>>>>>>>>>>>>>>>>>> 02_funciones.sql <<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -375,31 +400,6 @@ drop trigger if exists movimientos_aplicar on zentra.movimientos;
 create trigger movimientos_aplicar
   after insert or delete on zentra.movimientos
   for each row execute function zentra.aplicar_movimiento();
-
--- ---------- instalación compartida ----------
--- Estas tablas pueden vivir solas, en un proyecto propio de la app, o adentro
--- del proyecto de un cliente que ya tiene un ERP. El segundo caso comparte el
--- `auth` con el ERP, y eso cambia dos comportamientos: ver abajo.
-
-create table if not exists zentra.instalacion (
-  -- Una sola fila. El check lo garantiza.
-  id          boolean primary key default true check (id),
-  -- true cuando este proyecto es el de un ERP y la app es un invitado.
-  compartida  boolean not null default false
-);
-
-insert into zentra.instalacion (id, compartida) values (true, false)
-  on conflict (id) do nothing;
-
-create or replace function zentra.es_compartida()
-returns boolean
-language sql
-stable
-security definer
-set search_path = zentra, pg_catalog
-as $$
-  select coalesce((select compartida from zentra.instalacion where id), false)
-$$;
 
 -- ---------- alta automática al registrarse ----------
 -- Quien baja la app de la tienda y se registra necesita su empresa y su perfil
