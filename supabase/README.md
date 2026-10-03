@@ -135,8 +135,40 @@ Hay tres juegos, y cada uno quiere una base limpia (dejan datos de prueba):
 | `test/01_pruebas.sql` | alta al registrarse, aislamiento entre empresas, numeración correlativa, IVA contenido, stock, reglas de crédito |
 | `test/02_pruebas_borrado.sql` | el último usuario se lleva la empresa; si quedan compañeros, no |
 | `test/03_pruebas_dispositivos.sql` | un token es un teléfono, el alta pasa por el servidor, se van con la cuenta |
+| `test/04_pruebas_compartida.sql` | dentro del proyecto de un ERP: no toca sus usuarios ni su login |
 
 Cada prueba falla ruidosamente si la regla se rompe.
+
+## Instalación compartida: dentro del proyecto de un ERP
+
+Estas tablas pueden vivir solas, en un proyecto propio de la app, o adentro del
+proyecto de un cliente que ya tiene ERP. El segundo caso **comparte el `auth` con
+el ERP**, y eso cambia dos cosas que hay que activar a mano:
+
+```sql
+update zentra.instalacion set compartida = true;
+```
+
+Qué cambia:
+
+- **El alta automática distingue.** En ese proyecto también se crean los usuarios
+  del ERP, y a ésos no hay que armarles una empresa en `zentra`. Se reconocen por
+  los metadatos: el registro de la app siempre manda `empresa` o `empresa_id`, y
+  el ERP no.
+- **Borrar la cuenta no borra el login.** El acceso es el del ERP: el vendedor que
+  se da de baja de la app no puede perder el acceso al sistema de su empresa. Se
+  van su perfil y sus datos; la cuenta de acceso queda. Las tiendas siguen
+  conformes: lo que exigen es poder borrar la cuenta de la app y lo que guardó.
+
+**Sin ese `update`, instalar esto en el proyecto de un ERP es peligroso**: cada
+usuario que cree el ERP generaría una empresa en `zentra`, y un borrado de cuenta
+desde la app se llevaría puesto un login del ERP.
+
+Lo verifica `test/04_pruebas_compartida.sql`.
+
+Y una aclaración que importa: compartir el `auth` **no** comparte los datos. La
+app arranca en blanco; no ve los clientes ni los productos del ERP. Para eso hace
+falta una API del lado del ERP — ver [`docs/BACKEND.md`](../docs/BACKEND.md).
 
 ## Borrado de cuenta
 

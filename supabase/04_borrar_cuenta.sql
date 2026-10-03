@@ -34,8 +34,19 @@ begin
     from zentra.usuarios
    where empresa_id = v_empresa and id <> v_uid;
 
-  -- Borrar de auth.users arrastra la fila de zentra.usuarios por la clave foránea.
-  delete from auth.users where id = v_uid;
+  -- En una instalación compartida el login es el del ERP, y no es de la app
+  -- borrarlo: el vendedor que se da de baja de la app no tiene por qué perder
+  -- el acceso al sistema de su empresa. Se va su perfil y sus datos; la cuenta
+  -- de acceso queda.
+  --
+  -- Las tiendas igual quedan conformes: lo que exigen es poder borrar la cuenta
+  -- de la app y lo que guardó, y eso es exactamente lo que pasa.
+  if zentra.es_compartida() then
+    delete from zentra.usuarios where id = v_uid;
+  else
+    -- Borrar de auth.users arrastra la fila de zentra.usuarios por la clave foránea.
+    delete from auth.users where id = v_uid;
+  end if;
 
   if v_empresa is not null and v_otros = 0 then
     -- Y borrar la empresa arrastra clientes, productos, ventas, compras y

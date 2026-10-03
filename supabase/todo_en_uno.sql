@@ -376,9 +376,39 @@ create trigger movimientos_aplicar
   after insert or delete on zentra.movimientos
   for each row execute function zentra.aplicar_movimiento();
 
+-- ---------- instalación compartida ----------
+-- Estas tablas pueden vivir solas, en un proyecto propio de la app, o adentro
+-- del proyecto de un cliente que ya tiene un ERP. El segundo caso comparte el
+-- `auth` con el ERP, y eso cambia dos comportamientos: ver abajo.
+
+create table if not exists zentra.instalacion (
+  -- Una sola fila. El check lo garantiza.
+  id          boolean primary key default true check (id),
+  -- true cuando este proyecto es el de un ERP y la app es un invitado.
+  compartida  boolean not null default false
+);
+
+insert into zentra.instalacion (id, compartida) values (true, false)
+  on conflict (id) do nothing;
+
+create or replace function zentra.es_compartida()
+returns boolean
+language sql
+stable
+security definer
+set search_path = zentra, pg_catalog
+as $$
+  select coalesce((select compartida from zentra.instalacion where id), false)
+$$;
+
 -- ---------- alta automática al registrarse ----------
 -- Quien baja la app de la tienda y se registra necesita su empresa y su perfil
 -- creados en el mismo acto; si no, entra a una app que no sabe quién es.
+--
+-- En una instalación compartida el disparador tiene que distinguir: en ese
+-- proyecto también se crean los usuarios del ERP, y a ésos no hay que armarles
+-- una empresa en zentra. Se reconocen por los metadatos: el registro de la app
+-- siempre manda `empresa` o `empresa_id`, y el ERP no.
 
 create or replace function zentra.registrar_usuario()
 returns trigger
@@ -390,6 +420,13 @@ declare
   v_empresa uuid;
   v_nombre  text;
 begin
+  -- Usuario del ERP en una instalación compartida: no es de la app, se ignora.
+  if zentra.es_compartida()
+     and coalesce(nullif(btrim(new.raw_user_meta_data ->> 'empresa'), ''), '') = ''
+     and nullif(new.raw_user_meta_data ->> 'empresa_id', '') is null then
+    return new;
+  end if;
+
   -- Si el usuario fue creado por soporte para una empresa existente, viene con
   -- empresa_id en los metadatos y no se crea una nueva.
   v_empresa := nullif(new.raw_user_meta_data ->> 'empresa_id', '')::uuid;
@@ -640,8 +677,19 @@ begin
     from zentra.usuarios
    where empresa_id = v_empresa and id <> v_uid;
 
-  -- Borrar de auth.users arrastra la fila de zentra.usuarios por la clave foránea.
-  delete from auth.users where id = v_uid;
+  -- En una instalación compartida el login es el del ERP, y no es de la app
+  -- borrarlo: el vendedor que se da de baja de la app no tiene por qué perder
+  -- el acceso al sistema de su empresa. Se va su perfil y sus datos; la cuenta
+  -- de acceso queda.
+  --
+  -- Las tiendas igual quedan conformes: lo que exigen es poder borrar la cuenta
+  -- de la app y lo que guardó, y eso es exactamente lo que pasa.
+  if zentra.es_compartida() then
+    delete from zentra.usuarios where id = v_uid;
+  else
+    -- Borrar de auth.users arrastra la fila de zentra.usuarios por la clave foránea.
+    delete from auth.users where id = v_uid;
+  end if;
 
   if v_empresa is not null and v_otros = 0 then
     -- Y borrar la empresa arrastra clientes, productos, ventas, compras y
