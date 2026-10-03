@@ -18,6 +18,10 @@
  * El paso 4 es lo que evita que el directorio por red sea un punto único de falla:
  * una vez que el celular resolvió un código, puede volver a entrar aunque el
  * directorio esté caído.
+ *
+ * Si no hay directorio configurado, ningún código existe. No hay códigos de
+ * demostración: un código que resuelve a una URL inventada falla más tarde y con
+ * un mensaje que culpa a la conexión.
  */
 import { config } from "../config";
 import { guardarTenant, guardarUltimoCodigo, leerTenantGuardado } from "./storage";
@@ -40,25 +44,6 @@ export function tenantPublico(): TenantConfig {
     publico: true,
   };
 }
-
-/**
- * Directorio de desarrollo, usado cuando no hay `NEXT_PUBLIC_DIRECTORIO_URL`.
- * Permite probar el flujo completo sin levantar el servicio real.
- */
-const DIRECTORIO_DEMO: Record<string, Omit<TenantConfig, "publico">> = {
-  JM: {
-    codigo: "JM",
-    nombre: "Distribuidora JM",
-    supabaseUrl: "https://demo-jm.supabase.invalid",
-    anonKey: "demo-anon-key",
-  },
-  FERRE: {
-    codigo: "FERRE",
-    nombre: "Ferrecolor",
-    supabaseUrl: "https://demo-ferre.supabase.invalid",
-    anonKey: "demo-anon-key",
-  },
-};
 
 function parseRespuesta(codigo: string, json: unknown): TenantConfig {
   const o = json as Partial<TenantConfig> | null;
@@ -140,18 +125,14 @@ async function consultarDirectorio(codigo: string): Promise<TenantConfig> {
 
   if (config.directorioUrl) return consultarPorRed(codigo);
 
-  // Si hay un directorio escrito en el paquete y el código no está ahí, el código
-  // no existe. Caer al demo acá sería peor que fallar: mandaría al vendedor a una
-  // URL inventada y el error aparecería recién al intentar entrar.
-  if (config.directorioJson) {
-    throw new TenantError("no_encontrado", `Código ${codigo} no está en el directorio`);
-  }
-
-  // Sin directorio configurado de ninguna forma, queda el demo: sirve para ver el
-  // flujo de la pantalla, pero apunta a URLs inventadas.
-  const demo = DIRECTORIO_DEMO[codigo];
-  if (!demo) throw new TenantError("no_encontrado", `Código ${codigo} no está en el directorio`);
-  return { ...demo, publico: false };
+  // Sin directorio configurado, ningún código existe.
+  //
+  // Antes acá había un directorio de demostración con los códigos JM y FERRE
+  // apuntando a URLs inventadas. Parecía inofensivo y no lo era: escribir JM
+  // daba "No pudimos conectar. Revisá tu conexión", como si el código fuera
+  // bueno y la red estuviera mal. Es peor que decir que el código no existe,
+  // porque manda a revisar el lugar equivocado.
+  throw new TenantError("no_encontrado", `Código ${codigo} no está en el directorio`);
 }
 
 /**

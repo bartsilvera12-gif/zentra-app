@@ -238,12 +238,8 @@ export interface AppState {
   /** Por qué no se pudieron activar los avisos. Vacío = sin problema. */
   pushAviso: string;
 
-  /* Home dashboard */
+  /* Home */
   hover: ModuleKey | null;
-  /** Index of the visible dashboard page. */
-  dash: number;
-  /** Animation progress 0→1 used to grow the dashboard charts. */
-  dashP: number;
 }
 
 export const initialState: AppState = {
@@ -422,6 +418,4 @@ export const initialState: AppState = {
   pushAviso: "",
 
   hover: null,
-  dash: 0,
-  dashP: 1,
 };

@@ -16,6 +16,13 @@ body {
   box-sizing: border-box;
 }
 
+/* El espacio contra el borde superior, donde antes iba la barra de estado
+ * dibujada. En un teléfono con muesca el sistema informa cuánto hay que bajar;
+ * donde no hay muesca, env() vale 0 y queda el mínimo. */
+.zt-espacio-superior {
+  height: max(12px, env(safe-area-inset-top));
+}
+
 /* La presentación de la maqueta: encabezado arriba y texto de ayuda abajo. Van
  * acá y no inline porque un `display` inline le ganaría a la media query que los
  * esconde en el celular. */

@@ -47,8 +47,6 @@ interface AppApi {
   kRotarIva: (i: number) => void;
   abrirChat: (id: string) => void;
   pushMsg: (id: string, msg: ChatMsg) => void;
-  /** Replay the dashboard's grow-in animation. */
-  runDash: (dur?: number, keepIndex?: boolean) => void;
   startGrab: () => void;
   stopGrab: () => void;
   go: (k: ModuleKey) => void;
@@ -63,26 +61,10 @@ const Ctx = createContext<AppApi | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<AppState>(initialState);
-  const dashTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const grabTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const set = useCallback((patch: Patch) => {
     setS((prev) => ({ ...prev, ...patch }));
-  }, []);
-
-  const runDash = useCallback((dur = 1000, keepIndex = false) => {
-    if (dashTimer.current) clearInterval(dashTimer.current);
-    const t0 = Date.now();
-    setS((prev) => ({ ...prev, dashP: 0, ...(keepIndex ? {} : { dash: 0 }) }));
-    dashTimer.current = setInterval(() => {
-      const k = Math.min(1, (Date.now() - t0) / dur);
-      // Ease-out cubic, matching the prototype's curve.
-      setS((prev) => ({ ...prev, dashP: 1 - Math.pow(1 - k, 3) }));
-      if (k >= 1 && dashTimer.current) {
-        clearInterval(dashTimer.current);
-        dashTimer.current = null;
-      }
-    }, 20);
   }, []);
 
   const startGrab = useCallback(() => {
@@ -148,10 +130,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Both intervals must die with the provider, or they keep setting state.
+  // El intervalo tiene que morir con el provider, o sigue tocando el estado.
   useEffect(
     () => () => {
-      if (dashTimer.current) clearInterval(dashTimer.current);
       if (grabTimer.current) clearInterval(grabTimer.current);
     },
     [],
@@ -239,13 +220,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       kRotarIva,
       abrirChat,
       pushMsg,
-      runDash,
       startGrab,
       stopGrab,
       go,
       elegirInstalacion,
     }),
-    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, startGrab, stopGrab, go, elegirInstalacion],
+    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, startGrab, stopGrab, go, elegirInstalacion],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

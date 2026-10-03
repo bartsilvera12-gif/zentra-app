@@ -10,7 +10,7 @@ import { Field } from "../ui/primitives";
 import { RegistroScreen } from "./RegistroScreen";
 
 export function LoginScreen() {
-  const { s, set, runDash, elegirInstalacion } = useApp();
+  const { s, set, elegirInstalacion } = useApp();
 
   /** Mensaje legible de cualquier error de autenticación. */
   const motivo = (e: unknown) =>
@@ -28,7 +28,6 @@ export function LoginScreen() {
 
     if (!usaSupabase) {
       set({ screen: "home", error: false });
-      runDash();
       return;
     }
 
@@ -36,7 +35,6 @@ export function LoginScreen() {
     try {
       const sesion = await repo.auth.login(s.user, s.pass);
       set({ screen: "home", error: false, entrando: false, sesion: sesion.usuario, pass: "" });
-      runDash();
       // El token de Firebase está atado al usuario de la sesión y cambia al
       // reinstalar la app, así que se vuelve a guardar en cada entrada. Va sin
       // `await`: que los avisos tarden no tiene que demorar el inicio.
@@ -79,7 +77,6 @@ export function LoginScreen() {
         regPass: "",
         authError: "",
       });
-      runDash();
     } catch (e) {
       set({ entrando: false, authError: motivo(e) });
     }
@@ -95,7 +92,7 @@ export function LoginScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1C8C84" }}>
-      <StatusBar ink="#fff" dim="rgba(255,255,255,.45)" />
+      <StatusBar />
 
       <div
         style={{

@@ -167,11 +167,7 @@ export function ComprasScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar
-        ink={s.kSub === "lista" ? t.ink : "#fff"}
-        dim={s.kSub === "lista" ? t.dim : "rgba(255,255,255,.45)"}
-        bg={topBg}
-      />
+      <StatusBar bg={topBg} />
 
       {/* ---------- list ---------- */}
       {s.kSub === "lista" && (

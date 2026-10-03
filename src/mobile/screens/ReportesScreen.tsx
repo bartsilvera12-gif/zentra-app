@@ -67,7 +67,7 @@ export function ReportesScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar ink="#fff" dim="rgba(255,255,255,.45)" bg={AZUL} />
+      <StatusBar bg={AZUL} />
 
       <div style={{ background: AZUL, padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

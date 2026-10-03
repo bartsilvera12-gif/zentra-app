@@ -35,16 +35,30 @@ t("JSON del paquete: resuelve y normaliza la clave", async () => {
   if (b.nombre !== "Ferrecolor") throw new Error("nombre: " + b.nombre);
 });
 
-t("JSON del paquete: un código ajeno NO cae al demo", async () => {
+t("un código que no está en el directorio no existe", async () => {
   const { resolverTenant } = await cargar({
     NEXT_PUBLIC_BACKEND: "supabase", NEXT_PUBLIC_DIRECTORIO_JSON: JSON.stringify({
       ACME: { nombre: "Acme", supabaseUrl: "https://acme.supabase.co", anonKey: "k" },
     }),
   });
-  // "JM" existe en el directorio demo; con un JSON configurado no debe usarse.
   let kind = null;
   try { await resolverTenant("JM"); } catch (e) { kind = e.kind; }
   if (kind !== "no_encontrado") throw new Error("esperaba no_encontrado, fue " + kind);
+});
+
+t("sin directorio configurado, ningún código existe", async () => {
+  // Antes había códigos de demostración (JM, FERRE) que resolvían a URLs
+  // inventadas: el error llegaba después y decía "revisá tu conexión".
+  const { resolverTenant } = await cargar({
+    NEXT_PUBLIC_BACKEND: "supabase",
+    NEXT_PUBLIC_SUPABASE_URL: "https://publico.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "k-pub",
+  });
+  for (const codigo of ["JM", "FERRE", "LOQUESEA"]) {
+    let kind = null;
+    try { await resolverTenant(codigo); } catch (e) { kind = e.kind; }
+    if (kind !== "no_encontrado") throw new Error(`${codigo}: esperaba no_encontrado, fue ${kind}`);
+  }
 });
 
 t("código vacío va al público", async () => {

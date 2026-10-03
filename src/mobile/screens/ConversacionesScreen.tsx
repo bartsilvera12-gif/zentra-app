@@ -227,11 +227,7 @@ export function ConversacionesScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar
-        ink={s.xSub === "lista" ? t.ink : "#fff"}
-        dim={s.xSub === "lista" ? t.dim : "rgba(255,255,255,.45)"}
-        bg={topBg}
-      />
+      <StatusBar bg={topBg} />
 
       {/* ---------- chat list ---------- */}
       {s.xSub === "lista" && (

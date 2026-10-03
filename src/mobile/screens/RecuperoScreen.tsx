@@ -17,7 +17,7 @@ export function RecuperoScreen() {
         animation: "zt-fade .22s ease",
       }}
     >
-      <StatusBar ink="#fff" dim="rgba(255,255,255,.45)" />
+      <StatusBar />
 
       <div style={{ padding: "4px 20px 0" }}>
         <button

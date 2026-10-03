@@ -154,7 +154,7 @@ export function ConfigScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar ink={t.ink} dim={t.dim} bg={t.card} />
+      <StatusBar bg={t.card} />
 
       <div style={{ padding: "10px 16px 14px", background: t.card, borderBottom: `1px solid ${t.border}` }}>
         <div style={{ font: "600 20px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>Configuración</div>

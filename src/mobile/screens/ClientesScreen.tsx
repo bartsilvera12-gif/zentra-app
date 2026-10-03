@@ -138,11 +138,7 @@ export function ClientesScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar
-        ink={s.cSub === "lista" ? t.ink : "#fff"}
-        dim={s.cSub === "lista" ? t.dim : "rgba(255,255,255,.45)"}
-        bg={topBg}
-      />
+      <StatusBar bg={topBg} />
 
       {/* ---------- list ---------- */}
       {s.cSub === "lista" && (

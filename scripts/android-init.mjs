@@ -45,6 +45,15 @@ if (existsSync("android")) {
 correr("npm run build");
 correr("npx cap add android");
 
+// Los íconos del lanzador NO salen del manifiesto web: viven en android/res, que
+// `cap add` acaba de rellenar con el logo genérico de Capacitor. Se regeneran
+// desde assets/ en cada corrida, porque cada `cap add` los pisa de nuevo.
+correr(
+  "npx @capacitor/assets generate --android" +
+    " --iconBackgroundColor '#1c8c84' --iconBackgroundColorDark '#1c8c84'" +
+    " --splashBackgroundColor '#1c8c84' --splashBackgroundColorDark '#023047'",
+);
+
 if (existsSync(COPIA)) {
   mkdirSync("android/app", { recursive: true });
   copyFileSync(COPIA, GS);

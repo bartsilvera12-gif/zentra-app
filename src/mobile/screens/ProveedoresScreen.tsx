@@ -126,11 +126,7 @@ export function ProveedoresScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar
-        ink={s.vwSub === "lista" ? t.ink : "#fff"}
-        dim={s.vwSub === "lista" ? t.dim : "rgba(255,255,255,.45)"}
-        bg={topBg}
-      />
+      <StatusBar bg={topBg} />
 
       {/* ---------- list ---------- */}
       {s.vwSub === "lista" && (

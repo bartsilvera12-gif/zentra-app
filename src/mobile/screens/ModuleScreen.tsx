@@ -25,7 +25,7 @@ export function ModuleScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar ink="#fff" dim="rgba(255,255,255,.45)" bg={def.color} />
+      <StatusBar bg={def.color} />
 
       <div style={{ padding: "6px 14px 18px", display: "flex", alignItems: "center", gap: 12, background: def.color }}>
         <button

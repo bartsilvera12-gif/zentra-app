@@ -96,7 +96,7 @@ export function VentaScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar ink="#fff" dim="rgba(255,255,255,.45)" bg="#023047" />
+      <StatusBar bg="#023047" />
 
       <div style={{ background: "#023047", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

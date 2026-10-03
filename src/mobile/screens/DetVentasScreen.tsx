@@ -84,7 +84,7 @@ export function DetVentasScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar ink="#fff" dim="rgba(255,255,255,.45)" bg={VIOLETA} />
+      <StatusBar bg={VIOLETA} />
 
       {/* ---------- invoice list ---------- */}
       {s.dvSub === "lista" && (

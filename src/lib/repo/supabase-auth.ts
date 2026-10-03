@@ -141,7 +141,21 @@ export async function registrar(
   const { data, error } = await sb().auth.signUp({
     email: correo.trim(),
     password,
-    options: { data: { nombre: nombre.trim(), empresa: empresa.trim() } },
+    options: {
+      data: { nombre: nombre.trim(), empresa: empresa.trim() },
+      // A dónde vuelve el enlace del correo de confirmación, si está activada.
+      //
+      // Sin esto Supabase usa su *Site URL*, que de fábrica es
+      // `http://localhost:3000`: el enlace le llega al vendedor y le abre una
+      // página que no existe en su teléfono.
+      //
+      // `window.location.origin` acierta solo en la web. Dentro del APK el
+      // origen es `https://localhost`, que tampoco sirve: ahí hace falta un
+      // enlace profundo, y por eso conviene tener la confirmación desactivada.
+      ...(typeof window !== "undefined" && !window.location.origin.includes("localhost")
+        ? { emailRedirectTo: window.location.origin }
+        : {}),
+    },
   });
   if (error) throw new AuthError(traducir(error.message));
 

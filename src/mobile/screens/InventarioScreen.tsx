@@ -211,11 +211,7 @@ export function InventarioScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar
-        ink={s.iSub === "lista" ? t.ink : "#fff"}
-        dim={s.iSub === "lista" ? t.dim : "rgba(255,255,255,.45)"}
-        bg={topBg}
-      />
+      <StatusBar bg={topBg} />
 
       {/* ---------- list ---------- */}
       {s.iSub === "lista" && (

@@ -16,7 +16,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1C8C84" }}>
-      <StatusBar ink="#fff" dim="rgba(255,255,255,.45)" />
+      <StatusBar />
 
       <div style={{ padding: "4px 20px 0" }}>
         <button

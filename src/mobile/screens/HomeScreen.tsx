@@ -110,8 +110,7 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
 }
 
 export function HomeScreen() {
-  const { s, t, set, runDash } = useApp();
-  const p = s.dashP;
+  const { s, t, set } = useApp();
 
   const roleInk = s.theme === "oscuro" ? "#FFB701" : "#8A5F00";
   // Con código de empresa el nombre sale de la instalación resuelta; en la
@@ -120,18 +119,6 @@ export function HomeScreen() {
   const empresa = s.sesion?.empresa || (s.tenant && !s.tenant.publico ? s.tenant.nombre : EMPRESA);
   const usuario = s.sesion ?? USUARIO;
   const inicial = (s.sesion?.nombre || USUARIO.nombre).slice(0, 1).toUpperCase();
-  const pct = 82 * p;
-  const barras = [38, 54, 44, 70, 60, 82, 100];
-
-  const onDashScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
-    if (i !== s.dash) {
-      set({ dash: i });
-      runDash(1800, true);
-    }
-  };
-
   return (
     <div
       style={{
@@ -143,7 +130,7 @@ export function HomeScreen() {
         background: t.bg,
       }}
     >
-      <StatusBar ink={t.ink} dim={t.dim} bg={t.card} />
+      <StatusBar bg={t.card} />
 
       {/* Header: company, date, user */}
       <div
@@ -196,167 +183,20 @@ export function HomeScreen() {
         </div>
       </div>
 
-      {/* Swipeable dashboard cards */}
-      <div style={{ padding: "16px 0 8px" }}>
-        <div
-          onScroll={onDashScroll}
-          className="zt-no-scrollbar"
-          style={{
-            display: "flex",
-            overflowX: "auto",
-            scrollSnapType: "x mandatory",
-            gap: 12,
-            padding: "0 14px",
-          }}
-        >
-          {/* Card 1 — inventory health donut */}
-          <div
-            style={{
-              flex: "0 0 100%",
-              scrollSnapAlign: "center",
-              borderRadius: 20,
-              background: "#023047",
-              padding: 20,
-              display: "flex",
-              alignItems: "center",
-              gap: 20,
-              minHeight: 150,
-              boxSizing: "border-box",
-            }}
-          >
-            <div
-              style={{
-                position: "relative",
-                width: 96,
-                height: 96,
-                flex: "0 0 auto",
-                borderRadius: "50%",
-                display: "flex",
-                background: `conic-gradient(#FFB701 0 ${pct.toFixed(1)}%, rgba(255,255,255,.16) ${pct.toFixed(1)}% 100%)`,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <div
-                style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: "50%",
-                  background: "#023047",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 1,
-                }}
-              >
-                <span style={{ font: "700 24px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>
-                  {Math.round(pct)}%
-                </span>
-                <span style={{ font: "500 10px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".1em", color: "#8ECAE6" }}>
-                  ÓPTIMO
-                </span>
-              </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0 }}>
-              <div
-                style={{
-                  font: "600 10.5px/1 var(--font-barlow),Barlow,sans-serif",
-                  letterSpacing: ".16em",
-                  textTransform: "uppercase",
-                  color: "#8ECAE6",
-                }}
-              >
-                Inventario
-              </div>
-              <div style={{ font: "700 25px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>
-                {Math.round(1248 * p).toLocaleString("es-PY")} ítems
-              </div>
-              <div style={{ display: "flex", gap: 14 }}>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FFB701" }}>37</span>
-                  <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.72)" }}>
-                    bajo mínimo
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FC8500" }}>6</span>
-                  <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.72)" }}>
-                    agotados
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/*
+        Acá iba un carrusel de dos tarjetas: una dona de salud del inventario y
+        un gráfico de ventas de siete días. Se fue por dos razones, y la segunda
+        pesa más que la primera:
 
-          {/* Card 2 — today's sales with a 7-day bar chart */}
-          <div
-            style={{
-              flex: "0 0 100%",
-              scrollSnapAlign: "center",
-              borderRadius: 20,
-              background: "#04617A",
-              padding: 20,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              minHeight: 150,
-              boxSizing: "border-box",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div
-                  style={{
-                    font: "600 10.5px/1 var(--font-barlow),Barlow,sans-serif",
-                    letterSpacing: ".16em",
-                    textTransform: "uppercase",
-                    color: "#8ECAE6",
-                  }}
-                >
-                  Ventas de hoy
-                </div>
-                <div style={{ font: "700 26px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>Gs. 4.850.000</div>
-                <div style={{ font: "500 12.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#FFB701" }}>
-                  ▲ 12% vs. ayer · 18 facturas
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 68, paddingTop: 6 }}>
-                {barras.map((h, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: 9,
-                      borderRadius: 2,
-                      transition: `height .8s cubic-bezier(.22,1,.36,1) ${(i * 0.07).toFixed(2)}s`,
-                      background: i === barras.length - 1 ? "#FFB701" : "rgba(255,255,255,.35)",
-                      height: `${h * p}%`,
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-            <div style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.7)" }}>
-              Últimos 7 días
-            </div>
-          </div>
-        </div>
+        1. Era la mitad de la pantalla, y la pantalla de inicio sirve para entrar
+           rápido a un módulo, no para quedarse a mirarla.
+        2. Los números eran inventados. No salían de la base: estaban escritos en
+           el código desde el prototipo. En una instalación real alguien veía
+           "Gs. 4.850.000" de ventas del día sin haber vendido nada.
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 6, paddingTop: 10 }}>
-          {[0, 1].map((i) => (
-            <div
-              key={i}
-              style={{
-                width: s.dash === i ? 18 : 6,
-                height: 6,
-                borderRadius: 3,
-                transition: "all .25s ease",
-                background: s.dash === i ? "#209EBB" : t.dim,
-              }}
-            />
-          ))}
-        </div>
-      </div>
+        Vuelve cuando Reportes esté conectado del lado del servidor y los números
+        sean los suyos. El diseño original está en el historial de git.
+      */}
 
       {/* Module grid */}
       <div
@@ -364,11 +204,14 @@ export function HomeScreen() {
           flex: 1,
           minHeight: 0,
           overflow: "auto",
-          padding: "4px 14px 10px",
+          padding: "14px 14px 12px",
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
+          // Las tres filas se reparten el alto disponible. Antes se apilaban
+          // arriba y dejaban un hueco abajo, porque el carrusel ocupaba ese
+          // espacio. `minmax` evita que en una pantalla chica queden aplastadas.
+          gridAutoRows: "minmax(132px, 1fr)",
           gap: 12,
-          alignContent: "start",
         }}
       >
         <Tile

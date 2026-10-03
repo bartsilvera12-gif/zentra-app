@@ -20,15 +20,17 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#023047",
-    theme_color: "#023047",
+    // El verde de la marca: es el color del ícono y el del encabezado del login,
+    // así que la pantalla de arranque no pega un salto de color.
+    background_color: "#1c8c84",
+    theme_color: "#1c8c84",
     lang: "es-PY",
     icons: [
       { src: "/icono-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icono-512.png", sizes: "512x512", type: "image/png" },
       // `maskable` deja que Android recorte el ícono a la forma del sistema sin
       // comerse la marca: por eso el ícono tiene margen alrededor.
-      { src: "/icono-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icono-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }
