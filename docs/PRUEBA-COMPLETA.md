@@ -39,7 +39,13 @@ En **los dos**, lo mismo que ya hiciste en el primero:
 
 ## 2. El directorio, en una línea
 
-No hace falta servicio. En `.env.local`:
+Lo más simple es dejar que lo escriba el script, que valida la URL y la clave:
+
+```bash
+npm run empresa -- JM "Distribuidora JM" https://JM.supabase.co sb_publishable_...
+```
+
+O a mano, en `.env.local`:
 
 ```
 NEXT_PUBLIC_BACKEND=supabase

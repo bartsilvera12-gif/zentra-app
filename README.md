@@ -182,9 +182,9 @@ Con eso el login, el registro y los datos salen del proyecto real. Volvé a
 El código de empresa decide a qué proyecto se conecta: vacío va al de arriba, con
 código va al que devuelva el directorio.
 
-Para probar los dos caminos con dos empresas de verdad —sin levantar ningún
-servicio ni tocar ningún ERP— están los pasos en
-[`docs/PRUEBA-COMPLETA.md`](docs/PRUEBA-COMPLETA.md).
+Las empresas del directorio se cargan con `npm run empresa` (sin argumentos
+lista las que hay). Para probar los dos caminos con dos empresas de verdad, los
+pasos están en [`docs/SEGUNDA-EMPRESA.md`](docs/SEGUNDA-EMPRESA.md).
 
 ## Deploy
 
