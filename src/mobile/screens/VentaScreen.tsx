@@ -2,6 +2,7 @@
 
 import { METODOS, PASOS_VENTA } from "@/lib/data";
 import { repo } from "@/lib/repo";
+import { Sku } from "../ui/Sku";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
 import { ivaContenido } from "@/lib/calc";
@@ -359,22 +360,7 @@ export function VentaScreen() {
                     border: `1.5px solid ${q > 0 ? "#04617A" : t.border}`,
                   }}
                 >
-                  <div
-                    style={{
-                      width: 42,
-                      height: 42,
-                      flex: "0 0 auto",
-                      borderRadius: 11,
-                      background: t.bg,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      font: "600 12px/1 var(--font-barlow),Barlow,sans-serif",
-                      color: t.ink3,
-                    }}
-                  >
-                    {p.sku}
-                  </div>
+                  <Sku sku={p.sku} t={t} />
                   <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                     <span style={{ font: "600 13.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{p.nombre}</span>
                     <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>Stock: {p.stock} un.</span>

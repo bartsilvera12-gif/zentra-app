@@ -2,6 +2,7 @@
 
 import { IVA_RATE, PASOS_COMPRA } from "@/lib/data";
 import { repo } from "@/lib/repo";
+import { Sku } from "../ui/Sku";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { lineasDeCompra, stockDe, totalCompra } from "@/lib/calc";
@@ -585,22 +586,7 @@ export function ComprasScreen() {
                           border: `2px solid transparent`,
                         }}
                       >
-                        <span
-                          style={{
-                            width: 36,
-                            height: 36,
-                            flex: "0 0 auto",
-                            borderRadius: 10,
-                            background: t.card,
-                            color: t.ink3,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
-                          }}
-                        >
-                          {p.sku}
-                        </span>
+                        <Sku sku={p.sku} t={t} caja={36} />
                         <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                           <span style={{ font: "600 13px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{p.nombre}</span>
                           <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>

@@ -2,6 +2,7 @@
 
 import { MOTIVOS, MOVS, PESABLES, UNIDADES } from "@/lib/data";
 import { usaApiDelErp } from "@/lib/repo";
+import { Sku } from "../ui/Sku";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
@@ -321,26 +322,17 @@ export function InventarioScreen() {
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "flex-start", gap: 11, width: "100%" }}>
-                    <span
-                      style={{
-                        width: 42,
-                        height: 42,
-                        flex: "0 0 auto",
-                        borderRadius: 12,
-                        background: t.bg,
-                        color: t.ink3,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        font: "600 12px/1 var(--font-barlow),Barlow,sans-serif",
-                      }}
-                    >
-                      {p.sku}
-                    </span>
+                    <Sku sku={p.sku} t={t} />
                     <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                       <span style={{ font: "600 14px/1.25 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{p.nombre}</span>
                       <span style={{ font: "400 11.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
-                        {st} {p.unidad} · mín. {p.minimo} · {p.deposito}
+                        {/* Se arma salteando lo vacío: el ERP no siempre tiene
+                            depósito cargado, y quedaba un "·" colgado al final.
+                            El código completo va acá porque en el recuadro, si
+                            es largo, se achica para entrar. */}
+                        {[p.sku, `${st} ${p.unidad}`, `mín. ${p.minimo}`, p.deposito]
+                          .filter((x) => String(x || "").trim())
+                          .join(" · ")}
                       </span>
                     </span>
                     <span
@@ -423,22 +415,7 @@ export function InventarioScreen() {
               ‹
             </button>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  flex: "0 0 auto",
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,.18)",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  font: "700 13px/1 var(--font-barlow),Barlow,sans-serif",
-                }}
-              >
-                {det.sku}
-              </div>
+              <Sku sku={det.sku} t={t} caja={52} onDark />
               <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                 <span style={{ font: "700 18px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>{det.nombre}</span>
                 <span style={{ font: "400 12px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.78)" }}>
@@ -572,22 +549,7 @@ export function InventarioScreen() {
                     border: `2px solid ${s.ajProd === p.id ? AZUL : "transparent"}`,
                   }}
                 >
-                  <span
-                    style={{
-                      width: 36,
-                      height: 36,
-                      flex: "0 0 auto",
-                      borderRadius: 10,
-                      background: t.card,
-                      color: t.ink3,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
-                    }}
-                  >
-                    {p.sku}
-                  </span>
+                  <Sku sku={p.sku} t={t} caja={36} />
                   <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                     <span style={{ font: "600 13px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{p.nombre}</span>
                     <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
