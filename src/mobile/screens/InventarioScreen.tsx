@@ -1,6 +1,7 @@
 "use client";
 
 import { MOTIVOS, MOVS, PESABLES, UNIDADES } from "@/lib/data";
+import { usaApiDelErp } from "@/lib/repo";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
@@ -51,7 +52,10 @@ export function InventarioScreen() {
   });
 
   const det = prods.find((p) => p.id === s.iSel) ?? null;
-  const allMovs = s.iMovExtra.concat(MOVS);
+  // Los movimientos de stock no los expone la API de estos ERPs. Con ERP se
+  // muestran sólo los que se hicieron desde la app: inventar entradas y
+  // salidas de un depósito ajeno sería grave.
+  const allMovs = usaApiDelErp() ? s.iMovExtra : s.iMovExtra.concat(MOVS);
   const prodName = (id: string) => prods.find((p) => p.id === id)?.nombre ?? "—";
   const prodUnidad = (id: string) => prods.find((p) => p.id === id)?.unidad ?? "";
 

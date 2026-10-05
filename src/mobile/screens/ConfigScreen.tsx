@@ -274,7 +274,7 @@ export function ConfigScreen() {
               paddingTop: 12,
             }}
           >
-            Zentra ERP · versión {VERSION.replace("v ", "")} · {EMPRESA}
+            Zentra ERP · versión {VERSION.replace("v ", "")} · {s.sesion?.empresa || s.tenant?.nombre || EMPRESA}
           </div>
         </Card>
 

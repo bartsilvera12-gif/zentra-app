@@ -1,6 +1,9 @@
 "use client";
 
-import { CLIENTES, METODOS, PASOS_VENTA, PRODUCTOS } from "@/lib/data";
+import { METODOS, PASOS_VENTA } from "@/lib/data";
+import { repo } from "@/lib/repo";
+import { useRemoto } from "./useRemoto";
+import { Cargando, Falla } from "../ui/Estado";
 import { ivaContenido } from "@/lib/calc";
 import { gs, norm } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
@@ -10,7 +13,11 @@ import { WizardSteps } from "../ui/WizardSteps";
 export function VentaScreen() {
   const { s, t, set, qty, rotarIva } = useApp();
 
-  const todos = CLIENTES.concat(s.cExtra);
+  // Lo más delicado de la app: una venta se registra contra estos ids. Con el
+  // catálogo de ejemplo, el ERP recibiría productos que no existen.
+  const { datos: clientesErp } = useRemoto(() => repo.clientes.list(), []);
+  const { datos: PRODUCTOS, cargando, error, recargar } = useRemoto(() => repo.ventas.productos(), []);
+  const todos = clientesErp.concat(s.cExtra);
   const cli = todos.find((c) => c.id === s.vCliente) ?? null;
   const idxPaso = Math.max(0, PASOS_VENTA.findIndex((x) => x.id === s.vPaso));
 
@@ -335,7 +342,9 @@ export function VentaScreen() {
               placeholder="Buscar producto…"
               style={input}
             />
-            {productosFiltrados.map((p) => {
+            {cargando && <Cargando t={t} que="el catálogo" />}
+            {!cargando && error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+            {!cargando && !error && productosFiltrados.map((p) => {
               const q = s.vCart[p.id] || 0;
               return (
                 <div
@@ -409,7 +418,7 @@ export function VentaScreen() {
                 </div>
               );
             })}
-            {productosFiltrados.length === 0 && (
+            {!cargando && !error && productosFiltrados.length === 0 && (
               <div
                 style={{
                   borderRadius: 14,

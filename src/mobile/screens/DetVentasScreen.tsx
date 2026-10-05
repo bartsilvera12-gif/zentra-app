@@ -1,6 +1,9 @@
 "use client";
 
-import { CHATS, VENTAS_HIST } from "@/lib/data";
+import { CHATS } from "@/lib/data";
+import { repo, usaApiDelErp } from "@/lib/repo";
+import { useRemoto } from "./useRemoto";
+import { Cargando, Falla } from "../ui/Estado";
 import { detalleVenta, ivaVenta, totalVenta } from "@/lib/calc";
 import { fmtIso, gs, norm, plural } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
@@ -24,6 +27,11 @@ export function DetVentasScreen() {
   const { s, t, set, pushMsg, abrirChat } = useApp();
 
   const dvq = norm(s.dvQuery.trim());
+  // El historial sale del ERP, ya filtrado por el rango que se eligió.
+  const { datos: VENTAS_HIST, cargando, error, recargar } = useRemoto(
+    () => repo.ventas.list({ desde: s.rDesde, hasta: s.rHasta }),
+    [s.rDesde, s.rHasta],
+  );
   const enRango = VENTAS_HIST.filter((v) => v.iso >= s.rDesde && v.iso <= s.rHasta);
   const filtradas = enRango.filter((v) => {
     if (s.dvFiltro === "Cobradas" && v.estado !== "Cobrada") return false;
@@ -51,7 +59,9 @@ export function DetVentasScreen() {
    */
   const enviarWhatsapp = () => {
     if (!det) return;
-    const chat = CHATS.find((c) => c.refId === det.cliId);
+    // Con ERP no hay conversaciones conectadas: buscar acá mandaría la factura
+    // de un cliente al chat de ejemplo de otro.
+    const chat = usaApiDelErp() ? undefined : CHATS.find((c) => c.refId === det.cliId);
     if (chat) {
       pushMsg(chat.id, {
         de: "yo",
@@ -189,7 +199,9 @@ export function DetVentasScreen() {
           </div>
 
           <ScrollBody>
-            {filtradas.map((v) => {
+            {cargando && <Cargando t={t} que="las ventas" />}
+            {!cargando && error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+            {!cargando && !error && filtradas.map((v) => {
               const esCredito = v.pago.indexOf("Crédito") >= 0;
               const cobrada = v.estado === "Cobrada";
               return (
@@ -246,7 +258,7 @@ export function DetVentasScreen() {
                 </button>
               );
             })}
-            {filtradas.length === 0 && (
+            {!cargando && !error && filtradas.length === 0 && (
               <EmptyState titulo="Sin facturas" detalle="No hay ventas en el rango con ese filtro." />
             )}
           </ScrollBody>
