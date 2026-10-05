@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
 import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
@@ -182,7 +183,7 @@ export function ConfigScreen() {
               "Modo claro",
               <IconSol stroke={t.ink} />,
               claro ? "#e6f2f1" : t.card,
-              claro ? "#209EBB" : t.border,
+              claro ? MARCA.acento : t.border,
               t.ink,
               () => set({ theme: "claro" }),
             )}
@@ -191,7 +192,7 @@ export function ConfigScreen() {
               "Modo oscuro",
               <IconLuna stroke={t.ink} />,
               claro ? t.card : "#1e2438",
-              claro ? t.border : "#209EBB",
+              claro ? t.border : MARCA.acento,
               t.ink,
               () => set({ theme: "oscuro" }),
             )}

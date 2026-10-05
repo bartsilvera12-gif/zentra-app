@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { CHATS } from "@/lib/data";
 import { repo, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
@@ -20,8 +21,8 @@ import {
   SectionLabel,
 } from "../ui/primitives";
 
-const AZUL = "#023047";
-const VIOLETA = "#525890";
+const AZUL = MARCA.header;
+const VIOLETA = MARCA.headerSuave;
 
 export function DetVentasScreen() {
   const { s, t, set, pushMsg, abrirChat } = useApp();

@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
@@ -26,7 +27,7 @@ import {
   Toggle,
 } from "../ui/primitives";
 
-const ACCENT = "#04617A";
+const ACCENT = MARCA.header;
 
 export function ClientesScreen() {
   const { s, t, set } = useApp();
@@ -229,14 +230,14 @@ export function ClientesScreen() {
                   <Badge
                     bg={
                       c.origen === "CRM"
-                        ? "#EDE8F7"
+                        ? MARCA.suave
                         : c.origen === "Venta"
                           ? "#E2F0F4"
                           : s.theme === "oscuro"
                             ? "#242c40"
                             : "#EDEFF3"
                     }
-                    ink={c.origen === "CRM" ? "#4B3C86" : c.origen === "Venta" ? ACCENT : t.ink2}
+                    ink={c.origen === "CRM" ? MARCA.headerSuave : c.origen === "Venta" ? ACCENT : t.ink2}
                   >
                     {c.origen}
                   </Badge>
@@ -311,7 +312,7 @@ export function ClientesScreen() {
                 <span
                   style={{
                     font: "700 18px/1.1 var(--font-barlow),Barlow,sans-serif",
-                    color: det.saldo > 0 ? "#96731A" : "#1C8C84",
+                    color: det.saldo > 0 ? MARCA.avisoInk : MARCA.acento,
                   }}
                 >
                   {det.saldo > 0 ? gs(det.saldo) : "Al día"}

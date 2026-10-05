@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { MOTIVOS, MOVS, PESABLES, UNIDADES } from "@/lib/data";
 import { usaApiDelErp } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
@@ -30,8 +31,8 @@ import {
   SubHeader,
 } from "../ui/primitives";
 
-const AZUL = "#023047";
-const CIAN_CLARO = "#8ECAE6";
+const AZUL = MARCA.header;
+const CIAN_CLARO = MARCA.sobre;
 
 export function InventarioScreen() {
   const { s, t, set } = useApp();
@@ -133,10 +134,14 @@ export function InventarioScreen() {
       precio: Math.round(npPrecioNum),
       unidad: s.npUnidad,
       categoria: s.npCategoria.trim() || "Sin categoría",
-      deposito: s.npDeposito.trim() || "Depósito central",
+      // Depósito, método de valuación y código de barras ya no se preguntan:
+      // son decisiones del ERP, no de quien carga un producto desde el
+      // celular. Van vacíos para que el ERP ponga lo que corresponda, en vez
+      // de que la app invente un "Depósito central" que quizás no existe.
+      deposito: "",
       iva: s.npIva,
-      metodo: s.npMetodo,
-      barras: s.npBarras || "Interno " + (s.npSku || npSkuSugerido),
+      metodo: "CPP",
+      barras: "",
     };
     // Opening stock is recorded as an ENTRADA so the ledger stays complete.
     const movs =
@@ -247,16 +252,13 @@ export function InventarioScreen() {
                     iSub: "nuevo",
                     npNombre: "",
                     npSku: "",
-                    npBarras: "",
                     npUnidad: "UNIDAD",
                     npCategoria: "",
-                    npDeposito: "",
                     npCosto: "",
                     npPrecio: "",
                     npIva: "10%",
                     npStock: "",
                     npMinimo: "",
-                    npMetodo: "CPP",
                     npError: false,
                   }),
                 bg: CIAN_CLARO,
@@ -265,7 +267,7 @@ export function InventarioScreen() {
             />
             <div style={{ display: "flex", gap: 10 }}>
               <StatTile label="Valuación" valor={gs(prods.reduce((a, p) => a + stock(p) * p.costo, 0))} />
-              <StatTile label="Bajo mínimo" valor={`${bajo.length} prod.`} valorInk="#96731A" />
+              <StatTile label="Bajo mínimo" valor={`${bajo.length} prod.`} valorInk={MARCA.avisoInk} />
             </div>
             <SearchInput
               value={s.iQuery}
@@ -612,7 +614,7 @@ export function InventarioScreen() {
                       ajNuevoStock < 0
                         ? "#B0322F"
                         : ajNuevoStock <= ajProd.minimo
-                          ? "#96731A"
+                          ? MARCA.avisoInk
                           : "#1F5C46",
                   }}
                 >
@@ -665,42 +667,21 @@ export function InventarioScreen() {
                 onChange={(v) => set({ npNombre: v, npError: false })}
                 placeholder="Gaseosa cola 2 L"
               />
-              <div style={{ display: "flex", gap: 10 }}>
-                <FormField
-                  label="SKU"
-                  flex={1}
-                  value={s.npSku}
-                  onChange={(v) => set({ npSku: v.toUpperCase() })}
-                  placeholder={npSkuSugerido}
-                />
-                <FormField
-                  label="Código de barras"
-                  flex={1}
-                  inputMode="numeric"
-                  value={s.npBarras}
-                  onChange={(v) => set({ npBarras: v.replace(/[^0-9]/g, "") })}
-                  placeholder="7790001234567"
-                />
-              </div>
+              <FormField
+                label="SKU"
+                value={s.npSku}
+                onChange={(v) => set({ npSku: v.toUpperCase() })}
+                placeholder={npSkuSugerido}
+              />
               <div style={{ font: "400 11px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
                 Si dejás el SKU vacío se usa <strong style={{ fontWeight: 600 }}>{npSkuSugerido}</strong>.
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <FormField
-                  label="Categoría"
-                  flex={1}
-                  value={s.npCategoria}
-                  onChange={(v) => set({ npCategoria: v })}
-                  placeholder="Bebidas"
-                />
-                <FormField
-                  label="Depósito"
-                  flex={1}
-                  value={s.npDeposito}
-                  onChange={(v) => set({ npDeposito: v })}
-                  placeholder="Depósito central"
-                />
-              </div>
+              <FormField
+                label="Categoría"
+                value={s.npCategoria}
+                onChange={(v) => set({ npCategoria: v })}
+                placeholder="Bebidas"
+              />
             </Card>
 
             <Card gap={12}>
@@ -815,14 +796,6 @@ export function InventarioScreen() {
                   value={s.npMinimo}
                   onChange={(v) => set({ npMinimo: v.replace(/[^0-9.]/g, "") })}
                   placeholder="12"
-                />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>Método de valuación</span>
-                <OptionRow
-                  options={["CPP", "FIFO", "LIFO"]}
-                  activo={s.npMetodo}
-                  onPick={(k) => set({ npMetodo: k as typeof s.npMetodo })}
                 />
               </div>
             </Card>

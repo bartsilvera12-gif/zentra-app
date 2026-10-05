@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { ADJUNTOS, CHATS, EMOJIS, GIFS, PLANTILLAS, STICKERS } from "@/lib/data";
 import { usaApiDelErp } from "@/lib/repo";
 import { NoDisponible } from "../ui/Estado";
@@ -11,8 +12,8 @@ import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import { Badge, ChipRow, EmptyState, ScrollBody, SearchInput } from "../ui/primitives";
 
-const VIOLETA = "#525890";
-const VIOLETA_INK = "#4B3C86";
+const VIOLETA = MARCA.header;
+const VIOLETA_INK = MARCA.headerSuave;
 
 export function ConversacionesScreen() {
   const { s, t, set, abrirChat, pushMsg, startGrab, stopGrab } = useApp();
@@ -87,8 +88,8 @@ export function ConversacionesScreen() {
           style={{
             maxWidth: "82%",
             borderRadius: mio ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-            background: esSticker ? "transparent" : mio ? "#E8E6F5" : t.card,
-            border: `1px solid ${esSticker ? "transparent" : mio ? "#C9C5E4" : t.border}`,
+            background: esSticker ? "transparent" : mio ? MARCA.suave : t.card,
+            border: `1px solid ${esSticker ? "transparent" : mio ? "#C3DCE6" : t.border}`,
             padding: esSticker ? 0 : "9px 11px",
             display: "flex",
             flexDirection: "column",
@@ -100,7 +101,7 @@ export function ConversacionesScreen() {
               style={{
                 borderRadius: 10,
                 padding: "10px 11px",
-                background: mio ? "#D7D3EE" : t.bg,
+                background: mio ? "#D5E6EC" : t.bg,
                 display: "flex",
                 flexDirection: "column",
                 gap: 3,
@@ -116,7 +117,7 @@ export function ConversacionesScreen() {
               >
                 {m.pedido.tag}
               </span>
-              <span style={{ font: "700 15px/1.1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#2E2A52" : t.ink }}>
+              <span style={{ font: "700 15px/1.1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
                 {gs(m.pedido.total)}
               </span>
               <span style={{ font: "400 11px/1.3 var(--font-barlow),Barlow,sans-serif", color: mio ? VIOLETA_INK : t.ink2 }}>
@@ -135,7 +136,7 @@ export function ConversacionesScreen() {
                   height: 28,
                   flex: "0 0 auto",
                   borderRadius: "50%",
-                  background: mio ? VIOLETA_INK : "#8A85AD",
+                  background: mio ? VIOLETA_INK : "#6E97A8",
                   color: "#fff",
                   display: "flex",
                   alignItems: "center",
@@ -153,12 +154,12 @@ export function ConversacionesScreen() {
                       flex: 1,
                       height: h,
                       borderRadius: 1,
-                      background: mio ? "#8A85AD" : s.theme === "oscuro" ? "#4b5570" : "#B9BBD9",
+                      background: mio ? "#6E97A8" : s.theme === "oscuro" ? "#3E5A6B" : "#AFD0DE",
                     }}
                   />
                 ))}
               </span>
-              <span style={{ font: "500 10.5px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#6A648F" : t.ink3 }}>
+              <span style={{ font: "500 10.5px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
                 {m.audio}
               </span>
             </div>
@@ -172,7 +173,7 @@ export function ConversacionesScreen() {
                   height: 32,
                   flex: "0 0 auto",
                   borderRadius: 9,
-                  background: mio ? VIOLETA_INK : "#5478AB",
+                  background: mio ? VIOLETA_INK : "#04617A",
                   color: "#fff",
                   display: "flex",
                   alignItems: "center",
@@ -183,10 +184,10 @@ export function ConversacionesScreen() {
                 {m.archivo.tag || "DOC"}
               </span>
               <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                <span style={{ font: "600 12px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#2E2A52" : t.ink }}>
+                <span style={{ font: "600 12px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
                   {m.archivo.nombre}
                 </span>
-                <span style={{ font: "400 10.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#6A648F" : t.ink3 }}>
+                <span style={{ font: "400 10.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
                   {m.archivo.peso}
                 </span>
               </span>
@@ -194,21 +195,21 @@ export function ConversacionesScreen() {
           )}
 
           {!!m.texto && m.texto.length > 0 && (
-            <span style={{ font: "400 13px/1.4 var(--font-barlow),Barlow,sans-serif", color: mio ? "#2E2A52" : t.ink }}>
+            <span style={{ font: "400 13px/1.4 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
               {m.texto}
             </span>
           )}
 
           {!esSticker && (
             <span style={{ display: "flex", alignItems: "center", gap: 4, alignSelf: "flex-end" }}>
-              <span style={{ font: "400 9.5px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#6A648F" : t.ink3 }}>
+              <span style={{ font: "400 9.5px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
                 {m.hora}
               </span>
               {mio && (
                 <span
                   style={{
                     font: "600 9.5px/1 var(--font-barlow),Barlow,sans-serif",
-                    color: m.tick === "✓✓" ? VIOLETA_INK : "#8A85AD",
+                    color: m.tick === "✓✓" ? VIOLETA_INK : "#6E97A8",
                   }}
                 >
                   {m.tick ?? "✓"}
@@ -335,7 +336,7 @@ export function ConversacionesScreen() {
                     padding: 13,
                     cursor: "pointer",
                     background: nl > 0 ? (s.theme === "oscuro" ? "#1b2238" : "#F4F3FA") : t.card,
-                    border: `1px solid ${nl > 0 ? "#B9BBD9" : t.border}`,
+                    border: `1px solid ${nl > 0 ? "#AFD0DE" : t.border}`,
                   }}
                 >
                   <span style={{ position: "relative", flex: "0 0 auto" }}>
@@ -344,7 +345,7 @@ export function ConversacionesScreen() {
                         width: 44,
                         height: 44,
                         borderRadius: 13,
-                        background: esCliente ? "#E2F0F4" : "#EDE8F7",
+                        background: esCliente ? "#E2F0F4" : MARCA.suave,
                         color: esCliente ? "#04617A" : VIOLETA_INK,
                         display: "flex",
                         alignItems: "center",
@@ -384,7 +385,7 @@ export function ConversacionesScreen() {
                         {c.nombre}
                       </span>
                       <Badge
-                        bg={esCliente ? "#E2F0F4" : "#EDE8F7"}
+                        bg={esCliente ? "#E2F0F4" : MARCA.suave}
                         ink={esCliente ? "#04617A" : VIOLETA_INK}
                       >
                         {c.tipo}
@@ -650,9 +651,9 @@ export function ConversacionesScreen() {
                         padding: "7px 13px",
                         cursor: "pointer",
                         font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif",
-                        background: on ? "#E8E6F5" : t.card,
+                        background: on ? MARCA.suave : t.card,
                         color: on ? VIOLETA_INK : t.ink2,
-                        border: `1px solid ${on ? "#C9C5E4" : t.border}`,
+                        border: `1px solid ${on ? "#C3DCE6" : t.border}`,
                       }}
                     >
                       {k}
@@ -753,7 +754,7 @@ export function ConversacionesScreen() {
                   />
                   <span style={{ display: "flex", alignItems: "flex-end", gap: 2, flex: 1, height: 18 }}>
                     {ondaArr(14).map((h, j) => (
-                      <span key={j} style={{ flex: 1, height: h, borderRadius: 1, background: "#B9BBD9" }} />
+                      <span key={j} style={{ flex: 1, height: h, borderRadius: 1, background: "#AFD0DE" }} />
                     ))}
                   </span>
                   <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2, flex: "0 0 auto" }}>
@@ -789,7 +790,7 @@ export function ConversacionesScreen() {
                     borderRadius: 12,
                     cursor: "pointer",
                     font: "600 18px/1 var(--font-barlow),Barlow,sans-serif",
-                    background: s.xPanel === "adj" ? "#E8E6F5" : t.bg,
+                    background: s.xPanel === "adj" ? MARCA.suave : t.bg,
                     border: `1px solid ${t.border}`,
                     color: s.xPanel === "adj" ? VIOLETA_INK : t.ink2,
                   }}
@@ -840,7 +841,7 @@ export function ConversacionesScreen() {
                       cursor: "pointer",
                       fontSize: 16,
                       lineHeight: 1,
-                      background: s.xPanel === "stick" ? "#E8E6F5" : "transparent",
+                      background: s.xPanel === "stick" ? MARCA.suave : "transparent",
                     }}
                     aria-label="Emojis y stickers"
                   >
@@ -877,7 +878,7 @@ export function ConversacionesScreen() {
                       cursor: "pointer",
                       fontSize: 16,
                       lineHeight: 1,
-                      background: "#8E92B4",
+                      background: MARCA.headerSuave,
                       color: "#fff",
                     }}
                     aria-label="Grabar nota de voz"
@@ -947,7 +948,7 @@ export function ConversacionesScreen() {
                       height: 40,
                       flex: "0 0 auto",
                       borderRadius: 12,
-                      background: esCliente ? "#E2F0F4" : "#EDE8F7",
+                      background: esCliente ? "#E2F0F4" : MARCA.suave,
                       color: esCliente ? "#04617A" : VIOLETA_INK,
                       display: "flex",
                       alignItems: "center",

@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { IVA_RATE, PASOS_COMPRA } from "@/lib/data";
 import { repo } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
@@ -26,7 +27,7 @@ import {
 } from "../ui/primitives";
 import { WizardSteps } from "../ui/WizardSteps";
 
-const ORO = "#96731A";
+const ORO = MARCA.header;
 
 export function ComprasScreen() {
   const { s, t, set, kQty, kRotarIva } = useApp();

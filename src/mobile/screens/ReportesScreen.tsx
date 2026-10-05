@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { fmtIso, gs, haceDias, hoyIso, inicioDeMes } from "@/lib/format";
 import { buildReport } from "@/lib/reportes";
 import { repo } from "@/lib/repo";
@@ -11,8 +12,8 @@ import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import { Card, ScrollBody, SectionLabel } from "../ui/primitives";
 
-const AZUL = "#023047";
-const VIOLETA = "#8E92B4";
+const AZUL = MARCA.header;
+const VIOLETA = MARCA.headerSuave;
 
 export function ReportesScreen() {
   const { s, t, set } = useApp();
@@ -181,7 +182,7 @@ export function ReportesScreen() {
                     padding: "10px 6px",
                     cursor: "pointer",
                     font: "600 12.5px/1 var(--font-barlow),Barlow,sans-serif",
-                    background: on ? "#8ECAE6" : "transparent",
+                    background: on ? MARCA.sobre : "transparent",
                     color: on ? AZUL : "rgba(255,255,255,.8)",
                   }}
                 >

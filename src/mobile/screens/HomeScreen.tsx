@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { EMPRESA, USUARIO } from "@/lib/data";
 import { fechaDeHoy, inicialDe, nombreCorto, rolLegible } from "@/lib/nombre";
 import { usePanel } from "./usePanel";
-import { MODULES } from "@/lib/theme";
+import { MARCA, MODULES } from "@/lib/theme";
 import type { ModuleKey } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -115,7 +115,7 @@ export function HomeScreen() {
   const { s, t, set, runDash } = useApp();
   const p = s.dashP;
 
-  const roleInk = s.theme === "oscuro" ? "#FFB701" : "#8A5F00";
+  const roleInk = s.theme === "oscuro" ? MARCA.aviso : MARCA.avisoInk;
   // Con código de empresa el nombre sale de la instalación resuelta; en la
   // instalación pública todavía sale de los datos de ejemplo.
   // Con sesión real, empresa y usuario salen del perfil; si no, de los datos de ejemplo.
@@ -257,7 +257,7 @@ export function HomeScreen() {
                 flex: "0 0 auto",
                 borderRadius: "50%",
                 display: "flex",
-                background: `conic-gradient(#FFB701 0 ${pct.toFixed(1)}%, rgba(255,255,255,.16) ${pct.toFixed(1)}% 100%)`,
+                background: `conic-gradient(${MARCA.acento} 0 ${pct.toFixed(1)}%, rgba(255,255,255,.16) ${pct.toFixed(1)}% 100%)`,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -278,7 +278,7 @@ export function HomeScreen() {
                 <span style={{ font: "700 24px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>
                   {panel.inventario ? `${Math.round(pct)}%` : "—"}
                 </span>
-                <span style={{ font: "500 10px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".1em", color: "#8ECAE6" }}>
+                <span style={{ font: "500 10px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".1em", color: MARCA.sobreSuave }}>
                   ÓPTIMO
                 </span>
               </div>
@@ -289,7 +289,7 @@ export function HomeScreen() {
                   font: "600 10.5px/1 var(--font-barlow),Barlow,sans-serif",
                   letterSpacing: ".16em",
                   textTransform: "uppercase",
-                  color: "#8ECAE6",
+                  color: MARCA.sobreSuave,
                 }}
               >
                 Inventario
@@ -303,7 +303,7 @@ export function HomeScreen() {
               </div>
               <div style={{ display: "flex", gap: 14 }}>
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FFB701" }}>
+                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: MARCA.aviso }}>
                     {panel.inventario ? panel.inventario.bajoMinimo : "—"}
                   </span>
                   <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.72)" }}>
@@ -311,7 +311,7 @@ export function HomeScreen() {
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FC8500" }}>
+                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: MARCA.alerta }}>
                     {panel.inventario ? panel.inventario.agotados : "—"}
                   </span>
                   <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.72)" }}>
@@ -344,7 +344,7 @@ export function HomeScreen() {
                     font: "600 10.5px/1 var(--font-barlow),Barlow,sans-serif",
                     letterSpacing: ".16em",
                     textTransform: "uppercase",
-                    color: "#8ECAE6",
+                    color: MARCA.sobreSuave,
                   }}
                 >
                   Ventas de hoy
@@ -352,7 +352,7 @@ export function HomeScreen() {
                 <div style={{ font: "700 26px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>
                   {panel.ventas ? gs(panel.ventas.hoy * p) : panel.cargando ? "…" : "sin datos"}
                 </div>
-                <div style={{ font: "500 12.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#FFB701" }}>
+                <div style={{ font: "500 12.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: MARCA.sobreSuave }}>
                   {panel.ventas
                     ? [
                         // Sin ventas ayer no hay con qué comparar: "subió 100%"
@@ -375,7 +375,7 @@ export function HomeScreen() {
                       width: 9,
                       borderRadius: 2,
                       transition: `height .8s cubic-bezier(.22,1,.36,1) ${(i * 0.07).toFixed(2)}s`,
-                      background: i === barras.length - 1 ? "#FFB701" : "rgba(255,255,255,.35)",
+                      background: i === barras.length - 1 ? MARCA.acento : "rgba(255,255,255,.35)",
                       height: `${h * p}%`,
                     }}
                   />
@@ -397,7 +397,7 @@ export function HomeScreen() {
                 height: 6,
                 borderRadius: 3,
                 transition: "all .25s ease",
-                background: s.dash === i ? "#209EBB" : t.dim,
+                background: s.dash === i ? MARCA.acento : t.dim,
               }}
             />
           ))}

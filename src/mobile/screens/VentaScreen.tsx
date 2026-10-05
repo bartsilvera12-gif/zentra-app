@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { METODOS, PASOS_VENTA } from "@/lib/data";
 import { repo } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
@@ -134,7 +135,7 @@ export function VentaScreen() {
               return {
                 nombre: p.nombre,
                 mark: done ? "✓" : String(i + 1),
-                bg: act ? "#8ECAE6" : done ? "rgba(255,255,255,.28)" : "rgba(255,255,255,.12)",
+                bg: act ? MARCA.acento : done ? "rgba(255,255,255,.28)" : "rgba(255,255,255,.12)",
                 fg: act ? "#023047" : done ? "#fff" : "rgba(255,255,255,.55)",
                 label: act ? "#fff" : "rgba(255,255,255,.65)",
                 go: () => {
@@ -592,12 +593,12 @@ export function VentaScreen() {
                   font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
                   background: s.vCredito ? "#FFF3DC" : t.card,
                   color: t.ink,
-                  border: `2px solid ${s.vCredito ? "#96731A" : t.border}`,
+                  border: `2px solid ${s.vCredito ? MARCA.avisoInk : t.border}`,
                   cursor: s.vSinNombre ? "not-allowed" : "pointer",
                   opacity: s.vSinNombre ? 0.45 : 1,
                 }}
               >
-                <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#96731A" }} />
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: MARCA.avisoInk }} />
                 Crédito
               </button>
             </div>

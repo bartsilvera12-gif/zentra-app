@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
@@ -26,9 +27,9 @@ import {
   SubHeader,
 } from "../ui/primitives";
 
-const ACCENT = "#209EBB";
-const HEADER = "#04617A";
-const ORO = "#96731A";
+const ACCENT = MARCA.headerSuave;
+const HEADER = MARCA.header;
+const ORO = MARCA.header;
 
 export function ProveedoresScreen() {
   const { s, t, set, abrirChat } = useApp();

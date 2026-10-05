@@ -199,16 +199,13 @@ export interface AppState {
   /* Nuevo producto */
   npNombre: string;
   npSku: string;
-  npBarras: string;
   npUnidad: string;
   npCategoria: string;
-  npDeposito: string;
   npCosto: string;
   npPrecio: string;
   npIva: Iva;
   npStock: string;
   npMinimo: string;
-  npMetodo: "CPP" | "FIFO" | "LIFO";
   npError: boolean;
 
   /* Alta de cliente */
@@ -388,16 +385,13 @@ export const initialState: AppState = {
 
   npNombre: "",
   npSku: "",
-  npBarras: "",
   npUnidad: "UNIDAD",
   npCategoria: "",
-  npDeposito: "",
   npCosto: "",
   npPrecio: "",
   npIva: "10%",
   npStock: "",
   npMinimo: "",
-  npMetodo: "CPP",
   npError: false,
 
   fDoc: "",

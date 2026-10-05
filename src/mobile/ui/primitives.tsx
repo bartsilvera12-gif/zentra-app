@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import type { CSSProperties, ReactNode } from "react";
 import { useApp } from "@/store/AppContext";
 
@@ -356,7 +357,7 @@ export function Toggle({
         display: "flex",
         justifyContent: on ? "flex-end" : "flex-start",
         alignItems: "center",
-        background: on ? "#209EBB" : s.theme === "oscuro" ? "#39415a" : "#ccd3de",
+        background: on ? MARCA.acento : s.theme === "oscuro" ? "#39415a" : "#ccd3de",
         transition: "background .2s ease",
       }}
     >
