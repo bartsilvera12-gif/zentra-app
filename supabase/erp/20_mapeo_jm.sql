@@ -30,18 +30,18 @@ on conflict (vista) do update
 
 insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
   ('clientes', 'id',        'id::text', 1),
-  ('clientes', 'nombre',    $$coalesce(nullif(btrim(nombre), ''), nullif(btrim(razon_social), ''), nullif(btrim(empresa), ''), nombre_contacto, '(sin nombre)')$$, 2),
+  ('clientes', 'nombre',    $sql$coalesce(nullif(btrim(nombre), ''), nullif(btrim(razon_social), ''), nullif(btrim(empresa), ''), nombre_contacto, '(sin nombre)')$sql$, 2),
   -- ruc_factura es el que se usa para facturar; ruc y documento son el respaldo.
-  ('clientes', 'doc',       $$coalesce(nullif(btrim(ruc_factura), ''), nullif(btrim(ruc), ''), documento)$$, 3),
+  ('clientes', 'doc',       $sql$coalesce(nullif(btrim(ruc_factura), ''), nullif(btrim(ruc), ''), documento)$sql$, 3),
   ('clientes', 'contacto',  'nombre_contacto', 4),
-  ('clientes', 'tel',       $$coalesce(nullif(btrim(telefono), ''), telefono_secundario)$$, 5),
-  ('clientes', 'email',     $$coalesce(nullif(btrim(email), ''), email_secundario)$$, 6),
+  ('clientes', 'tel',       $sql$coalesce(nullif(btrim(telefono), ''), telefono_secundario)$sql$, 5),
+  ('clientes', 'email',     $sql$coalesce(nullif(btrim(email), ''), email_secundario)$sql$, 6),
   ('clientes', 'direccion', 'direccion', 7),
   ('clientes', 'zona',      'ciudad', 8),
-  ('clientes', 'lista',     $$coalesce(nullif(btrim(tipo_cliente), ''), 'Mayorista')$$, 9),
+  ('clientes', 'lista',     $sql$coalesce(nullif(btrim(tipo_cliente), ''), 'Mayorista')$sql$, 9),
   -- La baja operativa no borra la fila pero el cliente deja de operar: para la
   -- app es lo mismo que inactivo.
-  ('clientes', 'estado',    $$case when baja_operativa_at is null then 'Activo' else 'Inactivo' end$$, 10),
+  ('clientes', 'estado',    $sql$case when baja_operativa_at is null then 'Activo' else 'Inactivo' end$sql$, 10),
   ('clientes', 'creado_en', 'created_at', 11)
 on conflict (vista, campo) do update
   set expresion = excluded.expresion, orden = excluded.orden;
@@ -53,13 +53,13 @@ insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
   ('productos', 'nombre',  'nombre', 2),
   ('productos', 'sku',     'sku', 3),
   ('productos', 'barras',  'codigo_barras', 4),
-  ('productos', 'unidad',  $$coalesce(nullif(btrim(unidad_medida), ''), 'UN')$$, 5),
+  ('productos', 'unidad',  $sql$coalesce(nullif(btrim(unidad_medida), ''), 'UN')$sql$, 5),
   -- Los montos en la app son enteros: el guaraní no tiene centavos.
   ('productos', 'costo',   'round(coalesce(costo_promedio, 0))::bigint', 6),
   ('productos', 'precio',  'round(coalesce(precio_venta, 0))::bigint', 7),
   ('productos', 'stock',   'coalesce(stock_actual, 0)', 8),
   ('productos', 'minimo',  'coalesce(stock_minimo, 0)', 9),
-  ('productos', 'metodo',  $$coalesce(nullif(btrim(metodo_valuacion), ''), 'CPP')$$, 10),
+  ('productos', 'metodo',  $sql$coalesce(nullif(btrim(metodo_valuacion), ''), 'CPP')$sql$, 10),
   -- OJO: la app espera exactamente '10%', '5%' o 'Exenta'. Qué guarda el ERP en
   -- tipo_iva hay que confirmarlo:
   --   select distinct tipo_iva from distribuidorajmerp.productos;
@@ -71,13 +71,13 @@ insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
   --
   -- Ante la duda cae en 10%: es la tasa general en Paraguay, y equivocarse para
   -- abajo subfacturaría.
-  ('productos', 'iva',     $$case
+  ('productos', 'iva',     $sql$case
        when tipo_iva ~* 'exent|exonerad'                 then 'Exenta'
        when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '10' then '10%'
        when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '5'  then '5%'
        when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '0'  then 'Exenta'
        else '10%'
-     end$$, 11)
+     end$sql$, 11)
 on conflict (vista, campo) do update
   set expresion = excluded.expresion, orden = excluded.orden;
 
@@ -87,17 +87,17 @@ on conflict (vista, campo) do update
 
 insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
   ('ventas', 'id',          'id::text', 1),
-  ('ventas', 'numero',      $$coalesce(nullif(btrim(numero_control), ''), left(id::text, 8))$$, 2),
+  ('ventas', 'numero',      $sql$coalesce(nullif(btrim(numero_control), ''), left(id::text, 8))$sql$, 2),
   ('ventas', 'cliente_id',  'cliente_id::text', 3),
   ('ventas', 'fecha',       'coalesce(fecha, created_at)::date', 4),
-  ('ventas', 'condicion',   $$case when tipo_venta ~* 'cred|credito|cuota' then 'Crédito' else 'Contado' end$$, 5),
+  ('ventas', 'condicion',   $sql$case when tipo_venta ~* 'cred|credito|cuota' then 'Crédito' else 'Contado' end$sql$, 5),
   ('ventas', 'metodo',      'metodo_pago', 6),
   ('ventas', 'plazo_dias',  'plazo_dias', 7),
   -- La app sólo distingue cobrada de pendiente. Todo lo que el ERP no dé por
   -- cerrado queda como pendiente: es el lado seguro, porque una venta pendiente
   -- mostrada como cobrada esconde plata que falta cobrar.
-  ('ventas', 'estado',      $$case when estado ~* 'cobrad|pagad|cerrad|complet' then 'Cobrada' else 'Pendiente' end$$, 8),
-  ('ventas', 'moneda',      $$coalesce(nullif(btrim(moneda), ''), 'PYG')$$, 9),
+  ('ventas', 'estado',      $sql$case when estado ~* 'cobrad|pagad|cerrad|complet' then 'Cobrada' else 'Pendiente' end$sql$, 8),
+  ('ventas', 'moneda',      $sql$coalesce(nullif(btrim(moneda), ''), 'PYG')$sql$, 9),
   ('ventas', 'total',       'round(coalesce(total, 0))::bigint', 10),
   ('ventas', 'iva',         'round(coalesce(monto_iva, 0))::bigint', 11),
   ('ventas', 'usuario',     'usuario_nombre', 12),
@@ -114,18 +114,18 @@ insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
   ('venta_lineas', 'id',          'id::text', 1),
   ('venta_lineas', 'venta_id',    'venta_id::text', 2),
   ('venta_lineas', 'producto_id', 'producto_id::text', 3),
-  ('venta_lineas', 'nombre',      $$coalesce(nullif(btrim(producto_nombre), ''), sku, '(sin nombre)')$$, 4),
+  ('venta_lineas', 'nombre',      $sql$coalesce(nullif(btrim(producto_nombre), ''), sku, '(sin nombre)')$sql$, 4),
   ('venta_lineas', 'cantidad',    'coalesce(cantidad_total_base, cantidad, 0)', 5),
   -- La app trabaja con el precio CON IVA incluido, que es como se factura en
   -- Paraguay. `precio_venta` del ERP ya lo incluye.
   ('venta_lineas', 'precio',      'round(coalesce(precio_venta, 0))::bigint', 6),
-  ('venta_lineas', 'iva',         $$case
+  ('venta_lineas', 'iva',         $sql$case
        when tipo_iva ~* 'exent|exonerad'                 then 'Exenta'
        when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '10' then '10%'
        when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '5'  then '5%'
        when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '0'  then 'Exenta'
        else '10%'
-     end$$, 7),
+     end$sql$, 7),
   ('venta_lineas', 'total',       'round(coalesce(total_linea, 0))::bigint', 8)
 on conflict (vista, campo) do update
   set expresion = excluded.expresion, orden = excluded.orden;

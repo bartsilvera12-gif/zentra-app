@@ -25,7 +25,10 @@ create table erp_ferre.clientes (like erp_jm.clientes including all);
 insert into erp_ferre.clientes (razon_social, nombre_contacto, tipo_cliente, ruc, telefono, activo) values
   ('Ferretería del Este', 'Ana Rojas', 'Mayorista', '80099999-9', '0983333333', true);
 
-\i supabase/erp/10_generador.sql
+\i supabase/erp/10_tablas.sql
+\i supabase/erp/11_generar.sql
+\i supabase/erp/12_generar_todas.sql
+\i supabase/erp/13_directorio.sql
 
 -- ---------- el mapeo: lo único que cambia entre un ERP y otro ----------
 insert into zentra_erp.origen (vista, tabla, filtro) values

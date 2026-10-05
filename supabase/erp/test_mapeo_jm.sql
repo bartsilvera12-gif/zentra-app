@@ -67,7 +67,10 @@ values
   ('aaaa1111-1111-1111-1111-111111111111', 'cccc0001-0000-0000-0000-000000000001', 'Leche Larga Vida 1L',  'LEC-1L',  1, 7300,    '5%',  7300),
   ('bbbb2222-2222-2222-2222-222222222222', 'cccc0001-0000-0000-0000-000000000004', 'De otra empresa',      'OTRO',    1, 1,       '10%', 1);
 
-\i supabase/erp/10_generador.sql
+\i supabase/erp/10_tablas.sql
+\i supabase/erp/11_generar.sql
+\i supabase/erp/12_generar_todas.sql
+\i supabase/erp/13_directorio.sql
 \i supabase/erp/20_mapeo_jm.sql
 
 select zentra_erp.generar('JM', 'distribuidorajmerp', 'aaaa1111-1111-1111-1111-111111111111');

@@ -10,6 +10,30 @@ igual que una tabla, así que la app la lee sin enterarse.
 Resuelve de paso el problema de los schemas `erp_*` que el ERP no publica en la
 API: una vista puede leer de un schema no publicado.
 
+## Los archivos, en orden
+
+Van de a uno, en pegadas separadas. Están partidos chicos a propósito: el editor
+web de Supabase manda el texto cortado cuando la pegada es larga, y el error que
+sale —"unterminated dollar-quoted string"— no dice eso.
+
+| | |
+|---|---|
+| `10_tablas.sql` | el schema `zentra_erp` y las dos tablas de mapeo |
+| `11_generar.sql` | la función que arma el schema de vistas de una empresa |
+| `12_generar_todas.sql` | la que lo hace para todas |
+| `13_directorio.sql` | una vista para ver qué quedó generado |
+| `20_mapeo_jm.sql` | el mapeo del ERP de Distribuidora JM |
+
+**Si podés, usá `psql` en vez del editor web** y te ahorrás el problema:
+
+```bash
+psql "LA_CADENA_DE_CONEXION" -f supabase/erp/10_tablas.sql
+psql "LA_CADENA_DE_CONEXION" -f supabase/erp/11_generar.sql
+psql "LA_CADENA_DE_CONEXION" -f supabase/erp/12_generar_todas.sql
+psql "LA_CADENA_DE_CONEXION" -f supabase/erp/13_directorio.sql
+psql "LA_CADENA_DE_CONEXION" -f supabase/erp/20_mapeo_jm.sql
+```
+
 ## Un schema de vistas por empresa, generado
 
 No se escriben a mano. `zentra_erp.generar()` los crea, y `generar_todas()` lo
