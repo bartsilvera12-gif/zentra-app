@@ -151,6 +151,7 @@ export function HomeScreen() {
   const p = s.dashP;
 
   const roleInk = s.theme === "oscuro" ? MARCA.aviso : MARCA.avisoInk;
+  const puntoActivo = s.theme === "oscuro" ? MARCA.sobreSuave : MARCA.headerSuave;
   // Con código de empresa el nombre sale de la instalación resuelta; en la
   // instalación pública todavía sale de los datos de ejemplo.
   // Con sesión real, empresa y usuario salen del perfil; si no, de los datos de ejemplo.
@@ -292,7 +293,7 @@ export function HomeScreen() {
                 flex: "0 0 auto",
                 borderRadius: "50%",
                 display: "flex",
-                background: `conic-gradient(${MARCA.acento} 0 ${pct.toFixed(1)}%, rgba(255,255,255,.16) ${pct.toFixed(1)}% 100%)`,
+                background: `conic-gradient(${MARCA.aviso} 0 ${pct.toFixed(1)}%, rgba(255,255,255,.16) ${pct.toFixed(1)}% 100%)`,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -432,7 +433,14 @@ export function HomeScreen() {
                 height: 6,
                 borderRadius: 3,
                 transition: "all .25s ease",
-                background: s.dash === i ? MARCA.acento : t.dim,
+                // El azul de la marca y no el verde: el verde ya es el acento
+                // de los botones, y dos cosas distintas con el mismo color a
+                // dos centímetros una de otra se leen como si fueran lo mismo.
+                //
+                // Y el tono cambia con el tema: el azul profundo sobre el
+                // fondo oscuro queda casi igual que el punto apagado, y
+                // entonces no se sabe en qué tarjeta estás.
+                background: s.dash === i ? puntoActivo : t.dim,
               }}
             />
           ))}
