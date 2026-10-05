@@ -8,6 +8,7 @@
  * quedara creíble": se leían perfecto y eran mentira.
  */
 import { buildReport } from "../src/lib/reportes.ts";
+import { isoOf as isoOfLocal } from "../src/lib/format.ts";
 
 const casos = [];
 function t(n, f) { casos.push([n, f]); }
@@ -91,6 +92,24 @@ t("sin datos no inventa: ni totales, ni porcentajes, ni composición", () => {
 t("el rango largo se junta en 7 tramos, no en 60 barras ilegibles", () => {
   const m = buildReport("ventas", "2026-08-01", "2026-09-29", vacio);
   if (m.buckets.length > 7) throw new Error("tramos: " + m.buckets.length);
+});
+
+t("los presets cuentan desde hoy, no desde una fecha escrita en el codigo", async () => {
+  const { haceDias, hoyIso, inicioDeMes, isoOf } = await import("../src/lib/format.ts");
+  const hoy = new Date();
+  igual(hoyIso(), isoOf(hoy), "hoy");
+  // "7 dias" incluye hoy: son hoy y los seis anteriores.
+  const hace6 = new Date(hoy); hace6.setDate(hace6.getDate() - 6);
+  igual(haceDias(7), isoOf(hace6), "7 dias");
+  igual(haceDias(1), hoyIso(), "hoy es un solo dia");
+  igual(inicioDeMes().slice(8), "01", "el mes arranca el 1");
+});
+
+t("isoOf usa la fecha local, no UTC", () => {
+  // En Paraguay (UTC-3), a las 22:00 toISOString() ya devuelve el dia
+  // siguiente: "Hoy" pasaba a ser maniana y el rango salia vacio.
+  const tarde = new Date(2026, 9, 5, 22, 30);
+  igual(isoOfLocal(tarde), "2026-10-05", "la noche del 5 sigue siendo el 5");
 });
 
 let malas = 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtIso, gs, isoOf } from "@/lib/format";
+import { fmtIso, gs, haceDias, hoyIso, inicioDeMes } from "@/lib/format";
 import { buildReport } from "@/lib/reportes";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
@@ -45,19 +45,25 @@ export function ReportesScreen() {
     ["Hoy", 1],
     ["7 días", 7],
     ["30 días", 30],
-    ["Este mes", 30],
+    ["Este mes", 0],
   ];
 
   const aplicarPreset = (label: string, dias: number) => {
-    // The mock is pinned to 30 Sep 2026, so ranges count back from there.
-    const hasta = new Date("2026-09-30T12:00:00");
-    const desde = new Date(hasta.getTime() - (dias - 1) * 86400000);
+    // Contado desde hoy. Estaba clavado al 30 de septiembre de 2026, de cuando
+    // los datos eran de ejemplo: "Hoy" mostraba un día de hace meses y el
+    // reporte salía vacío sin que se entendiera por qué.
     set({
       rPreset: label,
-      rDesde: label === "Este mes" ? "2026-09-01" : isoOf(desde),
-      rHasta: isoOf(hasta),
+      rDesde: label === "Este mes" ? inicioDeMes() : haceDias(dias),
+      rHasta: hoyIso(),
     });
   };
+
+  /** El rango aplicado, en palabras. Dos fechas ISO no se leen de un vistazo. */
+  const rangoEnPalabras = (() => {
+    if (s.rDesde === s.rHasta) return fmtIso(s.rDesde);
+    return `${fmtIso(s.rDesde)} — ${fmtIso(s.rHasta)} · ${m.dias} ${m.dias === 1 ? "día" : "días"}`;
+  })();
 
   const dateInput = {
     height: 40,
@@ -186,6 +192,23 @@ export function ReportesScreen() {
           )}
         </div>
 
+        {/* El inventario es la foto de ahora: el rango de fechas no lo cambia.
+            En vez de dejar controles que no hacen nada, se dice. */}
+        {m.esFoto ? (
+          <div
+            style={{
+              borderRadius: 11,
+              padding: "10px 12px",
+              background: "rgba(255,255,255,.10)",
+              border: "1px solid rgba(255,255,255,.18)",
+              font: "500 11.5px/1.4 var(--font-barlow),Barlow,sans-serif",
+              color: "rgba(255,255,255,.82)",
+            }}
+          >
+            El inventario es la foto de ahora: no depende del período.
+          </div>
+        ) : (
+          <>
         <div className="zt-no-scrollbar" style={{ display: "flex", gap: 6, overflowX: "auto" }}>
           {presets.map(([label, dias]) => {
             const on = s.rPreset === label;
@@ -196,13 +219,17 @@ export function ReportesScreen() {
                 style={{
                   flex: "0 0 auto",
                   borderRadius: 999,
-                  padding: "7px 12px",
+                  // Más alto para el pulgar: 7px de relleno quedaba chico para
+                  // tocar sin errar, que es como se usa esto en la calle.
+                  padding: "9px 14px",
+                  minHeight: 34,
                   cursor: "pointer",
-                  font: "500 12px/1 var(--font-barlow),Barlow,sans-serif",
+                  font: `${on ? 600 : 500} 12px/1 var(--font-barlow),Barlow,sans-serif`,
                   whiteSpace: "nowrap",
-                  background: on ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.1)",
-                  color: on ? AZUL : "rgba(255,255,255,.85)",
-                  border: `1px solid ${on ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.24)"}`,
+                  background: on ? "#fff" : "rgba(255,255,255,.08)",
+                  color: on ? AZUL : "rgba(255,255,255,.8)",
+                  border: `1px solid ${on ? "#fff" : "rgba(255,255,255,.2)"}`,
+                  transition: "background .16s ease, color .16s ease",
                 }}
               >
                 {label}
@@ -217,6 +244,7 @@ export function ReportesScreen() {
             <input
               type="date"
               value={s.rDesde}
+              max={s.rHasta}
               onChange={(e) => set({ rDesde: e.target.value, rPreset: "" })}
               style={dateInput}
             />
@@ -226,11 +254,25 @@ export function ReportesScreen() {
             <input
               type="date"
               value={s.rHasta}
+              // No deja elegir un "hasta" anterior al "desde", ni una fecha
+              // futura: un rango al revés devuelve vacío y parece que no hay
+              // datos.
+              min={s.rDesde}
+              max={hoyIso()}
               onChange={(e) => set({ rHasta: e.target.value, rPreset: "" })}
               style={dateInput}
             />
           </label>
         </div>
+
+        {/* Qué rango quedó aplicado, en palabras: dos fechas en formato ISO no
+            se leen de un vistazo, y el preset no alcanza cuando alguien tocó
+            las fechas a mano. */}
+        <span style={{ font: "500 11px/1.3 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.74)" }}>
+          {rangoEnPalabras}
+        </span>
+          </>
+        )}
       </div>
 
       <ScrollBody padding="14px" gap={12}>

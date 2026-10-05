@@ -32,7 +32,30 @@ export function diaMes(d: Date): string {
 }
 
 export function isoOf(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Partes locales, no `toISOString()`: eso convierte a UTC, y en Paraguay
+  // (UTC-3) a partir de las 21:00 devolvía el día siguiente. "Hoy" en el
+  // reporte pasaba a ser mañana, y un rango de ventas de hoy salía vacío.
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Hoy, en la fecha del teléfono, que es la que el vendedor tiene en la cabeza. */
+export function hoyIso(): string {
+  return isoOf(new Date());
+}
+
+/** `n` días atrás contando hoy: `haceDias(7)` es la semana que incluye hoy. */
+export function haceDias(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - (n - 1));
+  return isoOf(d);
+}
+
+/** El primero del mes en curso. */
+export function inicioDeMes(): string {
+  const d = new Date();
+  return isoOf(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
 /** Seconds → `m:ss`, for the voice-note timer. */

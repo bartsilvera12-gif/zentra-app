@@ -1,3 +1,4 @@
+import { haceDias, hoyIso } from "@/lib/format";
 import type { TenantConfig } from "@/lib/tenant/types";
 import type {
   CompraLinea,
@@ -341,8 +342,11 @@ export const initialState: AppState = {
   pfError: false,
 
   rTab: "ventas",
-  rDesde: "2026-09-24",
-  rHasta: "2026-09-30",
+  // La semana que termina hoy. Estaba fijo en septiembre de 2026, de cuando
+  // los datos eran de ejemplo: con datos reales, Reportes abría en un rango
+  // pasado y salía vacío sin que se entendiera por qué.
+  rDesde: haceDias(7),
+  rHasta: hoyIso(),
   rPreset: "7 días",
   rExportado: false,
 
