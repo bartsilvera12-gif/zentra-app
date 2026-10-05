@@ -19,6 +19,18 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+
+    # A nivel del job, no de un paso: `android:init` vuelve a correr
+    # `npm run build` por dentro, y si ahi no llegan las variables, ese segundo
+    # build pisa el primero con uno de datos de ejemplo. El APK compila igual y
+    # sale con datos falsos. Ya paso.
+    env:
+      NEXT_PUBLIC_BACKEND: supabase
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_DIRECTORIO_JSON: ${{ secrets.NEXT_PUBLIC_DIRECTORIO_JSON }}
+      NEXT_PUBLIC_SOPORTE_WHATSAPP: ${{ secrets.NEXT_PUBLIC_SOPORTE_WHATSAPP }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -44,12 +56,6 @@ jobs:
       # JavaScript al compilar. Si llegan vacías, el APK sale con datos de
       # ejemplo y no hay forma de arreglarlo sin recompilar.
       - name: Compilar el web
-        env:
-          NEXT_PUBLIC_BACKEND: supabase
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_DIRECTORIO_JSON: ${{ secrets.NEXT_PUBLIC_DIRECTORIO_JSON }}
-          NEXT_PUBLIC_SOPORTE_WHATSAPP: ${{ secrets.NEXT_PUBLIC_SOPORTE_WHATSAPP }}
         run: |
           if [ -z "$NEXT_PUBLIC_DIRECTORIO_JSON" ]; then
             echo "ERROR: falta el secret NEXT_PUBLIC_DIRECTORIO_JSON."
@@ -83,6 +89,27 @@ jobs:
           PY
         env:
           DIR_JSON: ${{ secrets.NEXT_PUBLIC_DIRECTORIO_JSON }}
+
+      # Y que el APK lleve adentro ese mismo build, no uno anterior. Lo de
+      # arriba mira `out/`; esto mira lo que quedo empaquetado de verdad.
+      - name: Verificar que el APK lleva el build correcto
+        env:
+          DIR_JSON: ${{ secrets.NEXT_PUBLIC_DIRECTORIO_JSON }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, zipfile
+          d = json.loads(os.environ["DIR_JSON"])
+          apk = "android/app/build/outputs/apk/debug/app-debug.apk"
+          texto = ""
+          with zipfile.ZipFile(apk) as z:
+              for n in z.namelist():
+                  if n.startswith("assets/public/") and n.endswith(".js"):
+                      texto += z.read(n).decode("utf-8", "ignore")
+          faltan = [c for c in d if d[c].get("apiUrl", "") not in texto]
+          if faltan:
+              sys.exit(f"ERROR: el APK no lleva las APIs de: {faltan}")
+          print("OK: el APK lleva el directorio adentro:", ", ".join(d))
+          PY
 
       - uses: actions/upload-artifact@v4
         with:

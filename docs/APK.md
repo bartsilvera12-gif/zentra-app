@@ -17,6 +17,19 @@ Capacitor ya está configurado en `capacitor.config.ts` — `appId` es
 `py.com.zentra.movil`, el mismo `package_name` que trae el `google-services.json`
 de Firebase. **No corras `npx cap init` de nuevo**: sobreescribiría eso.
 
+## El error que compila bien y sale mal
+
+`npm run android:init` **vuelve a correr `npm run build` por dentro** —tiene
+que, porque el proyecto nativo copia lo que haya en `out/`—. Si en ese segundo
+build las variables no están, pisa el primero con uno de datos de ejemplo.
+
+El APK compila igual, sin un solo error, y sale con datos falsos.
+
+Pasó en el workflow: las variables estaban puestas en el paso del build web y no
+en el del `android:init`. Ahora van a nivel del job, y hay dos verificaciones:
+una mira `out/` y la otra abre el `.apk` y busca adentro. La segunda es la que
+importa, porque es lo que realmente se instala.
+
 ## 1. Las variables, ANTES de compilar
 
 Copiá `.env.example` a `.env.local` y completá:
