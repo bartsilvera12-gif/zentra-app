@@ -13,6 +13,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -86,3 +89,26 @@ jobs:
           name: zentra-movil-${{ github.sha }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      # Un link fijo para bajar el ultimo APK, sin entrar a Actions ni
+      # descomprimir un zip. Se le puede pasar a cualquiera que tenga que
+      # probar: siempre apunta al ultimo, no hay forma de bajar uno viejo por
+      # error.
+      #
+      # El nombre lleva el commit corto adentro: cuando alguien reporta algo,
+      # se sabe exactamente que version tenia instalada. "La ultima" no es una
+      # respuesta cuando hay tres builds en el dia.
+      - name: Publicar el APK en un link fijo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          corto="${SHA:0:7}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "zentra-movil-$corto.apk"
+          gh release delete apk-ultimo --yes --cleanup-tag 2>/dev/null || true
+          gh release create apk-ultimo "zentra-movil-$corto.apk" \
+            --title "Ultimo APK ($corto)" \
+            --notes "Build de $corto. Es un APK de prueba sin firmar para las tiendas: hay que permitir instalar de origenes desconocidos." \
+            --prerelease
+          echo "Link fijo: https://github.com/${{ github.repository }}/releases/download/apk-ultimo/zentra-movil-$corto.apk"
+          echo "O la pagina: https://github.com/${{ github.repository }}/releases/tag/apk-ultimo"
