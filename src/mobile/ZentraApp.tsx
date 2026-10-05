@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import { conectarAtras } from "@/lib/atras";
 import { useApp } from "@/store/AppContext";
 import { PhoneFrame } from "./layout/PhoneFrame";
 import { ClientesScreen } from "./screens/ClientesScreen";
@@ -52,6 +54,31 @@ function CurrentScreen() {
 }
 
 export function ZentraApp() {
+  const { s, set } = useApp();
+
+  // El botón "atrás" de Android. Sin esto, el gesto más usado del sistema
+  // cerraba la app desde cualquier pantalla.
+  const estado = useRef(s);
+  estado.current = s;
+  useEffect(() => {
+    // El listener se arma una sola vez y lee el estado por referencia: si
+    // dependiera de `s`, se desconectaría y reconectaría en cada tecla que
+    // alguien escribe en un buscador.
+    let soltar: (() => void) | undefined;
+    let vivo = true;
+    void conectarAtras(
+      () => estado.current,
+      (p) => set(p),
+    ).then((f) => {
+      if (vivo) soltar = f;
+      else f();
+    });
+    return () => {
+      vivo = false;
+      soltar?.();
+    };
+  }, [set]);
+
   return (
     /* En el celular esto no es una maqueta que se presenta: es la app. El
        encabezado, el texto explicativo y los márgenes se van (ver globals.css). */

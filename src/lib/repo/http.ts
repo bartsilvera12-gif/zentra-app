@@ -18,7 +18,7 @@
  */
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
-import { sb, tenantEnUso } from "../supabase/client";
+import { hayTenantActivo, sb, tenantEnUso } from "../supabase/client";
 import type { Cliente, Compra, InvProducto, Iva, Proveedor, Venta } from "../types";
 import type { Repo } from "./ports";
 
@@ -54,10 +54,63 @@ function baseDeApi(): string {
   return base;
 }
 
+/**
+ * Saca la lista de la respuesta, venga como venga.
+ *
+ * Cada endpoint del ERP envuelve distinto, y no hay regla: `/clientes` devuelve
+ * el array pelado en `data`, mientras `/productos` lo pone en `data.productos`,
+ * `/ventas` en `data.ventas`, y así. Asumir una sola forma reventaba con
+ * "(intermediate value).map is not a function", que no le dice nada a nadie.
+ *
+ * Se acepta cualquiera de las dos y, si no es ninguna, el error nombra el
+ * endpoint y lo que llegó.
+ */
+function comoLista<T>(crudo: unknown, clave: string, ruta: string): T[] {
+  if (Array.isArray(crudo)) return crudo as T[];
+  if (crudo && typeof crudo === "object") {
+    const dentro = (crudo as Record<string, unknown>)[clave];
+    if (Array.isArray(dentro)) return dentro as T[];
+  }
+  // Nada de devolver [] en silencio: una lista vacía se lee como "no hay",
+  // y acá el problema es que la respuesta tiene otra forma.
+  throw new ApiError(
+    `El ERP devolvió algo inesperado en ${ruta} (se esperaba una lista o { ${clave}: [...] }).`,
+    200,
+    ruta,
+  );
+}
+
+/**
+ * Token de respaldo, para el momento del login: entre que Supabase valida la
+ * contraseña y guarda la sesión, el pedido del perfil ya sale.
+ */
 let token: string | null = null;
 
 export function setToken(t: string | null): void {
   token = t;
+}
+
+/**
+ * El token que va en cada pedido, leído de la sesión viva y no de una copia.
+ *
+ * Esto estaba guardado una sola vez al entrar. Supabase renueva el token cada
+ * hora, pero nuestra copia se quedaba con el viejo: a la hora, todo pedido al
+ * ERP contestaba 401 y la app parecía haber cerrado sesión sola. El vendedor
+ * volvía a entrar y le pasaba de nuevo.
+ *
+ * `getSession` lee de lo guardado en el teléfono; sólo sale a la red si el
+ * token ya venció, y ahí lo renueva, que es justo lo que hay que hacer.
+ */
+async function tokenVigente(): Promise<string | null> {
+  if (!hayTenantActivo()) return token;
+  try {
+    const { data } = await sb().auth.getSession();
+    return data.session?.access_token ?? token;
+  } catch {
+    // Si la renovación falla (sin señal), se manda el que había: el ERP dirá
+    // si todavía sirve. Mejor que no mandar nada y forzar un 401 seguro.
+    return token;
+  }
 }
 
 /** Status y cuerpo sin interpretar, igual venga del navegador o de nativo. */
@@ -151,9 +204,10 @@ export async function request<T>(
     }
   }
 
+  const vigente = await tokenVigente();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(vigente ? { Authorization: `Bearer ${vigente}` } : {}),
     ...((rest.headers as Record<string, string> | undefined) ?? {}),
   };
 
@@ -572,10 +626,8 @@ export const httpRepo: Repo = {
 
   clientes: {
     async list(params) {
-      const filas = await request<ClienteErp[]>("/clientes", {
-        query: { q: params?.q, estado: params?.estado },
-      });
-      return filas.map(aCliente);
+      const r = await request<unknown>("/clientes", { query: { q: params?.q, estado: params?.estado } });
+      return comoLista<ClienteErp>(r, "clientes", "/clientes").map(aCliente);
     },
     async get(id) {
       const c = await request<ClienteErp | null>(`/clientes/${encodeURIComponent(id)}`);
@@ -598,12 +650,12 @@ export const httpRepo: Repo = {
 
   proveedores: {
     async list() {
-      const r = await request<{ proveedores: ProveedorErp[] }>("/proveedores");
-      return (r?.proveedores ?? []).map(aProveedor);
+      const r = await request<unknown>("/proveedores");
+      return comoLista<ProveedorErp>(r, "proveedores", "/proveedores").map(aProveedor);
     },
     async get(id) {
-      const r = await request<{ proveedores: ProveedorErp[] }>("/proveedores");
-      const p = (r?.proveedores ?? []).find((x) => String(x.id) === id);
+      const r = await request<unknown>("/proveedores");
+      const p = comoLista<ProveedorErp>(r, "proveedores", "/proveedores").find((x) => String(x.id) === id);
       return p ? aProveedor(p) : null;
     },
     create: () => pendiente("proveedores.create"),
@@ -613,10 +665,8 @@ export const httpRepo: Repo = {
 
   inventario: {
     async list(params) {
-      const filas = await request<ProductoErp[]>("/productos", {
-        query: { q: params?.q, filtro: params?.filtro },
-      });
-      return filas.map(aProducto);
+      const r = await request<unknown>("/productos", { query: { q: params?.q, filtro: params?.filtro } });
+      return comoLista<ProductoErp>(r, "productos", "/productos").map(aProducto);
     },
     async get(id) {
       const p = await request<ProductoErp | null>(`/productos/${encodeURIComponent(id)}`);
@@ -629,9 +679,8 @@ export const httpRepo: Repo = {
 
   ventas: {
     async productos(params) {
-      const filas = await request<ProductoErp[]>("/productos", {
-        query: { q: params?.q, vendibles: true },
-      });
+      const r = await request<unknown>("/productos", { query: { q: params?.q, vendibles: true } });
+      const filas = comoLista<ProductoErp>(r, "productos", "/productos");
       return filas.map((p) => {
         const inv = aProducto(p);
         return {
@@ -645,10 +694,10 @@ export const httpRepo: Repo = {
       });
     },
     async list(params) {
-      const filas = await request<VentaErp[]>("/ventas", {
+      const r = await request<unknown>("/ventas", {
         query: { desde: params.desde, hasta: params.hasta, q: params.q, estado: params.estado },
       });
-      return filas.map(aVenta);
+      return comoLista<VentaErp>(r, "ventas", "/ventas").map(aVenta);
     },
     async get(id) {
       const v = await request<VentaErp | null>(`/ventas/${encodeURIComponent(id)}`);
@@ -735,12 +784,12 @@ export const httpRepo: Repo = {
 
   compras: {
     async list() {
-      const r = await request<{ compras: CompraErp[] }>("/compras");
-      return (r?.compras ?? []).map(aCompra);
+      const r = await request<unknown>("/compras");
+      return comoLista<CompraErp>(r, "compras", "/compras").map(aCompra);
     },
     async get(id) {
-      const r = await request<{ compras: CompraErp[] }>("/compras");
-      const c = (r?.compras ?? []).find((x) => String(x.id) === id);
+      const r = await request<unknown>("/compras");
+      const c = comoLista<CompraErp>(r, "compras", "/compras").find((x) => String(x.id) === id);
       return c ? aCompra(c) : null;
     },
     create: () => pendiente("compras.create"),

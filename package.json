@@ -15,13 +15,15 @@
     "sync": "npm run build && npx cap sync",
     "android:init": "node scripts/android-init.mjs",
     "android": "npm run sync && npx cap open android",
-    "test": "npm run test:directorio && npm run test:api && npm run test:nombre && npm run test:sin-ejemplo",
+    "test": "npm run test:directorio && npm run test:api && npm run test:nombre && npm run test:sin-ejemplo && npm run test:atras",
     "test:directorio": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/directorio.mjs",
     "test:nombre": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/nombre.mjs",
     "test:sin-ejemplo": "node test/sin-ejemplo.mjs",
+    "test:atras": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/atras.mjs",
     "test:api": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/api-erp.mjs"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/push-notifications": "^8.1.3",
     "@supabase/supabase-js": "^2.117.2",
