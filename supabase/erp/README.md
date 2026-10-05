@@ -109,16 +109,21 @@ Decisiones que vale la pena conocer:
 - **`baja_operativa_at`** cuenta como inactivo: la fila sigue, el cliente no opera.
 - **`deleted_at`** es borrado lógico: esas filas no existen para la app.
 - **Los montos se redondean a entero**, porque el guaraní no tiene centavos.
-- **El IVA** se decide extrayendo el número de `tipo_iva`. Hay que confirmar qué
-  guarda el ERP ahí:
-
-  ```sql
-  select distinct tipo_iva from distribuidorajmerp.productos;
-  ```
+- **El IVA** se decide extrayendo el número de `tipo_iva`. En este ERP los
+  valores son `10%` y `5%`, confirmado.
 
   La primera versión preguntaba si el texto contenía un `0` para decidir
   "Exenta", y `IVA 10%` lo contiene: **todos los productos al 10% habrían salido
   exentos y las facturas sin IVA.** Lo encontró la prueba.
+- **Una venta anulada** (`anulada_at`) no aparece: no puede sumar en los totales
+  del día.
+- **El estado** se reduce a Cobrada o Pendiente, que es lo único que distingue la
+  app. Lo que el ERP no da por cerrado queda Pendiente: es el lado seguro, porque
+  una venta pendiente mostrada como cobrada esconde plata sin cobrar.
+- **El nombre del producto en la línea** sale de `producto_nombre`, que el ERP
+  copia en la línea, y no de un join con `productos`. Así una factura vieja sigue
+  diciendo lo que decía aunque después le cambien el nombre al producto, y no se
+  pierden las líneas de productos borrados.
 
 ## Conectarlo con la app
 

@@ -40,6 +40,33 @@ values
   ('aaaa1111-1111-1111-1111-111111111111', 'Insumo interno',       'INS-1',   100,    0,       5,   0,  'UN', true, false, '10%'),
   ('bbbb2222-2222-2222-2222-222222222222', 'De otra empresa',      'OTRO',    1,      1,       1,   0,  'UN', true, true, '10%');
 
+create table distribuidorajmerp.ventas (
+  id uuid primary key default gen_random_uuid(), empresa_id uuid, cliente_id uuid,
+  numero_control text, moneda text, subtotal numeric, monto_iva numeric, total numeric,
+  estado text, tipo_venta text, plazo_dias integer, fecha timestamptz, created_at timestamptz,
+  metodo_pago text, usuario_nombre text, anulada_at timestamptz
+);
+create table distribuidorajmerp.ventas_items (
+  id uuid primary key default gen_random_uuid(), empresa_id uuid, venta_id uuid, producto_id uuid,
+  producto_nombre text, sku text, cantidad numeric, precio_venta numeric, tipo_iva text,
+  subtotal numeric, monto_iva numeric, total_linea numeric, cantidad_total_base numeric
+);
+
+insert into distribuidorajmerp.ventas
+  (id, empresa_id, numero_control, moneda, monto_iva, total, estado, tipo_venta, plazo_dias, fecha, created_at, metodo_pago, usuario_nombre, anulada_at)
+values
+  ('cccc0001-0000-0000-0000-000000000001', 'aaaa1111-1111-1111-1111-111111111111', 'VTA-000123', 'PYG', 3045.4, 33500.6, 'cobrada',  'contado', null, now(), now(), 'efectivo',      'Ulises Gómez', null),
+  ('cccc0001-0000-0000-0000-000000000002', 'aaaa1111-1111-1111-1111-111111111111', 'VTA-000124', 'PYG', 1000,   11000,   'pendiente','credito', 30,   now(), now(), null,            'Ulises Gómez', null),
+  ('cccc0001-0000-0000-0000-000000000003', 'aaaa1111-1111-1111-1111-111111111111', 'VTA-000125', 'PYG', 500,    5500,    'cobrada',  'contado', null, now(), now(), 'transferencia', 'Ulises Gómez', now()),
+  ('cccc0001-0000-0000-0000-000000000004', 'bbbb2222-2222-2222-2222-222222222222', 'VTA-999',    'PYG', 1,      1,       'cobrada',  'contado', null, now(), now(), 'efectivo',      'Otro',         null);
+
+insert into distribuidorajmerp.ventas_items
+  (empresa_id, venta_id, producto_nombre, sku, cantidad, precio_venta, tipo_iva, total_linea)
+values
+  ('aaaa1111-1111-1111-1111-111111111111', 'cccc0001-0000-0000-0000-000000000001', 'Aceite Girasol 900ml', 'ACE-900', 2, 11500.6, '10%', 23001),
+  ('aaaa1111-1111-1111-1111-111111111111', 'cccc0001-0000-0000-0000-000000000001', 'Leche Larga Vida 1L',  'LEC-1L',  1, 7300,    '5%',  7300),
+  ('bbbb2222-2222-2222-2222-222222222222', 'cccc0001-0000-0000-0000-000000000004', 'De otra empresa',      'OTRO',    1, 1,       '10%', 1);
+
 \i supabase/erp/10_generador.sql
 \i supabase/erp/20_mapeo_jm.sql
 
@@ -75,6 +102,40 @@ begin
   assert r.iva = '5%', '5% mal mapeado: ' || r.iva;
   select * into r from zentra_jm.productos where sku = 'LIB-1';
   assert r.iva = 'Exenta', 'Exenta mal mapeada: ' || r.iva;
+end $$;
+\echo ''
+\echo 'VENTAS que vería la app:'
+select numero, fecha, condicion, metodo, plazo_dias, estado, total, iva from zentra_jm.ventas order by numero;
+\echo ''
+\echo 'LÍNEAS:'
+select nombre, cantidad, precio, iva, total from zentra_jm.venta_lineas order by nombre;
+
+do $$
+declare n int; r record;
+begin
+  select count(*) into n from zentra_jm.ventas;
+  assert n = 2, 'esperaba 2 ventas (una anulada y una de otra empresa, fuera), hay ' || n;
+  select count(*) into n from zentra_jm.ventas where numero = 'VTA-999';
+  assert n = 0, 'aparece una venta de otra empresa';
+  select count(*) into n from zentra_jm.ventas where numero = 'VTA-000125';
+  assert n = 0, 'aparece una venta anulada';
+
+  select * into r from zentra_jm.ventas where numero = 'VTA-000123';
+  assert r.condicion = 'Contado', 'condicion esperaba Contado, fue ' || r.condicion;
+  assert r.estado = 'Cobrada', 'estado esperaba Cobrada, fue ' || r.estado;
+  assert r.total = 33501, 'el total tiene que redondear, fue ' || r.total;
+  assert r.iva = 3045, 'el IVA tiene que redondear, fue ' || r.iva;
+
+  select * into r from zentra_jm.ventas where numero = 'VTA-000124';
+  assert r.condicion = 'Crédito', 'credito mal traducido: ' || r.condicion;
+  assert r.estado = 'Pendiente', 'pendiente mal traducido: ' || r.estado;
+  assert r.plazo_dias = 30, 'se perdió el plazo';
+
+  select count(*) into n from zentra_jm.venta_lineas;
+  assert n = 2, 'esperaba 2 líneas de esta empresa, hay ' || n;
+  select * into r from zentra_jm.venta_lineas where nombre like 'Aceite%';
+  assert r.precio = 11501, 'el precio de la línea tiene que redondear, fue ' || r.precio;
+  assert r.iva = '10%', 'IVA de la línea mal mapeado: ' || r.iva;
 end $$;
 \echo ''
 \echo 'Mapeo de JM: todas las comprobaciones pasaron.'

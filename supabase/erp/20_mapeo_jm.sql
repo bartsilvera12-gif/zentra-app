@@ -14,9 +14,12 @@
 
 insert into zentra_erp.origen (vista, tabla, filtro) values
   -- `deleted_at` es borrado lógico: esas filas no existen para la app.
-  ('clientes',  'clientes',  'deleted_at is null'),
+  ('clientes',     'clientes',     'deleted_at is null'),
   -- Lo que no es vendible no va al catálogo de una app de ventas.
-  ('productos', 'productos', 'activo is not false and es_vendible is not false')
+  ('productos',    'productos',    'activo is not false and es_vendible is not false'),
+  -- Una venta anulada no es una venta: no puede sumar en los totales del día.
+  ('ventas',       'ventas',       'anulada_at is null'),
+  ('venta_lineas', 'ventas_items', null)
 on conflict (vista) do update
   set tabla = excluded.tabla, filtro = excluded.filtro;
 
@@ -75,5 +78,54 @@ insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
        when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '0'  then 'Exenta'
        else '10%'
      end$$, 11)
+on conflict (vista, campo) do update
+  set expresion = excluded.expresion, orden = excluded.orden;
+
+-- ---------- ventas ----------
+-- El ERP guarda contado/crédito en `tipo_venta` y la app en `condicion`; los
+-- valores no tienen por qué coincidir, así que se traducen.
+
+insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+  ('ventas', 'id',          'id::text', 1),
+  ('ventas', 'numero',      $$coalesce(nullif(btrim(numero_control), ''), left(id::text, 8))$$, 2),
+  ('ventas', 'cliente_id',  'cliente_id::text', 3),
+  ('ventas', 'fecha',       'coalesce(fecha, created_at)::date', 4),
+  ('ventas', 'condicion',   $$case when tipo_venta ~* 'cred|credito|cuota' then 'Crédito' else 'Contado' end$$, 5),
+  ('ventas', 'metodo',      'metodo_pago', 6),
+  ('ventas', 'plazo_dias',  'plazo_dias', 7),
+  -- La app sólo distingue cobrada de pendiente. Todo lo que el ERP no dé por
+  -- cerrado queda como pendiente: es el lado seguro, porque una venta pendiente
+  -- mostrada como cobrada esconde plata que falta cobrar.
+  ('ventas', 'estado',      $$case when estado ~* 'cobrad|pagad|cerrad|complet' then 'Cobrada' else 'Pendiente' end$$, 8),
+  ('ventas', 'moneda',      $$coalesce(nullif(btrim(moneda), ''), 'PYG')$$, 9),
+  ('ventas', 'total',       'round(coalesce(total, 0))::bigint', 10),
+  ('ventas', 'iva',         'round(coalesce(monto_iva, 0))::bigint', 11),
+  ('ventas', 'usuario',     'usuario_nombre', 12),
+  ('ventas', 'creado_en',   'created_at', 13)
+on conflict (vista, campo) do update
+  set expresion = excluded.expresion, orden = excluded.orden;
+
+-- ---------- líneas de venta ----------
+-- `producto_nombre` y `sku` están copiados en la línea: así la factura vieja
+-- sigue diciendo lo que decía aunque después le cambien el nombre al producto.
+-- Se usa eso y no un join con productos, que además perdería los borrados.
+
+insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+  ('venta_lineas', 'id',          'id::text', 1),
+  ('venta_lineas', 'venta_id',    'venta_id::text', 2),
+  ('venta_lineas', 'producto_id', 'producto_id::text', 3),
+  ('venta_lineas', 'nombre',      $$coalesce(nullif(btrim(producto_nombre), ''), sku, '(sin nombre)')$$, 4),
+  ('venta_lineas', 'cantidad',    'coalesce(cantidad_total_base, cantidad, 0)', 5),
+  -- La app trabaja con el precio CON IVA incluido, que es como se factura en
+  -- Paraguay. `precio_venta` del ERP ya lo incluye.
+  ('venta_lineas', 'precio',      'round(coalesce(precio_venta, 0))::bigint', 6),
+  ('venta_lineas', 'iva',         $$case
+       when tipo_iva ~* 'exent|exonerad'                 then 'Exenta'
+       when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '10' then '10%'
+       when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '5'  then '5%'
+       when (regexp_match(tipo_iva, '([0-9]+)'))[1] = '0'  then 'Exenta'
+       else '10%'
+     end$$, 7),
+  ('venta_lineas', 'total',       'round(coalesce(total_linea, 0))::bigint', 8)
 on conflict (vista, campo) do update
   set expresion = excluded.expresion, orden = excluded.orden;
