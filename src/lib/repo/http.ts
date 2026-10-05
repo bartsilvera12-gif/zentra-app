@@ -404,6 +404,44 @@ function aVenta(v: VentaErp): Venta {
  * y productos, y registrar ventas. El resto avisa qué falta en vez de fallar en
  * silencio o devolver datos inventados.
  */
+/**
+ * Quién es el que entró, según el ERP.
+ *
+ * El endpoint es `GET /api/usuarios/me`, y tiene dos particularidades que no
+ * comparte con el resto: contesta `{ usuario: {...} }` en vez del
+ * `{ success, data }` de los demás, y **no devuelve el nombre de la empresa**,
+ * sólo su `data_schema`.
+ *
+ * Por eso el nombre de la empresa se toma del directorio, que es quien ya lo
+ * sabe: es el que el usuario eligió al escribir su código. Mostrar el schema
+ * ahí —"neura", "zentra_jm"— sería mostrarle jerga de base de datos a un
+ * vendedor.
+ */
+export async function leerPerfil(): Promise<{ id: string; nombre: string; rol: string; empresa: string }> {
+  const r = await request<{
+    usuario?: {
+      id?: string | null;
+      nombre?: string | null;
+      rol?: string | null;
+      email?: string | null;
+    } | null;
+  }>("/usuarios/me");
+  const u = r?.usuario;
+  if (!u) {
+    throw new ApiError("El ERP no devolvió el perfil del usuario.", 500, "/usuarios/me");
+  }
+  return {
+    // Sin id no se puede registrar una venta a nombre de nadie.
+    id: u.id || "",
+    // El ERP puede no tener el nombre cargado; el correo es mejor que un vacío.
+    nombre: primero(u.nombre, u.email),
+    // Ante la duda, el rol más limitado: que falte un permiso se ve y se
+    // arregla; que sobre uno no se ve hasta que alguien hizo algo que no debía.
+    rol: u.rol || "VENDEDOR",
+    empresa: tenantEnUso()?.nombre || "",
+  };
+}
+
 export const httpRepo: Repo = {
   auth: {
     async login(usuario, password) {
@@ -417,22 +455,9 @@ export const httpRepo: Repo = {
       if (!data.session) throw new ApiError("No se pudo iniciar sesión.", 401, "/auth");
 
       setToken(data.session.access_token);
-      const perfil = await request<{
-        id: string;
-        nombre?: string | null;
-        rol?: string | null;
-        empresa?: string | null;
-      }>("/perfil");
+      const perfil = await leerPerfil();
 
-      return {
-        token: data.session.access_token,
-        usuario: {
-          id: perfil.id,
-          nombre: perfil.nombre || "",
-          rol: perfil.rol || "VENDEDOR",
-          empresa: perfil.empresa || "",
-        },
-      };
+      return { token: data.session.access_token, usuario: perfil };
     },
 
     async logout() {
@@ -444,21 +469,8 @@ export const httpRepo: Repo = {
       const { data } = await sb().auth.getSession();
       if (!data.session) return null;
       setToken(data.session.access_token);
-      const perfil = await request<{
-        id: string;
-        nombre?: string | null;
-        rol?: string | null;
-        empresa?: string | null;
-      }>("/perfil");
-      return {
-        token: data.session.access_token,
-        usuario: {
-          id: perfil.id,
-          nombre: perfil.nombre || "",
-          rol: perfil.rol || "VENDEDOR",
-          empresa: perfil.empresa || "",
-        },
-      };
+      const perfil = await leerPerfil();
+      return { token: data.session.access_token, usuario: perfil };
     },
 
     async recuperarPassword(correo) {

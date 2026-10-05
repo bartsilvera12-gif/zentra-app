@@ -62,6 +62,19 @@ APK el origen es `https://localhost`, no un dominio.
 Es un cambio chico, pero **sin él nada de esto funciona**, y el error que se ve
 es confuso: parece un problema de red y es una política del navegador.
 
+### El perfil no se llama `/perfil`
+
+Yo había escrito `/perfil`. **No existe.** El endpoint real es
+`GET /api/usuarios/me`, y tiene dos particularidades que no comparte con los
+demás:
+
+- Contesta `{ "usuario": {...} }`, **no** el `{ success, data }` del resto.
+- **No devuelve el nombre de la empresa**, sólo su `data_schema`.
+
+El nombre de la empresa se toma del directorio, que ya lo sabe: es el que el
+usuario eligió al escribir su código. Mostrar el `data_schema` ahí —`neura`,
+`zentra_jm`— sería mostrarle jerga de base de datos a un vendedor.
+
 ### Los valores reales, verificados contra la base de JM
 
 No los supuse: salieron de consultar las tablas del ERP de Distribuidora JM.

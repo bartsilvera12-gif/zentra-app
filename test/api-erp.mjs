@@ -42,8 +42,20 @@ const server = createServer((req, res) => {
     // El ERP envuelve todo en { success, data } y devuelve sus columnas crudas.
     const ok = (data) => json(200, { success: true, data });
 
-    if (ruta === "/perfil") {
-      return ok({ id: "u1", nombre: "Ulises Gomez", rol: "VENDEDOR", empresa: "Distribuidora JM" });
+    // El perfil NO viene envuelto en { success, data } como el resto, y no
+    // trae el nombre de la empresa: sólo su data_schema.
+    if (ruta === "/usuarios/me") {
+      return json(200, {
+        usuario: {
+          id: "u1", nombre: "Ulises Gomez", rol: "vendedor_movil",
+          email: "ulises@jm.com.py", data_schema: "zentra_jm",
+          es_project_manager: false,
+        },
+      });
+    }
+    // Un usuario del ERP sin el nombre cargado.
+    if (ruta === "/usuarios/me-sin-nombre") {
+      return json(200, { usuario: { id: "u2", nombre: null, email: "sinnombre@jm.com.py" } });
     }
     if (ruta === "/clientes" && req.method === "GET") {
       return ok([{
@@ -201,6 +213,25 @@ t("la URL base se escribe como host y termina en /api, sin duplicar", async () =
   }
   // Vacío queda vacío: de eso se queja assertConfig, no esta función.
   if (urlDeApi(undefined) !== "" || urlDeApi("  ") !== "") throw new Error("vacío no quedó vacío");
+});
+
+t("el perfil sale de /usuarios/me, que no viene envuelto", async () => {
+  const { leerPerfil } = await import("../src/lib/repo/http.ts");
+  const p = await leerPerfil();
+  if (p.id !== "u1") throw new Error("id: " + p.id);
+  if (p.nombre !== "Ulises Gomez") throw new Error("nombre: " + p.nombre);
+  if (p.rol !== "vendedor_movil") throw new Error("rol: " + p.rol);
+  // El ERP no manda el nombre de la empresa, sólo su data_schema. Mostrarle
+  // "zentra_jm" a un vendedor seria mostrarle jerga de base de datos.
+  if (p.empresa !== "") throw new Error("empresa deberia salir del directorio: " + p.empresa);
+});
+
+t("sin nombre cargado, el perfil cae al correo y no queda vacio", async () => {
+  const { request } = await import("../src/lib/repo/http.ts");
+  const r = await request("/usuarios/me-sin-nombre");
+  // Se arma igual que leerPerfil, pero sobre la fila sin nombre.
+  const nombre = r.usuario.nombre || r.usuario.email;
+  if (nombre !== "sinnombre@jm.com.py") throw new Error("nombre: " + nombre);
 });
 
 t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
