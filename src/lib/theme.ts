@@ -24,14 +24,15 @@ export const THEME: Record<ThemeName, ThemeTokens> = {
 /**
  * Los colores de la marca, en un solo lugar.
  *
- * Antes cada pantalla tenía el suyo —azul, oro, violeta, cian, naranja— y el
- * inicio seis botones de seis colores distintos. Parecía otra app en cada
- * pantalla, y el color no significaba nada: era decoración. Cuando todo
- * resalta, no resalta nada, y lo que de verdad importa —un stock agotado, una
- * venta sin cobrar— se perdía entre lo demás.
+ * Antes cada pantalla de adentro tenía el suyo —azul, oro, violeta, cian— y el
+ * encabezado cambiaba de color al navegar: parecía otra app en cada pantalla.
  *
- * Ahora hay un azul para el encabezado y un verde de acento, que son los dos
- * de la marca. El color vuelve a querer decir algo: los avisos.
+ * Ahora el encabezado es siempre el mismo azul, con un verde de acento. Los
+ * dos son de la marca. El ámbar y el naranja quedan para los avisos, que es
+ * donde el color tiene que querer decir algo.
+ *
+ * Los botones del inicio son la excepción y conservan sus seis colores: ahí
+ * sirven para encontrar el de siempre sin leer. Ver `MODULES`.
  */
 export const MARCA = {
   /** El encabezado de todas las pantallas. */
@@ -63,18 +64,27 @@ export const MARCA = {
 } as const;
 
 /**
- * Los módulos ya no llevan color propio: el ícono y el nombre alcanzan para
- * distinguirlos. `color` es el fondo en reposo y `fill` el que se pinta al
- * tocarlo.
+ * Los botones del inicio. Acá el color SÍ se queda.
+ *
+ * Es la única pantalla donde seis colores ayudan en vez de molestar: son seis
+ * destinos uno al lado del otro, siempre en el mismo lugar, y el color es lo
+ * que deja encontrar el de siempre sin leer. Un vendedor que entra veinte
+ * veces por día va al naranja, no a "Conversaciones".
+ *
+ * Lo que molestaba era el resto: que cada pantalla de adentro tuviera además
+ * su propio acento, y que el encabezado cambiara de color al navegar. Eso se
+ * unificó; esto no.
+ *
+ * `color` es el fondo en reposo y `fill` el que se pinta al tocarlo.
  */
 export const MODULES: Record<ModuleKey, ModuleDef> = {
-  venta: { title: "Nueva venta", color: MARCA.header, fill: MARCA.headerSuave, over: MARCA.sobre },
-  clientes: { title: "Clientes", color: MARCA.header, fill: MARCA.headerSuave, over: MARCA.sobre },
-  compras: { title: "Compras", color: MARCA.header, fill: MARCA.headerSuave, over: MARCA.sobre },
-  inventario: { title: "Inventario", color: MARCA.header, fill: MARCA.headerSuave, over: MARCA.sobre },
-  conversaciones: { title: "Conversaciones", color: MARCA.header, fill: MARCA.headerSuave, over: MARCA.sobre },
-  proveedores: { title: "Proveedores", color: MARCA.header, fill: MARCA.headerSuave, over: MARCA.sobre },
-  reportes: { title: "Reportes", color: MARCA.header, fill: MARCA.headerSuave, over: MARCA.sobre },
+  venta: { title: "Nueva venta", color: "#023047", fill: "#04617A", over: "#ffffff" },
+  clientes: { title: "Clientes", color: "#04617A", fill: "#023047", over: "#ffffff" },
+  compras: { title: "Compras", color: "#FFB701", fill: "#FC8500", over: "#023047" },
+  inventario: { title: "Inventario", color: "#8ECAE6", fill: "#8ECAE6", over: "#023047" },
+  conversaciones: { title: "Conversaciones", color: "#FC8500", fill: "#FFB701", over: "#023047" },
+  proveedores: { title: "Proveedores", color: "#209EBB", fill: "#8ECAE6", over: "#023047" },
+  reportes: { title: "Reportes", color: "#023047", fill: "#04617A", over: "#ffffff" },
 };
 
 /** Brand palette, named so screens stop repeating raw hex. */
