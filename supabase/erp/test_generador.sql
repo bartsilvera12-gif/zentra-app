@@ -250,5 +250,39 @@ begin
 end $$;
 \echo '  OK 10 · el directorio lista sólo lo que generamos'
 
+-- ---------- 11. una vista desde otro schema ----------
+-- El catálogo del ERP —usuarios, empresas— vive aparte de los datos de cada
+-- empresa. La vista de usuarios tiene que poder salir de ahí.
+create schema erp_catalogo;
+create table erp_catalogo.usuarios (
+  id uuid primary key, empresa_id uuid, nombre_completo text, rol_app text
+);
+insert into erp_catalogo.usuarios values
+  ('99999999-9999-9999-9999-999999999999', '11111111-1111-1111-1111-111111111111', 'Vendedor Uno', 'VENDEDOR'),
+  ('88888888-8888-8888-8888-888888888888', '22222222-2222-2222-2222-222222222222', 'De otra empresa', 'ADMIN');
+
+insert into zentra_movil.origen (vista, tabla, filtro, schema_origen)
+  values ('usuarios', 'usuarios', null, 'erp_catalogo');
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
+  ('usuarios', 'id', 'id::text', 1),
+  ('usuarios', 'nombre', 'nombre_completo', 2),
+  ('usuarios', 'rol', 'rol_app', 3),
+  ('usuarios', 'empresa_id', 'empresa_id::text', 4);
+
+do $$
+declare n int; r record;
+begin
+  perform zentra_movil.generar('UNO', 'erp_compartido', '11111111-1111-1111-1111-111111111111');
+
+  select count(*) into n from zentra_uno.usuarios;
+  assert n = 1, 'la vista de usuarios tendría que traer 1 de esta empresa, trajo ' || n;
+  select * into r from zentra_uno.usuarios;
+  assert r.nombre = 'Vendedor Uno', 'mapeó mal el nombre: ' || coalesce(r.nombre, '(null)');
+  -- Y las otras vistas siguen saliendo del schema de datos.
+  select count(*) into n from zentra_uno.clientes;
+  assert n = 2, 'las demás vistas se rompieron: clientes trajo ' || n;
+end $$;
+\echo '  OK 11 · una vista puede salir de otro schema que el de los datos'
+
 \echo ''
 \echo 'Generador de vistas: todas las pruebas pasaron.'

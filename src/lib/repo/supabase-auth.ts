@@ -41,9 +41,13 @@ function traducir(msg: string): string {
  * estar visible todavía.
  */
 async function leerPerfil(userId: string, reintentar = true): Promise<Sesion["usuario"]> {
+  // Dos consultas y no un `empresas(nombre)` embebido: el join de PostgREST se
+  // apoya en la clave foránea, y una instalación sobre un ERP expone **vistas**,
+  // que no tienen claves foráneas. Con el join, ahí el login fallaba entero.
+  // Son dos viajes, una sola vez, al entrar.
   const { data, error } = await sb()
     .from("usuarios")
-    .select("id, nombre, rol, empresa_id, empresas(nombre)")
+    .select("id, nombre, rol, empresa_id")
     .eq("id", userId)
     .maybeSingle();
 
@@ -63,16 +67,26 @@ async function leerPerfil(userId: string, reintentar = true): Promise<Sesion["us
     id: string;
     nombre: string | null;
     rol: string | null;
-    empresa_id: string;
-    empresas: { nombre: string } | { nombre: string }[] | null;
+    empresa_id: string | null;
   };
-  const emp = Array.isArray(fila.empresas) ? fila.empresas[0] : fila.empresas;
+
+  // El nombre de la empresa es para mostrar en el encabezado: si no se puede
+  // leer, no vale la pena impedir que la persona entre.
+  let empresa = "";
+  if (fila.empresa_id) {
+    const { data: emp } = await sb()
+      .from("empresas")
+      .select("nombre")
+      .eq("id", fila.empresa_id)
+      .maybeSingle();
+    empresa = (emp as { nombre: string } | null)?.nombre || "";
+  }
 
   return {
     id: fila.id,
     nombre: fila.nombre || "",
     rol: fila.rol || "VENDEDOR",
-    empresa: emp?.nombre || "",
+    empresa,
   };
 }
 

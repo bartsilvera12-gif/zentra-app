@@ -36,6 +36,7 @@ declare
   v_sql     text;
   v_donde   text;
   v_tiene_empresa boolean;
+  v_schema  text;
   v_origen  record;
   -- La marca que distingue un schema generado por nosotros de uno ajeno.
   MARCA constant text := 'zentra-movil: vistas generadas, no editar a mano';
@@ -70,18 +71,24 @@ begin
 
   for v_origen in select * from zentra_movil.origen loop
     v_vista := v_origen.vista;
+    -- El catálogo del ERP (usuarios, empresas) vive aparte de los datos de cada
+    -- empresa, así que cada vista puede decir de qué schema sale.
+    v_schema := coalesce(nullif(btrim(v_origen.schema_origen), ''), p_schema_erp);
+    if not exists (select 1 from information_schema.schemata where schema_name = v_schema) then
+      raise exception 'El schema % de la vista % no existe en esta base', v_schema, v_vista;
+    end if;
 
     -- ¿Esta tabla del ERP mezcla empresas?
     v_tiene_empresa := exists (
       select 1 from information_schema.columns
-       where table_schema = p_schema_erp
+       where table_schema = v_schema
          and table_name   = v_origen.tabla
          and column_name  = 'empresa_id'
     );
     if v_tiene_empresa and p_empresa_id is null then
       raise exception
         '%.% tiene empresa_id: hay varias empresas en ese schema. Pasá el empresa_id de % o la app las vería todas.',
-        p_schema_erp, v_origen.tabla, p_codigo;
+        v_schema, v_origen.tabla, p_codigo;
     end if;
 
     -- Las columnas salen del mapeo, en orden. `format` con %I/%L escapa todo:
@@ -97,7 +104,7 @@ begin
 
     v_sql := format(
       'create or replace view %I.%I as select %s from %I.%I',
-      v_destino, v_vista, v_cols, p_schema_erp, v_origen.tabla
+      v_destino, v_vista, v_cols, v_schema, v_origen.tabla
     );
     -- El filtro de empresa va primero y se arma con %L: es lo único que separa a
     -- una empresa de otra en un schema compartido.

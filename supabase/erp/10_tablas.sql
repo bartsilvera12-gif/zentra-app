@@ -42,5 +42,11 @@ create table if not exists zentra_movil.origen (
   vista  text primary key,
   tabla  text not null,
   -- Filtro opcional, por si el ERP marca bajas con una columna en vez de borrar.
-  filtro text
+  filtro text,
+  -- De qué schema sale esta vista, si no es el de la empresa. El ERP guarda el
+  -- catálogo —usuarios, empresas— aparte de los datos de cada una.
+  schema_origen text
 );
+
+-- Para una base donde 10_tablas.sql ya se había corrido sin esta columna.
+alter table zentra_movil.origen add column if not exists schema_origen text;
