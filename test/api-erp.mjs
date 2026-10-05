@@ -203,6 +203,27 @@ t("la URL base se escribe como host y termina en /api, sin duplicar", async () =
   if (urlDeApi(undefined) !== "" || urlDeApi("  ") !== "") throw new Error("vacío no quedó vacío");
 });
 
+t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
+  const { transporte } = await import("../src/lib/repo/http.ts");
+  if (transporte() !== "navegador") throw new Error("sin Capacitor debería ser navegador");
+
+  // Lo que Capacitor inyecta en el WebView del APK.
+  globalThis.Capacitor = { isNativePlatform: () => true };
+  try {
+    if (transporte() !== "nativo") throw new Error("con Capacitor debería ser nativo");
+  } finally {
+    delete globalThis.Capacitor;
+  }
+
+  // Y una app web no se cuelga del global: ahí sí hace falta CORS.
+  globalThis.Capacitor = { isNativePlatform: () => false };
+  try {
+    if (transporte() !== "navegador") throw new Error("en web debería ser navegador");
+  } finally {
+    delete globalThis.Capacitor;
+  }
+});
+
 t("lo que no está implementado lo dice, no inventa datos", async () => {
   let msg = "";
   try { await httpRepo.compras.list(); } catch (e) { msg = e.message; }

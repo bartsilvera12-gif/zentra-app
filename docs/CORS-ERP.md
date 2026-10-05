@@ -1,9 +1,60 @@
-# CORS en el ERP: el único cambio que falta
+# CORS: cómo verlos todos sin tocar ningún ERP
 
-Este es un cambio **en el ERP**, no en esta app. Yo no lo toco. Acá está el
-parche para que lo apliquen de aquel lado.
+**Hay más de 50 ERPs, uno por cliente.** Parchear CORS en cada uno no es una
+tarea grande: es un diseño equivocado. Serían 50 pull requests, 50 deploys, y uno
+más cada vez que se suma un cliente — y el día que alguien se olvide, la app no
+funciona para ese cliente y el error va a parecer de red.
 
-## ¿En qué ERP? Se parchea una vez y sirve para todas las empresas
+Así que la app no lo necesita.
+
+## La salida: el APK no pasa por el navegador
+
+El CORS es una política **del navegador**. Adentro del APK, los pedidos al ERP
+los hace el código nativo del celular, no la página — y entonces la política no
+aplica. Ni una cabecera, ni un deploy, ni un repo tocado.
+
+Está implementado en `src/lib/repo/http.ts`: si detecta que corre adentro del
+APK, usa el HTTP nativo de Capacitor; si no, el `fetch` de siempre. Hay una
+prueba que fija esa decisión.
+
+A propósito **no** se activa el parche global de Capacitor
+(`plugins.CapacitorHttp.enabled`), que reemplaza el `fetch` de toda la app: por
+ahí pasa también Supabase Auth, y romper el login para arreglar el CORS no es un
+buen negocio. Se usa sólo para los pedidos al ERP.
+
+### Lo que esto no cubre
+
+- **La app abierta en un navegador** (la versión web, o probar desde la compu).
+  Ahí sí aplica CORS. Si alguna vez hace falta, se parchea **ese** ERP y nada
+  más; el parche está más abajo.
+- **Nada más.** Para el APK, que es lo que va a las tiendas, no hace falta tocar
+  ningún ERP.
+
+## Cómo la app ve todos los ERPs
+
+Cada ERP es un deploy con su dominio. La app los resuelve por el **código de
+empresa**, y cada entrada del directorio trae su `apiUrl`:
+
+```json
+{
+  "JM":      { "nombre": "Distribuidora JM", "supabaseUrl": "...", "anonKey": "...",
+               "apiUrl": "https://jm.neura.com.py" },
+  "FERRE":   { "nombre": "Ferretodo", "supabaseUrl": "...", "anonKey": "...",
+               "apiUrl": "https://ferretodo.neura.com.py" }
+}
+```
+
+Con 50 clientes esto no va escrito en el paquete: va en
+`NEXT_PUBLIC_DIRECTORIO_URL`, un JSON servido por red. **Sumar un cliente es
+agregar una línea ahí** — no recompilar la app, no publicar una versión nueva en
+las tiendas, no esperar que Google apruebe.
+
+Y si varios clientes comparten un mismo ERP, comparten `apiUrl`: ese ERP resuelve
+la empresa por el token, como se explica abajo.
+
+---
+
+## Un ERP puede atender a varias empresas
 
 El ERP ya es multiempresa en un solo deploy. Lo verifiqué leyendo
 `src/lib/middleware/api-auth-context.ts` y

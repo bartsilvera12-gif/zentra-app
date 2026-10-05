@@ -60,6 +60,81 @@ export function setToken(t: string | null): void {
   token = t;
 }
 
+/** Status y cuerpo sin interpretar, igual venga del navegador o de nativo. */
+type Respuesta = { status: number; texto: string };
+
+/**
+ * ¿Estamos adentro del APK? Capacitor inyecta este global en el WebView.
+ *
+ * Se mira el global en vez de importar `@capacitor/core` porque este archivo
+ * también corre en el navegador y en Node (las pruebas), donde ese paquete no
+ * tiene nada que hacer.
+ */
+function enNativo(): boolean {
+  const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return typeof c?.isNativePlatform === "function" && c.isNativePlatform();
+}
+
+/**
+ * Por dónde va a salir el próximo pedido. Existe para poder probar la decisión:
+ * el camino nativo en sí sólo se puede verificar en el celular.
+ */
+export function transporte(): "nativo" | "navegador" {
+  return enNativo() ? "nativo" : "navegador";
+}
+
+/**
+ * Pide por el HTTP nativo del celular en vez del `fetch` del WebView.
+ *
+ * Esto es lo que saca al CORS del camino: el pedido no lo hace una página, lo
+ * hace la app, y la política de orígenes es del navegador. Sin esto habría que
+ * agregar cabeceras CORS en cada uno de los ERPs —son decenas, uno por cliente—
+ * y repetirlo cada vez que se suma uno.
+ *
+ * Se usa sólo acá, para los pedidos al ERP. A propósito NO se activa el parche
+ * global de Capacitor (`plugins.CapacitorHttp.enabled`), que reemplaza el
+ * `fetch` de toda la app: por ahí pasa también Supabase Auth, y romper el login
+ * para arreglar el CORS no es un buen negocio.
+ */
+async function porNativo(
+  url: string,
+  metodo: string,
+  headers: Record<string, string>,
+  body: string | null,
+): Promise<Respuesta> {
+  const { CapacitorHttp } = await import("@capacitor/core");
+  const res = await CapacitorHttp.request({
+    url,
+    method: metodo,
+    headers,
+    // El plugin serializa según el Content-Type, así que espera el objeto.
+    data: body ? (JSON.parse(body) as unknown) : undefined,
+    responseType: "text",
+    connectTimeout: config.timeoutMs,
+    readTimeout: config.timeoutMs,
+  });
+  return {
+    status: res.status,
+    texto: typeof res.data === "string" ? res.data : JSON.stringify(res.data ?? ""),
+  };
+}
+
+/** Pide por el navegador. Acá sí aplica el CORS del ERP. */
+async function porNavegador(
+  url: string,
+  init: RequestInit,
+  headers: Record<string, string>,
+): Promise<Respuesta> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), config.timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, headers, signal: ctrl.signal });
+    return { status: res.status, texto: res.status === 204 ? "" : await res.text() };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Hace una request a la API y devuelve el JSON tipado.
  * Lanza `ApiError` con el status para que la UI distinga 401 de 500.
@@ -76,57 +151,57 @@ export async function request<T>(
     }
   }
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), config.timeoutMs);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((rest.headers as Record<string, string> | undefined) ?? {}),
+  };
 
+  let res: Respuesta;
   try {
-    const res = await fetch(url.toString(), {
-      ...rest,
-      signal: ctrl.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...rest.headers,
-      },
-    });
-
-    if (!res.ok) {
-      // El ERP contesta { success: false, error: "..." }. Ese texto está escrito
-      // para mostrarle a una persona, así que se usa tal cual en vez de un
-      // "algo falló" genérico.
-      const crudo = await res.text().catch(() => "");
-      let mensaje = crudo;
-      try {
-        const j = JSON.parse(crudo);
-        mensaje = j?.error || j?.message || crudo;
-      } catch {
-        /* no era JSON */
-      }
-      throw new ApiError(
-        mensaje || `La API respondió ${res.status}`,
-        res.status,
-        url.pathname,
-      );
-    }
-
-    if (res.status === 204) return undefined as T;
-
-    // El ERP envuelve todo en { success, data }. Se desenvuelve acá para que el
-    // resto del archivo trabaje con los datos y no con el sobre.
-    const json = await res.json();
-    if (json && typeof json === "object" && "success" in json && "data" in json) {
-      return (json as { data: T }).data;
-    }
-    return json as T;
+    res = enNativo()
+      ? await porNativo(
+          url.toString(),
+          (rest.method || "GET").toUpperCase(),
+          headers,
+          typeof rest.body === "string" ? rest.body : null,
+        )
+      : await porNavegador(url.toString(), rest, headers);
   } catch (e) {
-    if (e instanceof ApiError) throw e;
     if (e instanceof DOMException && e.name === "AbortError") {
       throw new ApiError("La API no respondió a tiempo.", 408, url.pathname);
     }
     throw new ApiError("No se pudo conectar con la API.", 0, url.pathname);
-  } finally {
-    clearTimeout(timer);
   }
+
+  if (res.status < 200 || res.status >= 300) {
+    // El ERP contesta { success: false, error: "..." }. Ese texto está escrito
+    // para mostrarle a una persona, así que se usa tal cual en vez de un
+    // "algo falló" genérico.
+    let mensaje = res.texto;
+    try {
+      const j = JSON.parse(res.texto);
+      mensaje = j?.error || j?.message || res.texto;
+    } catch {
+      /* no era JSON */
+    }
+    throw new ApiError(mensaje || `La API respondió ${res.status}`, res.status, url.pathname);
+  }
+
+  if (!res.texto) return undefined as T;
+
+  // El ERP envuelve todo en { success, data }. Se desenvuelve acá para que el
+  // resto del archivo trabaje con los datos y no con el sobre.
+  let json: unknown;
+  try {
+    json = JSON.parse(res.texto);
+  } catch {
+    throw new ApiError("La API devolvió algo que no es JSON.", res.status, url.pathname);
+  }
+  if (json && typeof json === "object" && "success" in json && "data" in json) {
+    return (json as { data: T }).data;
+  }
+  return json as T;
 }
 
 const pendiente = (op: string): never => {
