@@ -81,6 +81,45 @@ Por eso cada vista se marca `security_invoker = true`.
 psql -f supabase/erp/test_generador.sql   # sobre una base limpia
 ```
 
+## Cuando un schema guarda varias empresas
+
+El schema compartido del ERP —el que no es `erp_*`— tiene una columna
+`empresa_id`: ahí conviven varias empresas. Generar vistas sobre él sin filtrar
+dejaría a la app de una viendo los clientes de todas.
+
+El generador no lo permite: si la tabla tiene `empresa_id` y no se le pasa el id,
+falla. Para esos casos:
+
+```sql
+select zentra_erp.generar('JM', 'distribuidorajmerp', 'EL-UUID-DE-LA-EMPRESA');
+```
+
+## El mapeo de Distribuidora JM
+
+`20_mapeo_jm.sql` ya tiene `clientes` y `productos` escritos a partir de las
+columnas reales de ese ERP, y `test_mapeo_jm.sql` los verifica contra una réplica
+de su estructura, sin tocar el ERP.
+
+Decisiones que vale la pena conocer:
+
+- **El nombre** sale de la primera que tenga algo entre `nombre`, `razon_social`,
+  `empresa` y `nombre_contacto`: el ERP tiene las cuatro y la app muestra una.
+- **El documento** prefiere `ruc_factura`, que es el que se usa para facturar, y
+  cae a `ruc` y `documento`.
+- **`baja_operativa_at`** cuenta como inactivo: la fila sigue, el cliente no opera.
+- **`deleted_at`** es borrado lógico: esas filas no existen para la app.
+- **Los montos se redondean a entero**, porque el guaraní no tiene centavos.
+- **El IVA** se decide extrayendo el número de `tipo_iva`. Hay que confirmar qué
+  guarda el ERP ahí:
+
+  ```sql
+  select distinct tipo_iva from distribuidorajmerp.productos;
+  ```
+
+  La primera versión preguntaba si el texto contenía un `0` para decidir
+  "Exenta", y `IVA 10%` lo contiene: **todos los productos al 10% habrían salido
+  exentos y las facturas sin IVA.** Lo encontró la prueba.
+
 ## Conectarlo con la app
 
 1. Exponer los schemas generados en **Settings → API → Exposed schemas**

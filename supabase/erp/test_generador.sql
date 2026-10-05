@@ -135,7 +135,53 @@ begin
 end $$;
 \echo '  OK 6 · cambiar el mapeo y regenerar alcanza'
 
--- ---------- 7. todas de una vez, leyendo la tabla de empresas del ERP ----------
+-- ---------- 7. un schema compartido por varias empresas ----------
+-- El schema que no es `erp_*` guarda varias empresas juntas, separadas por una
+-- columna empresa_id. Sin filtrar, la app de una vería los clientes de todas.
+create schema erp_compartido;
+create table erp_compartido.clientes (
+  id serial primary key,
+  empresa_id uuid,
+  razon_social text,
+  nombre_contacto text,
+  tipo_cliente text,
+  ruc text,
+  telefono text,
+  activo boolean default true
+);
+insert into erp_compartido.clientes (empresa_id, razon_social, tipo_cliente, activo) values
+  ('11111111-1111-1111-1111-111111111111', 'Cliente de la empresa UNO', 'Mayorista', true),
+  ('11111111-1111-1111-1111-111111111111', 'Otro de la UNO',            'Mayorista', true),
+  ('22222222-2222-2222-2222-222222222222', 'Cliente de la empresa DOS', 'Mayorista', true);
+
+-- Sin el empresa_id tiene que negarse, no generar una vista que no filtra.
+do $$
+declare falló boolean := false;
+begin
+  begin
+    perform zentra_erp.generar('UNO', 'erp_compartido');
+  exception when others then
+    falló := true;
+  end;
+  assert falló, 'generó vistas sobre un schema compartido SIN filtrar por empresa';
+end $$;
+
+do $$
+declare n int;
+begin
+  perform zentra_erp.generar('UNO', 'erp_compartido', '11111111-1111-1111-1111-111111111111');
+  perform zentra_erp.generar('DOS', 'erp_compartido', '22222222-2222-2222-2222-222222222222');
+
+  select count(*) into n from zentra_uno.clientes;
+  assert n = 2, 'la empresa UNO tendría que ver 2 clientes, ve ' || n;
+  select count(*) into n from zentra_dos.clientes;
+  assert n = 1, 'la empresa DOS tendría que ver 1 cliente, ve ' || n;
+  select count(*) into n from zentra_uno.clientes where nombre like '%DOS%';
+  assert n = 0, 'la empresa UNO está viendo clientes de la DOS';
+end $$;
+\echo '  OK 7 · en un schema compartido exige el empresa_id y filtra por él'
+
+-- ---------- 8. todas de una vez, leyendo la tabla de empresas del ERP ----------
 create table public.empresas (id serial primary key, nombre text, codigo text, data_schema text);
 insert into public.empresas (nombre, codigo, data_schema) values
   ('Distribuidora JM', 'JM', 'erp_jm'),
@@ -156,7 +202,7 @@ begin
    where error is not null;
   assert n = 1, 'esperaba exactamente 1 empresa con error, hubo ' || n;
 end $$;
-\echo '  OK 7 · genera todas de una vez, y una rota no frena a las demás'
+\echo '  OK 8 · genera todas de una vez, y una rota no frena a las demás'
 
 \echo ''
 \echo 'Generador de vistas: todas las pruebas pasaron.'

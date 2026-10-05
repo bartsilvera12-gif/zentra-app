@@ -48,13 +48,24 @@ create table if not exists zentra_erp.origen (
 /**
  * Crea (o rehace) el schema de vistas de una empresa.
  *
- *   select zentra_erp.generar('JM', 'distribuidorajmerp');
+ *   select zentra_erp.generar('JM', 'erp_jm');
+ *   select zentra_erp.generar('JM', 'distribuidorajmerp', '...-uuid-...');
  *
  * Deja un schema `zentra_jm` con una vista por cada entrada de `origen`.
  * Es idempotente: correrla de nuevo rehace las vistas con el mapeo actual, que
  * es lo que hay que hacer después de tocarlo.
+ *
+ * `p_empresa_id` es obligatorio cuando el schema del ERP guarda varias empresas
+ * juntas, separadas por una columna `empresa_id`. Es el caso del schema
+ * compartido del ERP —el que no es `erp_*`—, y sin el filtro la app de una
+ * empresa vería los datos de todas. Si la tabla tiene `empresa_id` y no se pasa
+ * el id, esto falla a propósito en vez de generar una vista que filtra nada.
  */
-create or replace function zentra_erp.generar(p_codigo text, p_schema_erp text)
+create or replace function zentra_erp.generar(
+  p_codigo     text,
+  p_schema_erp text,
+  p_empresa_id uuid default null
+)
 returns text
 language plpgsql
 volatile
@@ -67,6 +78,8 @@ declare
   v_vista   text;
   v_cols    text;
   v_sql     text;
+  v_donde   text;
+  v_tiene_empresa boolean;
   v_origen  record;
 begin
   if coalesce(v_codigo, '') = '' then
@@ -84,6 +97,19 @@ begin
   for v_origen in select * from zentra_erp.origen loop
     v_vista := v_origen.vista;
 
+    -- ¿Esta tabla del ERP mezcla empresas?
+    v_tiene_empresa := exists (
+      select 1 from information_schema.columns
+       where table_schema = p_schema_erp
+         and table_name   = v_origen.tabla
+         and column_name  = 'empresa_id'
+    );
+    if v_tiene_empresa and p_empresa_id is null then
+      raise exception
+        '%.% tiene empresa_id: hay varias empresas en ese schema. Pasá el empresa_id de % o la app las vería todas.',
+        p_schema_erp, v_origen.tabla, p_codigo;
+    end if;
+
     -- Las columnas salen del mapeo, en orden. `format` con %I/%L escapa todo:
     -- acá se arma SQL con datos de una tabla y no hay que dejar rendija.
     select string_agg(format('%s as %I', m.expresion, m.campo), ', ' order by m.orden, m.campo)
@@ -99,8 +125,17 @@ begin
       'create or replace view %I.%I as select %s from %I.%I',
       v_destino, v_vista, v_cols, p_schema_erp, v_origen.tabla
     );
+    -- El filtro de empresa va primero y se arma con %L: es lo único que separa a
+    -- una empresa de otra en un schema compartido.
+    v_donde := null;
+    if v_tiene_empresa then
+      v_donde := format('empresa_id = %L::uuid', p_empresa_id);
+    end if;
     if v_origen.filtro is not null and btrim(v_origen.filtro) <> '' then
-      v_sql := v_sql || ' where ' || v_origen.filtro;
+      v_donde := coalesce(v_donde || ' and ', '') || '(' || v_origen.filtro || ')';
+    end if;
+    if v_donde is not null then
+      v_sql := v_sql || ' where ' || v_donde;
     end if;
     execute v_sql;
 
