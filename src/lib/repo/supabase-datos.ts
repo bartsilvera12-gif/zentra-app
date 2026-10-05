@@ -785,6 +785,8 @@ export const chatsRepo: ChatsRepo = {
     return null;
   },
   enviar: noImplementado,
+  enviarArchivo: noImplementado,
+  enviarSticker: noImplementado,
   marcarLeido: async () => {},
 };
 

@@ -7,6 +7,8 @@ import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
+import { useRef } from "react";
+import { Grabador } from "@/lib/grabador";
 import type { ChatMsg } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -103,15 +105,86 @@ export function ConversacionesScreen() {
       });
   };
 
-  const enviarAudio = () => {
+  /**
+   * Manda un archivo de verdad al ERP.
+   *
+   * Se muestra enseguida y se sube en paralelo, igual que el texto: una foto
+   * puede tardar varios segundos y la pantalla no puede quedarse quieta.
+   */
+  const subir = (archivo: File | Blob, nombre: string, vistaPrevia: ChatMsg) => {
+    if (!det) return;
+    pushMsg(det.id, { ...vistaPrevia, tick: conErp ? "…" : "✓" });
+    if (!conErp) return;
+    repo.chats
+      .enviarArchivo(det.id, archivo, nombre)
+      .then(() => set({ xEnvioError: "" }))
+      .catch((e: unknown) =>
+        set({ xEnvioError: e instanceof Error ? e.message : "No se pudo enviar el archivo." }),
+      );
+  };
+
+  /** Abre el selector del celular. `captura` usa la cámara directo. */
+  const elegirArchivo = (accept: string, captura?: boolean) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    if (captura) input.capture = "environment";
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      const esImagen = /^image\//.test(f.type);
+      subir(f, f.name, {
+        de: "yo",
+        hora: new Date().toTimeString().slice(0, 5),
+        texto: "",
+        archivo: {
+          tag: esImagen ? "IMG" : (f.name.split(".").pop() || "DOC").toUpperCase().slice(0, 4),
+          nombre: f.name,
+          peso: `${esImagen ? "Imagen" : "Archivo"} · ${Math.max(1, Math.round(f.size / 1024))} KB`,
+        },
+      });
+    };
+    input.click();
+  };
+
+  // El micrófono vive acá y no en el estado: un MediaRecorder no es dato, es
+  // un aparato prendido, y si se guarda en el estado React lo recrea.
+  const grabador = useRef<Grabador | null>(null);
+
+  const arrancarAudio = async () => {
+    try {
+      const g = new Grabador();
+      await g.arrancar();
+      grabador.current = g;
+      startGrab();
+    } catch {
+      // Negar el permiso es una respuesta válida, no un error que esconder.
+      set({ xEnvioError: "Necesitamos permiso para usar el micrófono." });
+    }
+  };
+
+  const enviarAudio = async () => {
     stopGrab();
-    const dur = fmtSeg(Math.max(1, s.xSeg));
-    if (det) pushMsg(det.id, { de: "yo", hora: "11:42", tick: "✓", texto: "", audio: dur });
     set({ xGrab: false, xSeg: 0 });
+    const g = grabador.current;
+    grabador.current = null;
+    if (!g || !det) return;
+
+    const grabado = await g.detener();
+    // Un toque sin querer no manda un audio vacío.
+    if (!grabado) return;
+    subir(grabado.blob, grabado.nombre, {
+      de: "yo",
+      hora: new Date().toTimeString().slice(0, 5),
+      texto: "",
+      audio: fmtSeg(grabado.segundos),
+    });
   };
 
   const cancelarAudio = () => {
     stopGrab();
+    grabador.current?.cancelar();
+    grabador.current = null;
     set({ xGrab: false, xSeg: 0 });
   };
 
@@ -624,6 +697,21 @@ export function ConversacionesScreen() {
                 <button
                   key={a.key}
                   onClick={() => {
+                    set({ xPanel: "none" });
+                    // Cámara, galería, audio y documento abren el selector del
+                    // celular y mandan el archivo de verdad.
+                    if (a.key === "camara") return elegirArchivo("image/*", true);
+                    if (a.key === "galeria") return elegirArchivo("image/*");
+                    if (a.key === "audioarch") return elegirArchivo("audio/*");
+                    if (a.key === "documento") return elegirArchivo("*/*");
+
+                    // Ubicación, contacto y pedido no son archivos: cada uno
+                    // necesita lo suyo (GPS, agenda, armar un pedido) y todavía
+                    // no están. Se dice, en vez de mandar un adjunto inventado.
+                    if (conErp) {
+                      set({ xEnvioError: `Todavía no se puede mandar ${a.label.toLowerCase()} desde la app.` });
+                      return;
+                    }
                     if (a.key === "pedido") {
                       pushMsg(det.id, {
                         de: "yo",
@@ -726,6 +814,23 @@ export function ConversacionesScreen() {
                       key={`${g}-${i}`}
                       onClick={() => {
                         if (esEmoji) return set({ xTexto: s.xTexto + g });
+                        // Nuestros "stickers" son emojis, no archivos .webp.
+                        // Con ERP van como texto, que es lo que de verdad son
+                        // y lo que llega bien a WhatsApp. El endpoint de
+                        // stickers del ERP espera una URL, y para eso haría
+                        // falta un catálogo de stickers que la app no tiene.
+                        if (conErp) {
+                          const hora = new Date().toTimeString().slice(0, 5);
+                          pushMsg(det.id, { de: "yo", texto: g, hora, tick: "…" });
+                          repo.chats
+                            .enviar(det.id, { de: "yo", texto: g })
+                            .then(() => set({ xEnvioError: "" }))
+                            .catch((e: unknown) =>
+                              set({ xEnvioError: e instanceof Error ? e.message : "No se pudo enviar." }),
+                            );
+                          set({ xPanel: "none" });
+                          return;
+                        }
                         pushMsg(det.id, { de: "yo", hora: "11:42", tick: "✓", texto: "", sticker: g });
                       }}
                       style={{
@@ -934,7 +1039,7 @@ export function ConversacionesScreen() {
                   </button>
                 ) : (
                   <button
-                    onClick={startGrab}
+                    onClick={arrancarAudio}
                     style={{
                       width: 40,
                       height: 40,

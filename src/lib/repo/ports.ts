@@ -183,6 +183,15 @@ export interface ChatsRepo {
   list(params?: { q?: string; tipo?: Chat["tipo"]; soloNoLeidas?: boolean }): Promise<Chat[]>;
   get(id: string): Promise<Chat | null>;
   enviar(chatId: string, msg: Omit<ChatMsg, "hora" | "tick">): Promise<ChatMsg>;
+  /**
+   * Manda una foto, un audio o un documento. `pie` es el texto que lo acompaña.
+   *
+   * Recibe el archivo tal cual lo da el celular —un `File` del selector, o el
+   * `Blob` que graba el micrófono— y de leerlo se encarga la implementación.
+   */
+  enviarArchivo(chatId: string, archivo: File | Blob, nombre: string, pie?: string): Promise<ChatMsg>;
+  /** Manda un sticker de verdad, por su URL. Un emoji va como texto. */
+  enviarSticker(chatId: string, url: string): Promise<ChatMsg>;
   marcarLeido(chatId: string): Promise<void>;
 }
 

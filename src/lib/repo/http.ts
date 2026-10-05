@@ -172,6 +172,103 @@ async function porNativo(
   };
 }
 
+/** El archivo a mandar, ya leído. */
+export interface ArchivoAEnviar {
+  nombre: string;
+  tipo: string;
+  /** El contenido en base64, sin el prefijo `data:`. */
+  base64: string;
+}
+
+/** Lee un archivo del celular a base64, que es como viaja en los dos caminos. */
+export async function leerArchivo(f: File | Blob, nombre?: string): Promise<ArchivoAEnviar> {
+  const buf = await f.arrayBuffer();
+  let bin = "";
+  const bytes = new Uint8Array(buf);
+  // De a pedazos: con un audio de un minuto, pasarle el arreglo entero a
+  // `String.fromCharCode` revienta la pila.
+  for (let i = 0; i < bytes.length; i += 8192) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  return {
+    nombre: nombre || (f instanceof File ? f.name : "archivo"),
+    tipo: f.type || "application/octet-stream",
+    base64: btoa(bin),
+  };
+}
+
+/**
+ * Manda un archivo como `multipart/form-data`.
+ *
+ * Los dos caminos arman el multipart distinto y ninguno sirve para el otro:
+ *
+ *   nativo      Capacitor lo arma en Java desde un arreglo de entradas, donde
+ *               el archivo va en base64. No acepta un `FormData` del navegador.
+ *   navegador   un `FormData` de verdad, y sin tocar el `Content-Type`: el
+ *               `fetch` tiene que poner el suyo con el `boundary`.
+ *
+ * Que el nativo sepa multipart es lo que permite mandar fotos y audios sin
+ * depender de que el ERP agregue CORS.
+ */
+export async function enviarArchivoAlErp<T>(
+  path: string,
+  archivo: ArchivoAEnviar,
+  campos: Record<string, string> = {},
+): Promise<T> {
+  const url = baseDeApi() + path;
+  const vigente = await tokenVigente();
+  const auth: Record<string, string> = vigente ? { Authorization: `Bearer ${vigente}` } : {};
+
+  let res: Respuesta;
+  try {
+    if (enNativo()) {
+      const { CapacitorHttp } = await import("@capacitor/core");
+      const entradas = [
+        ...Object.entries(campos).map(([key, value]) => ({ type: "string", key, value })),
+        {
+          type: "base64File",
+          key: "file",
+          value: archivo.base64,
+          fileName: archivo.nombre,
+          contentType: archivo.tipo,
+        },
+      ];
+      const r = await CapacitorHttp.request({
+        url,
+        method: "POST",
+        headers: { ...auth, "Content-Type": "multipart/form-data" },
+        data: entradas,
+        responseType: "text",
+        connectTimeout: config.timeoutMs,
+        readTimeout: config.timeoutMs,
+      });
+      res = { status: r.status, texto: typeof r.data === "string" ? r.data : JSON.stringify(r.data ?? "") };
+    } else {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(campos)) form.set(k, v);
+      const bytes = Uint8Array.from(atob(archivo.base64), (c) => c.charCodeAt(0));
+      form.set("file", new Blob([bytes], { type: archivo.tipo }), archivo.nombre);
+      // Sin `Content-Type`: lo pone `fetch` con su boundary.
+      const r = await fetch(url, { method: "POST", headers: auth, body: form });
+      res = { status: r.status, texto: await r.text() };
+    }
+  } catch {
+    throw new ApiError("No se pudo enviar el archivo.", 0, path);
+  }
+
+  if (res.status < 200 || res.status >= 300) {
+    let mensaje = res.texto;
+    try {
+      const j = JSON.parse(res.texto);
+      mensaje = j?.error || j?.message || res.texto;
+    } catch {
+      /* no era JSON */
+    }
+    throw new ApiError(mensaje || `La API respondió ${res.status}`, res.status, path);
+  }
+  return (res.texto ? JSON.parse(res.texto) : undefined) as T;
+}
+
 /** Pide por el navegador. Acá sí aplica el CORS del ERP. */
 async function porNavegador(
   url: string,
@@ -944,6 +1041,31 @@ export const httpRepo: Repo = {
         body: JSON.stringify({ message: msg.texto }),
       });
       return { ...msg, hora: horaCorta(new Date().toISOString()), tick: "✓" };
+    },
+
+    async enviarArchivo(chatId, archivo, nombre, pie) {
+      const leido = await leerArchivo(archivo, nombre);
+      await enviarArchivoAlErp(
+        `/mobile/asesor/conversations/${encodeURIComponent(chatId)}/send-media`,
+        leido,
+        pie ? { caption: pie } : {},
+      );
+      const esAudio = /^audio\//.test(leido.tipo);
+      const esImagen = /^image\//.test(leido.tipo);
+      return {
+        de: "yo",
+        hora: horaCorta(new Date().toISOString()),
+        tick: "✓",
+        texto: pie || (esAudio ? "🎤 Audio" : esImagen ? "📷 Foto" : "📎 " + nombre),
+      };
+    },
+
+    async enviarSticker(chatId, url) {
+      await request(`/mobile/asesor/conversations/${encodeURIComponent(chatId)}/send-sticker`, {
+        method: "POST",
+        body: JSON.stringify({ sticker_url: url }),
+      });
+      return { de: "yo", hora: horaCorta(new Date().toISOString()), tick: "✓", sticker: url };
     },
 
     // El ERP marca leído solo al abrir la conversación; no hay endpoint aparte.

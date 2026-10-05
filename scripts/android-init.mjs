@@ -117,6 +117,38 @@ function escribirLocalProperties() {
 
 escribirLocalProperties();
 
+/**
+ * Permisos que el proyecto generado no trae.
+ *
+ * `cap add android` escribe un manifiesto mínimo, así que esto se vuelve a
+ * perder en cada corrida. Sin `RECORD_AUDIO` el micrófono falla **sólo en el
+ * APK**: en el navegador anda, porque ahí el permiso lo da el navegador. Es la
+ * clase de cosa que se descubre con la app ya instalada.
+ *
+ * `CAMERA` NO se agrega a propósito: sacar una foto con `<input capture>` abre
+ * la app de cámara del sistema, que tiene su propio permiso. Declararlo acá
+ * haría que Android se lo pida a nuestra app sin necesidad, y un permiso de
+ * cámara que no se usa es una pregunta de más en la tienda.
+ */
+function agregarPermisos() {
+  const RUTA = "android/app/src/main/AndroidManifest.xml";
+  if (!existsSync(RUTA)) return;
+  const permisos = [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.MODIFY_AUDIO_SETTINGS",
+  ];
+  let xml = readFileSync(RUTA, "utf8");
+  const faltan = permisos.filter((p) => !xml.includes(p));
+  if (!faltan.length) return;
+
+  const lineas = faltan.map((p) => `    <uses-permission android:name="${p}" />`).join("\n");
+  xml = xml.replace("</manifest>", `${lineas}\n</manifest>`);
+  writeFileSync(RUTA, xml);
+  console.log(`\nPermisos agregados al manifiesto: ${faltan.join(", ")}`);
+}
+
+agregarPermisos();
+
 if (existsSync(COPIA)) {
   mkdirSync("android/app", { recursive: true });
   copyFileSync(COPIA, GS);

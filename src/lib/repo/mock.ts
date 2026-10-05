@@ -381,6 +381,23 @@ export const mockRepo: Repo = {
       extra.mensajes[chatId] = (extra.mensajes[chatId] || []).concat([completo]);
       return demora(completo);
     },
+    // Sin backend no hay a dónde subir nada: se devuelve el mensaje como si
+    // hubiera salido, para poder ver la pantalla.
+    async enviarArchivo(_chatId, archivo, nombre, pie) {
+      const esAudio = /^audio\//.test(archivo.type || "");
+      const esImagen = /^image\//.test(archivo.type || "");
+      return demora({
+        de: "yo" as const,
+        hora: "11:42",
+        tick: "✓",
+        texto: pie || (esAudio ? "🎤 Audio" : esImagen ? "📷 Foto" : "📎 " + nombre),
+      });
+    },
+
+    async enviarSticker(_chatId, url) {
+      return demora({ de: "yo" as const, hora: "11:42", tick: "✓", sticker: url });
+    },
+
     async marcarLeido() {
       await demora(null);
     },

@@ -37,7 +37,8 @@ const server = createServer((req, res) => {
       query: Object.fromEntries(u.searchParams),
       auth: req.headers.authorization || null,
       idempotencia: req.headers["idempotency-key"] || null,
-      cuerpo: cuerpo ? JSON.parse(cuerpo) : null,
+      // El multipart no es JSON; se guarda crudo para poder mirarlo.
+      cuerpo: cuerpo ? (cuerpo.trimStart().startsWith("{") ? JSON.parse(cuerpo) : cuerpo) : null,
     });
     const json = (c, b) => { res.writeHead(c, { "content-type": "application/json" }); res.end(JSON.stringify(b)); };
 
@@ -161,6 +162,14 @@ const server = createServer((req, res) => {
     if (ruta === "/mobile/asesor/conversations/con-foto") {
       return json(200, { ok: true, conversation: { id: "f", contact_nombre: "Ana" },
         messages: [{ id: "m1", from_me: false, content: "", message_type: "image", created_at: "2026-10-05T14:03:00Z" }] });
+    }
+    if (/\/mobile\/asesor\/conversations\/[^/]+\/send-media$/.test(ruta) && req.method === "POST") {
+      return json(200, { ok: true });
+    }
+    if (/\/mobile\/asesor\/conversations\/[^/]+\/send-sticker$/.test(ruta) && req.method === "POST") {
+      const o = JSON.parse(cuerpo || "{}");
+      if (!o.sticker_url) return json(400, { ok: false, error: "Se requiere sticker_url" });
+      return json(200, { ok: true });
     }
     if (ruta === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
     return json(404, { success: false, error: "no existe" });
@@ -424,6 +433,43 @@ t("al abrir una conversacion llegan sus mensajes, con el tick del propio", async
 t("una foto no queda como globo vacio: dice que era", async () => {
   const d = await httpRepo.chats.get("con-foto");
   if (!/Foto/.test(d.msgs[0].texto)) throw new Error("texto: " + d.msgs[0].texto);
+});
+
+t("una foto viaja como multipart, con su nombre y su tipo", async () => {
+  const antes = recibido.length;
+  const foto = new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" });
+  const m = await httpRepo.chats.enviarArchivo("c1", foto, "comprobante.png");
+  const env = recibido.slice(antes).find((r) => /send-media/.test(r.ruta));
+  if (!env) throw new Error("no llegó a send-media");
+  // Lo que importa del multipart: el archivo con su nombre y su tipo.
+  if (!/name="file"/.test(env.cuerpo)) throw new Error("falta el campo file");
+  if (!/filename="comprobante.png"/.test(env.cuerpo)) throw new Error("falta el nombre");
+  if (!/image\/png/.test(env.cuerpo)) throw new Error("falta el tipo");
+  // Y el globo que se ve dice qué era, no queda vacío.
+  if (m.texto !== "📷 Foto") throw new Error("vista previa: " + m.texto);
+});
+
+t("un audio se reconoce por su tipo, no por el nombre del archivo", async () => {
+  const audio = new Blob([new Uint8Array([1, 2, 3])], { type: "audio/ogg" });
+  const m = await httpRepo.chats.enviarArchivo("c1", audio, "x.bin");
+  if (m.texto !== "🎤 Audio") throw new Error("vista previa: " + m.texto);
+});
+
+t("el pie del archivo manda como caption y reemplaza al globo generico", async () => {
+  const antes = recibido.length;
+  const foto = new Blob([new Uint8Array([1])], { type: "image/jpeg" });
+  const m = await httpRepo.chats.enviarArchivo("c1", foto, "f.jpg", "Te paso el comprobante");
+  const env = recibido.slice(antes).find((r) => /send-media/.test(r.ruta));
+  if (!/name="caption"/.test(env.cuerpo)) throw new Error("no mandó el caption");
+  if (m.texto !== "Te paso el comprobante") throw new Error("vista previa: " + m.texto);
+});
+
+t("el sticker manda su URL, que es lo que el ERP pide", async () => {
+  const antes = recibido.length;
+  const m = await httpRepo.chats.enviarSticker("c1", "https://x.com/s.webp");
+  const env = recibido.slice(antes).find((r) => /send-sticker/.test(r.ruta));
+  if (env.cuerpo.sticker_url !== "https://x.com/s.webp") throw new Error("url: " + env.cuerpo.sticker_url);
+  if (m.sticker !== "https://x.com/s.webp") throw new Error("el mensaje no quedó con el sticker");
 });
 
 t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {

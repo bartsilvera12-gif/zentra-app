@@ -130,13 +130,28 @@ ninguna cola de atención. Son cosas distintas y la app las dice distinto —
 mostrar una lista vacía dejaría a alguien esperando un mensaje que nunca le iba
 a llegar.
 
-Dos límites de lo que la app hace hoy con esto:
+### Fotos, audios y documentos
 
-- **Sólo texto.** Fotos, audios y stickers van por `/send-media` y
-  `/send-sticker`, que todavía no están implementados acá. Mandar uno avisa en
-  vez de fallar callado.
-- **Los adjuntos recibidos se nombran, no se abren**: una foto aparece como
-  `📷 Foto`. Mejor que un globo vacío, pero no es ver la foto.
+Van por `/send-media`, que recibe **`multipart/form-data`** con `file` y un
+`caption` opcional. Y acá hay algo que no se ve venir: **los dos caminos de la
+app arman el multipart distinto, y ninguno sirve para el otro.**
+
+| | Cómo lo arma |
+|---|---|
+| Nativo (APK) | Capacitor lo arma en Java desde un arreglo de entradas, con el archivo en base64 |
+| Navegador | un `FormData` de verdad, y sin tocar el `Content-Type`: lo pone `fetch` con su `boundary` |
+
+Que el camino nativo sepa multipart es lo que permite mandar fotos y audios
+**sin depender de que el ERP agregue CORS**. Si no, habría que volver al
+`fetch` del WebView sólo para los archivos.
+
+Los stickers van por `/send-sticker`, que espera `{ sticker_url }` — una URL a
+un `.webp`. Está implementado, pero el selector de la app tiene emojis, no
+stickers: un emoji se manda como texto, que es lo que de verdad es.
+
+**Los adjuntos recibidos se nombran, no se abren**: una foto aparece como
+`📷 Foto`. Mejor que un globo vacío, pero no es ver la foto. Para eso hace falta
+que el ERP devuelva la URL del archivo, y hoy no la manda.
 
 ### El perfil no se llama `/perfil`
 
