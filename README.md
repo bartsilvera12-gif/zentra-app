@@ -27,6 +27,7 @@ npm run build      # build de producción → ./out (export estático)
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 npm test           # pruebas del código de empresa (sin red ni navegador)
+npm run test:api   # pruebas del cliente HTTP contra una API simulada
 npm run check      # verifica .env.local y el Supabase antes de compilar
 ```
 
