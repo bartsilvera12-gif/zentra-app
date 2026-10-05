@@ -25,6 +25,21 @@ lado: uno va a mirar el `import`, que está bien.
 
 `npm run android:init` ahora lo verifica antes de empezar y dice qué falta.
 
+## El ícono no cambia aunque el APK lo tenga
+
+Android **cachea el ícono en el launcher**. Si instalás encima de una versión
+anterior con el mismo `appId`, podés seguir viendo el viejo aunque el nuevo esté
+adentro del paquete.
+
+Desinstalá la app y volvé a instalarla, en vez de actualizar encima. Si aun así
+no cambia, reiniciá el teléfono: algunos launchers (Xiaomi, Huawei, Oppo) sólo
+refrescan ahí.
+
+Antes de dar vueltas con eso conviene descartar lo otro: el build ahora verifica
+que el ícono generado sea el de la marca —y no el genérico de Capacitor— y que
+haya entrado al `.apk`. Si esos dos pasos están en verde, el ícono está y el
+problema es el caché.
+
 ## Dos errores de Android Studio, y por qué vuelven
 
 Los dos pasan porque `android:init` **borra y regenera `android/`** en cada

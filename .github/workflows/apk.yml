@@ -67,6 +67,30 @@ jobs:
       - name: Generar el proyecto Android
         run: npm run android:init
 
+      # Que el icono generado sea el nuestro y no el que trae Capacitor por
+      # defecto. Que el paso de iconos "corra bien" no prueba que haya puesto
+      # el nuestro: puede generar el generico y salir con exito igual.
+      - name: Verificar que el icono es el de la marca
+        run: |
+          node -e "
+          const sharp = require('sharp');
+          const MARCA = [28, 140, 132];   // #1C8C84, el verde de Zentra
+          (async () => {
+            const f = 'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png';
+            const { data } = await sharp(f).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+            let n = 0, r = 0, g = 0, b = 0;
+            for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 10) { n++; r += data[i]; g += data[i + 1]; b += data[i + 2]; }
+            const medio = [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+            const lejos = medio.some((c, i) => Math.abs(c - MARCA[i]) > 12);
+            if (lejos) {
+              console.error('ERROR: el fondo del icono es ' + medio + ', se esperaba ' + MARCA + '.');
+              console.error('Probablemente quedo el icono generico de Capacitor.');
+              process.exit(1);
+            }
+            console.log('OK: el icono es el de la marca (' + medio + ').');
+          })();
+          "
+
       - name: Compilar el APK
         run: ./gradlew assembleDebug --no-daemon
         working-directory: android
@@ -109,6 +133,26 @@ jobs:
           if faltan:
               sys.exit(f"ERROR: el APK no lleva las APIs de: {faltan}")
           print("OK: el APK lleva el directorio adentro:", ", ".join(d))
+          PY
+
+      # Y que el icono haya entrado al paquete, no solo que se haya generado.
+      - name: Verificar que el APK lleva el icono
+        run: |
+          python3 - <<'PY'
+          import sys, zipfile
+          apk = "android/app/build/outputs/apk/debug/app-debug.apk"
+          with zipfile.ZipFile(apk) as z:
+              nombres = z.namelist()
+          # El XML adaptativo es lo que Android 8+ usa de verdad; sin el, el
+          # sistema cae en un PNG viejo o en el generico.
+          faltan = [n for n in [
+              "res/mipmap-anydpi-v26/ic_launcher.xml",
+              "res/mipmap-xxxhdpi-v4/ic_launcher_foreground.png",
+              "res/mipmap-xxxhdpi-v4/ic_launcher_background.png",
+          ] if n not in nombres]
+          if faltan:
+              sys.exit("ERROR: al APK le faltan los iconos: " + ", ".join(faltan))
+          print("OK: el APK lleva el icono adaptativo.")
           PY
 
       - uses: actions/upload-artifact@v4
