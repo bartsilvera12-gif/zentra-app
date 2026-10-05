@@ -1,5 +1,6 @@
 "use client";
 
+import { config } from "@/lib/config";
 import { MARCA } from "@/lib/theme";
 import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
@@ -275,7 +276,9 @@ export function ConfigScreen() {
               paddingTop: 12,
             }}
           >
-            Zentra ERP · versión {VERSION.replace("v ", "")} · {s.sesion?.empresa || s.tenant?.nombre || EMPRESA}
+            Zentra ERP · versión {VERSION.replace("v ", "")}
+            {config.build && ` · build ${config.build}`} ·{" "}
+            {s.sesion?.empresa || s.tenant?.nombre || EMPRESA}
           </div>
         </Card>
 

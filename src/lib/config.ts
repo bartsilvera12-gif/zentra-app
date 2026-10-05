@@ -70,6 +70,15 @@ export const config = {
    * Vacío oculta los enlaces de contacto en vez de abrir un chat a la nada.
    */
   soporteWhatsapp: (process.env.NEXT_PUBLIC_SOPORTE_WHATSAPP || "595981000450").replace(/\D/g, ""),
+
+  /**
+   * El commit del que salió este build. Lo pone el workflow.
+   *
+   * Sin esto, "¿qué versión tenés instalada?" no se puede contestar: dos APK
+   * se ven iguales, y uno pierde media hora buscando un error que ya estaba
+   * arreglado en el build siguiente.
+   */
+  build: (process.env.NEXT_PUBLIC_BUILD_SHA || "").slice(0, 7),
 } as const;
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { EMPRESA, USUARIO } from "@/lib/data";
 import { fechaDeHoy, inicialDe, nombreCorto, rolLegible } from "@/lib/nombre";
 import { usePanel } from "./usePanel";
@@ -53,16 +53,51 @@ interface TileProps {
   gap?: number;
 }
 
+/** Cuánto tiene que durar el toque para que la animación se alcance a ver. */
+const MINIMO_VISIBLE = 190;
+
 function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileProps) {
   const { s, set } = useApp();
   const def = MODULES[k];
   const on = s.hover === k;
+  const apretadoEn = useRef(0);
+
+  /**
+   * La animación se dispara con el dedo, no sólo con el mouse.
+   *
+   * Estaba atada a `onMouseEnter`, que en un celular no existe: el WebView a
+   * veces inventa un `mouseenter` después del toque, cuando la pantalla ya
+   * cambió. O sea que en el teléfono —que es donde se usa la app— la animación
+   * del diseño no se veía nunca.
+   *
+   * Los eventos de puntero cubren mouse, dedo y lápiz con el mismo código.
+   */
+  const apretar = () => {
+    apretadoEn.current = Date.now();
+    set({ hover: k });
+  };
+  const soltar = () => set({ hover: null });
+
+  /**
+   * Un toque rápido dura menos que la animación. Se espera lo que falte antes
+   * de cambiar de pantalla: sin esto el dedo la dispara y la tapa en el mismo
+   * gesto, que es igual a no tenerla.
+   */
+  const tocar = () => {
+    const falta = MINIMO_VISIBLE - (Date.now() - apretadoEn.current);
+    if (falta <= 0) return onClick();
+    setTimeout(onClick, falta);
+  };
 
   return (
     <button
-      onClick={onClick}
-      onMouseEnter={() => set({ hover: k })}
-      onMouseLeave={() => set({ hover: null })}
+      onClick={tocar}
+      onPointerDown={apretar}
+      onPointerUp={soltar}
+      onPointerCancel={soltar}
+      onPointerLeave={soltar}
+      onMouseEnter={apretar}
+      onMouseLeave={soltar}
       style={{
         border: 0,
         borderRadius: 14,

@@ -66,10 +66,13 @@ export function IconClientes({ size = 26, stroke = "#ffffff" }: IconProps) {
 export function IconCompras({ size = 26, stroke = "#023047" }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 4h2.4l2.2 10.4h9.8" />
-      <path d="M6.2 7.2h13l-1.6 6.2H7.5" />
-      <circle cx="9" cy="19" r="1.4" />
-      <circle cx="16.6" cy="19" r="1.4" />
+      {/* El carrito: el asa que baja al canasto, el canasto, y las ruedas
+          separadas de la base. Antes el canasto arrancaba adentro del asa y
+          se leía como dos trazos cruzados en vez de un carrito. */}
+      <path d="M2.8 3.8h2.3l2.6 11.3h9.7" />
+      <path d="M6.5 6.9h14.2l-1.9 6.2H7.9" />
+      <circle cx="9.2" cy="19.2" r="1.5" />
+      <circle cx="17.2" cy="19.2" r="1.5" />
     </svg>
   );
 }
@@ -86,8 +89,11 @@ export function IconInventario({ size = 26, stroke = "#023047" }: IconProps) {
 export function IconConversaciones({ size = 26, stroke = "#023047" }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4.5 6.5h15v9.5h-9l-4 3.2V16h-2z" />
-      <path d="M8.5 11h7M8.5 8.5h4" />
+      {/* Dos globos en diagonal, cada uno entero y con su colita. Un solo
+          globo se confunde con "una nota"; dos se leen como conversación.
+          Superpuestos quedaban los trazos cruzados, que a 26px es un enredo. */}
+      <path d="M11 2.8h8a1.9 1.9 0 0 1 1.9 1.9v4.1a1.9 1.9 0 0 1-1.9 1.9h-4.3l-2.8 2.2v-2.2h-.9a1.9 1.9 0 0 1-1.9-1.9V4.7A1.9 1.9 0 0 1 11 2.8z" />
+      <path d="M5 13.6h8a1.9 1.9 0 0 1 1.9 1.9v4.1A1.9 1.9 0 0 1 13 21.5H8.7l-2.8 2.2v-2.2H5a1.9 1.9 0 0 1-1.9-1.9v-4.1A1.9 1.9 0 0 1 5 13.6z" />
     </svg>
   );
 }

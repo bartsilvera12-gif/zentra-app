@@ -130,6 +130,32 @@ escribirLocalProperties();
  * haría que Android se lo pida a nuestra app sin necesidad, y un permiso de
  * cámara que no se usa es una pregunta de más en la tienda.
  */
+/**
+ * Borra los íconos que trae la plantilla de Capacitor.
+ *
+ * `cap add android` deja un `drawable/ic_launcher_background.xml` y un
+ * `drawable-v24/ic_launcher_foreground.xml` —el ícono genérico— que quedan
+ * dentro del APK aunque nadie los use, porque el ícono adaptativo apunta a
+ * `@mipmap/*`, que es lo que generamos nosotros.
+ *
+ * No rompen nada, pero son la primera sospecha cuando el ícono no cambia y
+ * hacen perder tiempo. Si algo los necesitara, el build falla y nos enteramos.
+ */
+function borrarIconosDePlantilla() {
+  const restos = [
+    "android/app/src/main/res/drawable/ic_launcher_background.xml",
+    "android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml",
+  ];
+  for (const r of restos) {
+    if (existsSync(r)) {
+      rmSync(r);
+      console.log(`Icono de la plantilla borrado: ${r.split("/res/")[1]}`);
+    }
+  }
+}
+
+borrarIconosDePlantilla();
+
 function agregarPermisos() {
   const RUTA = "android/app/src/main/AndroidManifest.xml";
   if (!existsSync(RUTA)) return;
