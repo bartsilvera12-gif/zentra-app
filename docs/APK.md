@@ -45,6 +45,24 @@ vez de dejarte un APK con el de Capacitor.
 Android Studio sigue sirviendo para lo que es bueno: ver el **Logcat** mientras
 usás la app en el teléfono. Para eso, `npm run android`.
 
+## El ícono genérico de Capacitor, y por qué sólo pasaba en Windows
+
+El generador de íconos recibe el color de fondo por línea de comandos. Estaba
+escrito con **comillas simples**, y el `cmd` de Windows no las saca: el color
+llegaba como `'#1c8c84'`, con las comillas adentro, y cortaba con *"Unable to
+parse color from string"*. Sin íconos generados, el APK salía con el de
+Capacitor.
+
+En Linux y Mac andaba, porque ahí el shell sí las saca. **Ese es el peor tipo de
+error**: el que compila ve el ícono mal y el que revisa el código lo ve bien, y
+los dos tienen razón.
+
+Van con comillas **dobles**, que funcionan en los dos. Sin comillas tampoco
+sirve: en bash un `#` después de un espacio arranca un comentario.
+
+Y `android:init` ahora mide el color del ícono generado y corta si no es el de
+la marca, así que este error no puede volver a pasar en silencio.
+
 ## El ícono no cambia aunque el APK lo tenga
 
 Android **cachea el ícono en el launcher**. Si instalás encima de una versión

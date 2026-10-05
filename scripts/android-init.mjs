@@ -73,9 +73,23 @@ correr("npx cap add android");
 // `cap add` acaba de rellenar con el logo genérico de Capacitor. Se regeneran
 // desde assets/ en cada corrida, porque cada `cap add` los pisa de nuevo.
 correr(
-  "npx @capacitor/assets generate --android" +
-    " --iconBackgroundColor '#1c8c84' --iconBackgroundColorDark '#1c8c84'" +
-    " --splashBackgroundColor '#1c8c84' --splashBackgroundColorDark '#023047'",
+  // Comillas DOBLES, no simples.
+  //
+  // El `cmd` de Windows no saca las comillas simples: el color le llega al
+  // generador como `'#1c8c84'`, con las comillas adentro, y corta con
+  // "Unable to parse color from string". Entonces no genera ningún ícono y el
+  // APK sale con el genérico de Capacitor.
+  //
+  // En Linux y Mac andaba, porque ahí el shell sí las saca. Por eso el error
+  // sólo aparecía en una de las dos máquinas, que es lo peor que puede pasar:
+  // el que compila ve el ícono mal y el que revisa el código lo ve bien.
+  //
+  // Sin comillas tampoco sirve: en bash, un `#` después de un espacio arranca
+  // un comentario y se come el resto de la línea. Las dobles funcionan en los
+  // dos.
+  'npx @capacitor/assets generate --android' +
+    ' --iconBackgroundColor "#1c8c84" --iconBackgroundColorDark "#1c8c84"' +
+    ' --splashBackgroundColor "#1c8c84" --splashBackgroundColorDark "#023047"',
 );
 
 /**
