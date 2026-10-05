@@ -1,8 +1,8 @@
 -- =============================================================================
 -- Mapeo para el ERP de Distribuidora JM (schema `distribuidorajmerp`)
 --
--- Escrito a partir de las columnas reales de ese ERP. Correr DESPUÉS de
--- 10_generador.sql, y después generar:
+-- Escrito a partir de las columnas reales de ese ERP. Correr DESPUÉS de los
+-- cuatro archivos 10 a 13, y después generar:
 --
 --   select zentra_erp.generar('JM', 'distribuidorajmerp', 'EL-UUID-DE-LA-EMPRESA');
 --
