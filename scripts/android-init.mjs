@@ -11,7 +11,7 @@
  * Esto lo resuelve: guarda ese archivo, genera el proyecto y lo devuelve a su
  * lugar.
  */
-import { existsSync, mkdirSync, copyFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
@@ -26,6 +26,28 @@ function correr(cmd) {
   console.log(`\n$ ${cmd}`);
   execSync(cmd, { stdio: "inherit" });
 }
+
+/**
+ * Que estén instaladas las dependencias que el código pide.
+ *
+ * `git pull` trae código nuevo pero no instala nada. Si alguien agregó un
+ * paquete, el build muere con "module not found" y un rastro de webpack que no
+ * menciona npm por ningún lado: se busca el problema en el import, que está
+ * bien.
+ */
+function verificarDependencias() {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const pedidas = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+  const faltan = pedidas.filter((d) => !existsSync(join("node_modules", d)));
+  if (!faltan.length) return;
+
+  console.log("\nFaltan dependencias instaladas:");
+  for (const d of faltan) console.log(`  - ${d}`);
+  console.log("\nCorré esto y volvé a intentar:\n\n  npm install\n");
+  process.exit(1);
+}
+
+verificarDependencias();
 
 if (existsSync(GS)) {
   copyFileSync(GS, COPIA);

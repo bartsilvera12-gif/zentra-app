@@ -17,6 +17,14 @@ Capacitor ya está configurado en `capacitor.config.ts` — `appId` es
 `py.com.zentra.movil`, el mismo `package_name` que trae el `google-services.json`
 de Firebase. **No corras `npx cap init` de nuevo**: sobreescribiría eso.
 
+## Después de cada `git pull`: `npm install`
+
+Bajar el código no instala nada. Si alguien agregó un paquete, el build muere con
+**"module not found"** y un rastro de webpack que no menciona npm por ningún
+lado: uno va a mirar el `import`, que está bien.
+
+`npm run android:init` ahora lo verifica antes de empezar y dice qué falta.
+
 ## Dos errores de Android Studio, y por qué vuelven
 
 Los dos pasan porque `android:init` **borra y regenera `android/`** en cada
