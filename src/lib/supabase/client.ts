@@ -5,17 +5,20 @@
  * app depende del código de empresa, y eso recién se sabe cuando el usuario entra.
  * Por eso se crea al resolver el tenant y se guarda uno por configuración.
  *
- * Las tablas viven en el schema `zentra`, no en `public`: hay que decírselo al
- * cliente, si no PostgREST busca en `public` y no encuentra nada.
+ * Las tablas no viven en `public`: hay que decirle al cliente en qué schema
+ * están, si no PostgREST busca en `public` y no encuentra nada. Cuál es lo
+ * decide cada instalación, porque la de un cliente puede exponer vistas sobre
+ * sus propias tablas en vez de nuestras tablas.
  */
 import { createClient } from "@supabase/supabase-js";
 import type { TenantConfig } from "../tenant/types";
 
+/** El de una instalación nuestra. Una del cliente puede usar otro. */
 export const SCHEMA = "zentra";
 
 function crear(t: TenantConfig) {
   return createClient(t.supabaseUrl, t.anonKey, {
-    db: { schema: SCHEMA },
+    db: { schema: t.schema || SCHEMA },
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -33,7 +36,11 @@ function crear(t: TenantConfig) {
  */
 export type ClienteZentra = ReturnType<typeof crear>;
 
-/** Un cliente por URL: cambiar de instalación no debe reusar la sesión anterior. */
+/**
+ * Un cliente por URL **y schema**: dos instalaciones pueden vivir en el mismo
+ * proyecto y mirar schemas distintos, y reusar el cliente les daría las tablas
+ * de la otra.
+ */
 const clientes = new Map<string, ClienteZentra>();
 
 let activo: ClienteZentra | null = null;
@@ -47,10 +54,11 @@ export function activarTenant(t: TenantConfig): ClienteZentra {
         `Revisá NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY, o el directorio.`,
     );
   }
-  let c = clientes.get(t.supabaseUrl);
+  const llave = `${t.supabaseUrl}#${t.schema || SCHEMA}`;
+  let c = clientes.get(llave);
   if (!c) {
     c = crear(t);
-    clientes.set(t.supabaseUrl, c);
+    clientes.set(llave, c);
   }
   activo = c;
   tenantActivo = t;

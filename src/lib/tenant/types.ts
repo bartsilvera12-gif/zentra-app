@@ -12,6 +12,15 @@ export interface TenantConfig {
   nombre: string;
   supabaseUrl: string;
   anonKey: string;
+  /**
+   * Schema de Postgres donde están las tablas. `zentra` por defecto.
+   *
+   * Es configurable porque una instalación dentro del proyecto de un cliente
+   * puede no tener nuestras tablas sino **vistas** que traducen las suyas. Esas
+   * vistas viven en su propio schema, y así la app lee los datos que ya tiene
+   * ese cliente sin que nadie copie nada.
+   */
+  schema: string;
   /** true cuando es la instalación pública, donde el registro está abierto. */
   publico: boolean;
 }

@@ -2,6 +2,7 @@
  * Agrega o cambia una empresa en el directorio del `.env.local`.
  *
  *   npm run empresa -- JM "Distribuidora JM" https://xxxx.supabase.co sb_publishable_...
+ *   npm run empresa -- JM "Distribuidora JM" https://… sb_publishable_… zentra_jm
  *   npm run empresa -- JM --borrar
  *   npm run empresa              (lista lo que hay)
  *
@@ -41,7 +42,9 @@ if (!codigoCrudo) {
   const entradas = Object.entries(directorio);
   console.log(`\nDirectorio en ${ENV}:`);
   if (!entradas.length) console.log(`  ${GRIS}(vacío — ningún código de empresa configurado)${FIN}`);
-  for (const [c, v] of entradas) console.log(`  ${c}  →  ${v.nombre || "(sin nombre)"}  ${GRIS}${v.supabaseUrl}${FIN}`);
+  for (const [c, v] of entradas) {
+    console.log(`  ${c}  →  ${v.nombre || "(sin nombre)"}  ${GRIS}${v.supabaseUrl}${v.schema ? `  schema ${v.schema}` : ""}${FIN}`);
+  }
   console.log(`\n${GRIS}Agregar:  npm run empresa -- JM "Distribuidora JM" https://xxxx.supabase.co sb_publishable_...${FIN}\n`);
   process.exit(0);
 }
@@ -55,7 +58,10 @@ if (resto[0] === "--borrar") {
   delete directorio[codigo];
   console.log(`\n${VERDE}${codigo} borrado del directorio.${FIN}`);
 } else {
-  const [nombre, url, clave] = resto;
+  // El cuarto dato es opcional: el schema. Hace falta cuando la instalación no
+  // tiene nuestras tablas sino vistas sobre las del cliente, que viven en el
+  // suyo.
+  const [nombre, url, clave, schema] = resto;
   if (!nombre || !url || !clave) {
     salir('Faltan datos.\n  npm run empresa -- JM "Distribuidora JM" https://xxxx.supabase.co sb_publishable_...');
   }
@@ -69,9 +75,17 @@ if (resto[0] === "--borrar") {
     }
     console.log(`${GRIS}Aviso: la clave no empieza con sb_publishable_ ni con eyJ. Si Supabase la acepta, está bien.${FIN}`);
   }
-  directorio[codigo] = { nombre: nombre.trim(), supabaseUrl: limpia, anonKey: clave.trim() };
+  if (schema && !/^[a-z_][a-z0-9_]*$/i.test(schema)) {
+    salir(`"${schema}" no parece un nombre de schema. Van en minúsculas, sin espacios ni puntos.`);
+  }
+  directorio[codigo] = {
+    nombre: nombre.trim(),
+    supabaseUrl: limpia,
+    anonKey: clave.trim(),
+    ...(schema ? { schema: schema.trim() } : {}),
+  };
   console.log(`\n${VERDE}${codigo} → ${nombre.trim()}${FIN}`);
-  console.log(`  ${GRIS}${limpia}${FIN}`);
+  console.log(`  ${GRIS}${limpia}${schema ? `  schema ${schema.trim()}` : ""}${FIN}`);
 }
 
 // Sin empresas, la línea se va del archivo. Dejar un `{}` no rompe nada, pero

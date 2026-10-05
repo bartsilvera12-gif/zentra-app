@@ -65,6 +65,7 @@ function leerEnv(archivo) {
  * una página de login de wifi— no sirve ni para aprobar ni para rechazar.
  */
 async function pedir(url, anonKey, ruta, opts = {}) {
+  const schema = opts.schema || SCHEMA;
   // AbortController a mano, y no AbortSignal.timeout, para poder apagar el
   // temporizador: uno vivo mantiene el proceso en pie y, en Windows, salir con
   // handles pendientes revienta libuv con una aserción.
@@ -74,7 +75,7 @@ async function pedir(url, anonKey, ruta, opts = {}) {
     // `Authorization` se puede omitir a propósito: sirve para distinguir una
     // clave equivocada de una clave buena que el cliente manda de una forma que
     // el servidor no acepta.
-    const headers = { apikey: anonKey, "Accept-Profile": SCHEMA };
+    const headers = { apikey: anonKey, "Accept-Profile": schema };
     if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
     else if (!opts.sinAuthorization) headers.Authorization = `Bearer ${anonKey}`;
     const res = await fetch(`${url}/rest/v1/${ruta}`, { headers, signal: ctrl.signal });
@@ -153,7 +154,7 @@ const DE_QUE_SCRIPT = {
  *   con credenciales  además entra de verdad y verifica tablas, funciones y
  *                     perfil, que es lo único que no se puede ver desde afuera.
  */
-async function revisarProyecto(etiqueta, url, anonKey, credenciales) {
+async function revisarProyecto(etiqueta, url, anonKey, credenciales, schema = SCHEMA) {
   console.log(`\n${etiqueta}`);
   console.log(`  ${GRIS}${url}${FIN}`);
 
@@ -163,7 +164,7 @@ async function revisarProyecto(etiqueta, url, anonKey, credenciales) {
   //
   // Se pregunta por una tabla y no por el índice de la API: ese índice sólo se
   // puede leer con la clave secreta, que jamás puede estar en la app.
-  const anon = await pedir(url, anonKey, "clientes?select=id&limit=1");
+  const anon = await pedir(url, anonKey, "clientes?select=id&limit=1", { schema });
   if (anon.error) {
     mal(`No se pudo conectar: ${anon.error}`,
         "Revisá la URL y tu conexión. Si el proyecto estuvo dormido, Supabase tarda unos segundos en despertarlo.");
@@ -178,8 +179,8 @@ async function revisarProyecto(etiqueta, url, anonKey, credenciales) {
 
   const m = mensajeDe(anon).toLowerCase();
   if (m.includes("schema must be one of") || m.includes("not exposed")) {
-    mal(`El schema '${SCHEMA}' no está expuesto`,
-        "Supabase → Settings → API → Exposed schemas → agregar 'zentra'. Sin esto la app no ve ninguna tabla.");
+    mal(`El schema '${schema}' no está expuesto`,
+        `Supabase → Settings → API → Exposed schemas → agregar '${schema}'. Sin esto la app no ve ninguna tabla.`);
     return;
   }
   if (m.includes("permission denied for schema")) {
@@ -190,8 +191,8 @@ async function revisarProyecto(etiqueta, url, anonKey, credenciales) {
     ].join("\n    "));
     return;
   }
-  if (await claveRechazada(url, anonKey, anon)) return;
-  ok(`Responde Supabase, y el schema '${SCHEMA}' está expuesto`);
+  if (await claveRechazada(url, anonKey, anon, schema)) return;
+  ok(`Responde Supabase, y el schema '${schema}' está expuesto`);
 
   // --- 2. Lo más importante: que sin sesión no se pueda leer nada ---
   //
@@ -225,11 +226,11 @@ async function revisarProyecto(etiqueta, url, anonKey, credenciales) {
     ].join("\n    "));
     return;
   }
-  await revisarConSesion(url, anonKey, credenciales);
+  await revisarConSesion(url, anonKey, credenciales, schema);
 }
 
 /** Entra con una cuenta real y verifica lo que sólo se ve desde adentro. */
-async function revisarConSesion(url, anonKey, { correo, clave }) {
+async function revisarConSesion(url, anonKey, { correo, clave }, schema = SCHEMA) {
   const sesion = await entrar(url, anonKey, correo, clave);
   if (!sesion.token) {
     mal(`No se pudo entrar con ${correo}`, [
@@ -242,7 +243,7 @@ async function revisarConSesion(url, anonKey, { correo, clave }) {
 
   // El perfil lo crea un disparador al registrarse. Si falta, la app entra pero
   // no sabe de qué empresa es, y todo lo demás falla con un mensaje confuso.
-  const perfil = await pedir(url, anonKey, "usuarios?select=id,empresa_id,rol&limit=1", { token: sesion.token });
+  const perfil = await pedir(url, anonKey, "usuarios?select=id,empresa_id,rol&limit=1", { token: sesion.token, schema });
   if (Array.isArray(perfil.json) && perfil.json.length === 1 && perfil.json[0].empresa_id) {
     ok("La cuenta tiene perfil y empresa");
   } else if (Array.isArray(perfil.json)) {
@@ -255,7 +256,7 @@ async function revisarConSesion(url, anonKey, { correo, clave }) {
   // --- tablas ---
   const faltan = [], dudosas = [];
   for (const t of TABLAS) {
-    const r = await pedir(url, anonKey, `${t}?limit=0`, { token: sesion.token });
+    const r = await pedir(url, anonKey, `${t}?limit=0`, { token: sesion.token, schema });
     if (r.error || !r.deSupabase) { dudosas.push(t); continue; }
     if (esFalta(r)) faltan.push(t);
   }
@@ -278,7 +279,7 @@ async function revisarConSesion(url, anonKey, { correo, clave }) {
     ["registrar_dispositivo", "?p_token=x&p_plataforma=web", "activar las notificaciones"],
     ["eliminar_mi_cuenta", "", "borrar la cuenta (requisito de las dos tiendas)"],
   ]) {
-    const r = await pedir(url, anonKey, `rpc/${fn}${args}`, { token: sesion.token });
+    const r = await pedir(url, anonKey, `rpc/${fn}${args}`, { token: sesion.token, schema });
     if (r.error || !r.deSupabase) { aviso(`No se pudo verificar ${fn}()`, r.error || ""); continue; }
     if (r.status === 405) { ok(`${fn}() existe`); continue; }
     const msg = mensajeDe(r).toLowerCase();
@@ -390,7 +391,7 @@ function validarClave(url, anonKey) {
 }
 
 /** ¿Supabase rechazó la clave? Devuelve true si ya informó el problema. */
-async function claveRechazada(url, anonKey, r) {
+async function claveRechazada(url, anonKey, r, schema = SCHEMA) {
   const m = mensajeDe(r).toLowerCase();
   // "permiso denegado" nunca es un problema de la clave: la clave identificó
   // bien al rol, y el rol no tiene permisos. Lo interpreta quien llama, que
@@ -428,7 +429,7 @@ async function claveRechazada(url, anonKey, r) {
   // ¿Es la clave, o es cómo se la mandamos? El cliente la manda en dos
   // cabeceras: `apikey` y `Authorization: Bearer`. Si sacando la segunda pasa,
   // la clave está bien y el problema es el cliente.
-  const soloApikey = await pedir(url, anonKey, "clientes?limit=0", { sinAuthorization: true });
+  const soloApikey = await pedir(url, anonKey, "clientes?limit=0", { sinAuthorization: true, schema });
   if (soloApikey.deSupabase && soloApikey.status < 400) {
     mal("La clave es válida, pero el servidor la rechaza en la cabecera Authorization", [
       `Supabase dijo: ${dijo}`,
@@ -517,6 +518,9 @@ async function main() {
           `Código ${c}${v.nombre ? ` — ${v.nombre}` : ""}`,
           String(v.supabaseUrl).replace(/\/$/, ""),
           String(v.anonKey),
+          // Las credenciales son de un proyecto: no sirven en los demás.
+          null,
+          typeof v.schema === "string" && v.schema.trim() ? v.schema.trim() : SCHEMA,
         );
       }
       // Dos destinos al mismo proyecto: a veces es un error de copiar y pegar,

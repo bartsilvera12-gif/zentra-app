@@ -24,6 +24,7 @@
  * un mensaje que culpa a la conexión.
  */
 import { config } from "../config";
+import { SCHEMA } from "../supabase/client";
 import { guardarTenant, guardarUltimoCodigo, leerTenantGuardado } from "./storage";
 import { TenantError, type TenantConfig } from "./types";
 
@@ -41,6 +42,7 @@ export function tenantPublico(): TenantConfig {
     nombre: "Zentra",
     supabaseUrl: config.supabaseUrl,
     anonKey: config.supabaseAnonKey,
+    schema: SCHEMA,
     publico: true,
   };
 }
@@ -55,6 +57,9 @@ function parseRespuesta(codigo: string, json: unknown): TenantConfig {
     nombre: typeof o.nombre === "string" && o.nombre ? o.nombre : codigo,
     supabaseUrl: o.supabaseUrl.replace(/\/$/, ""),
     anonKey: o.anonKey,
+    // Opcional: una instalación que expone vistas sobre las tablas del cliente
+    // usa el schema de esas vistas en vez del nuestro.
+    schema: typeof o.schema === "string" && o.schema.trim() ? o.schema.trim() : SCHEMA,
     publico: false,
   };
 }

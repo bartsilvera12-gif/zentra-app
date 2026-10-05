@@ -137,6 +137,30 @@ t("un JSON mal escrito no deja arrancar la app", async () => {
   if (!falló) throw new Error("aceptó un JSON inválido");
 });
 
+t("el schema es opcional y por defecto es zentra", async () => {
+  const { resolverTenant } = await cargar({
+    NEXT_PUBLIC_BACKEND: "supabase",
+    NEXT_PUBLIC_DIRECTORIO_JSON: JSON.stringify({
+      PROPIA: { nombre: "Propia", supabaseUrl: "https://a.supabase.co", anonKey: "k" },
+      VISTAS: { nombre: "Con vistas", supabaseUrl: "https://b.supabase.co", anonKey: "k", schema: "zentra_jm" },
+    }),
+  });
+  const a = await resolverTenant("PROPIA");
+  if (a.schema !== "zentra") throw new Error("esperaba zentra, fue " + a.schema);
+  const b = await resolverTenant("VISTAS");
+  if (b.schema !== "zentra_jm") throw new Error("esperaba zentra_jm, fue " + b.schema);
+});
+
+t("el tenant público usa el schema propio", async () => {
+  const { resolverTenant } = await cargar({
+    NEXT_PUBLIC_BACKEND: "supabase",
+    NEXT_PUBLIC_SUPABASE_URL: "https://publico.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "k",
+  });
+  const p = await resolverTenant("");
+  if (p.schema !== "zentra") throw new Error("esperaba zentra, fue " + p.schema);
+});
+
 let malas = 0;
 for (const [nombre, fn] of casos) {
   try { await fn(); console.log("  OK · " + nombre); }
