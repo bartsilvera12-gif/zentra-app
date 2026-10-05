@@ -171,6 +171,34 @@ t("la API es por empresa, y si no la trae usa la global", async () => {
   if (propio.apiUrl !== "https://erp.otracosa.com.py/api") throw new Error("PROPIO: " + propio.apiUrl);
 });
 
+t("la fuente se elige por empresa: con ERP la API, sin ERP nuestras tablas", async () => {
+  for (const k of Object.keys(process.env)) if (k.startsWith("NEXT_PUBLIC_")) delete process.env[k];
+  Object.assign(process.env, {
+    NEXT_PUBLIC_BACKEND: "supabase",
+    NEXT_PUBLIC_SUPABASE_URL: "https://publico.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "k",
+    NEXT_PUBLIC_DIRECTORIO_JSON: JSON.stringify({
+      NEURA: {
+        nombre: "Neura Sistemas", supabaseUrl: "https://api.neura.com.py", anonKey: "k",
+        apiUrl: "https://sistemas.neura.com.py",
+      },
+    }),
+  });
+  const q = "?" + Math.random();
+  const { resolverTenant } = await import("../src/lib/tenant/directory.ts" + q);
+  const { implActiva } = await import("../src/lib/repo/index.ts" + q);
+  const { activarTenant } = await import("../src/lib/supabase/client.ts" + q);
+  const { httpRepo } = await import("../src/lib/repo/http.ts" + q);
+  const { supabaseRepo } = await import("../src/lib/repo/supabase.ts" + q);
+
+  activarTenant(await resolverTenant("NEURA"));
+  if (implActiva() !== httpRepo) throw new Error("NEURA tiene ERP: tenía que ir por la API");
+
+  // La pública no tiene ERP: sus ventas son filas en nuestras tablas.
+  activarTenant(await resolverTenant(""));
+  if (implActiva() !== supabaseRepo) throw new Error("la pública tenía que ir por nuestras tablas");
+});
+
 t("el tenant público usa el schema propio", async () => {
   const { resolverTenant } = await cargar({
     NEXT_PUBLIC_BACKEND: "supabase",
