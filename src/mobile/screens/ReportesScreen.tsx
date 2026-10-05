@@ -1,11 +1,10 @@
 "use client";
 
-import { REP_KPIS, REP_TABLAS } from "@/lib/data";
-import { fmtIso, gs, isoOf, num } from "@/lib/format";
-import { buildReport, kpiDelta, kpiValor, tabTieneDatos, tablaValor } from "@/lib/reportes";
+import { fmtIso, gs, isoOf } from "@/lib/format";
+import { buildReport } from "@/lib/reportes";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
-import { Cargando, Falla, NoDisponible } from "../ui/Estado";
+import { Cargando, Falla } from "../ui/Estado";
 import type { RepTab } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -17,17 +16,30 @@ const VIOLETA = "#8E92B4";
 
 export function ReportesScreen() {
   const { s, t, set } = useApp();
-  // Las ventas del rango salen del ERP. Antes el reporte se armaba de un
-  // histórico de ejemplo: los totales eran de otra empresa.
-  const { datos: ventas, cargando, error, recargar } = useRemoto(
-    () => repo.ventas.list({ desde: s.rDesde, hasta: s.rHasta }),
-    [s.rDesde, s.rHasta],
+  // Los tres reportes salen del ERP. Se pide sólo lo que la solapa necesita:
+  // abrir Reportes no tiene por qué traer el inventario entero.
+  const { datos: ventas, cargando: cV, error: eV, recargar: rV } = useRemoto(
+    () => (s.rTab === "ventas" ? repo.ventas.list({ desde: s.rDesde, hasta: s.rHasta }) : Promise.resolve([])),
+    [s.rTab, s.rDesde, s.rHasta],
   );
-  const m = buildReport(s.rTab, s.rDesde, s.rHasta, ventas);
-  const hayDatos = tabTieneDatos(s.rTab);
+  const { datos: compras, cargando: cC, error: eC, recargar: rC } = useRemoto(
+    () => (s.rTab === "compras" ? repo.compras.list() : Promise.resolve([])),
+    [s.rTab],
+  );
+  const { datos: productos, cargando: cI, error: eI, recargar: rI } = useRemoto(
+    () => (s.rTab === "inventario" ? repo.inventario.list() : Promise.resolve([])),
+    [s.rTab],
+  );
+
+  const cargando = s.rTab === "ventas" ? cV : s.rTab === "compras" ? cC : cI;
+  const error = s.rTab === "ventas" ? eV : s.rTab === "compras" ? eC : eI;
+  const recargar = s.rTab === "ventas" ? rV : s.rTab === "compras" ? rC : rI;
+
+  const m = buildReport(s.rTab, s.rDesde, s.rHasta, { ventas, compras, productos });
+  const hayDatos = true;
 
   const trackBg = s.theme === "oscuro" ? "#242c40" : "#E7ECF2";
-  const tabla = s.rTab === "ventas" ? m.tabla : REP_TABLAS[s.rTab].map((f) => ({ ...f, v: tablaValor(f.v, m) }));
+  const tabla = m.tabla;
 
   const presets: [string, number][] = [
     ["Hoy", 1],
@@ -222,9 +234,6 @@ export function ReportesScreen() {
       </div>
 
       <ScrollBody padding="14px" gap={12}>
-        {/* Proyectar inventario y compras de una serie fija es inventar: esas
-            solapas lo dicen en vez de mostrar números verosímiles y falsos. */}
-        {!hayDatos && <NoDisponible t={t} modulo={s.rTab === "compras" ? "El reporte de compras" : "El reporte de inventario"} />}
         {hayDatos && cargando && <Cargando t={t} que="el reporte" />}
         {hayDatos && !cargando && error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
 
@@ -232,19 +241,16 @@ export function ReportesScreen() {
           <>
         {/* KPIs */}
         <div style={{ display: "flex", gap: 10 }}>
-          {REP_KPIS[s.rTab].map((k) => (
+          {m.kpis.map((k) => (
             <Card key={k.label} style={{ flex: 1, minWidth: 0, padding: 14 }} gap={4}>
               <SectionLabel>{k.label}</SectionLabel>
               <span style={{ font: "700 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
-                {kpiValor(k, s.rTab, m)}
+                {k.valor}
               </span>
-              <span
-                style={{
-                  font: "500 11px/1.2 var(--font-barlow),Barlow,sans-serif",
-                  color: k.up === true ? "#1F5C46" : k.up === false ? "#8C2F2B" : t.ink2,
-                }}
-              >
-                {kpiDelta(k, m)}
+              {/* Sin flechita de "subió/bajó": sería una comparación contra un
+                  período anterior que no se está calculando. */}
+              <span style={{ font: "500 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                {k.delta}
               </span>
             </Card>
           ))}
@@ -256,7 +262,7 @@ export function ReportesScreen() {
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
               <SectionLabel>{m.cfg.serieTitulo}</SectionLabel>
               <span style={{ font: "700 20px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
-                {s.rTab === "inventario" ? `${num(m.total)} un.` : gs(m.total)}
+                {gs(m.total)}
               </span>
             </div>
             <span
@@ -269,9 +275,15 @@ export function ReportesScreen() {
                 color: s.rTab === "compras" ? "#8C2F2B" : "#1F5C46",
               }}
             >
-              {m.cfg.badge}
+              {m.esFoto ? "foto de hoy" : `${m.dias} ${m.dias === 1 ? "día" : "días"}`}
             </span>
           </div>
+          {/* Qué mide el eje. En inventario importa: es una foto de hoy, no del
+              período elegido, y sin decirlo alguien lee esas barras como si
+              fueran del rango. */}
+          <span style={{ font: "400 10.5px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+            {m.serieNota}
+          </span>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 118 }}>
             {m.buckets.map((b, i) => (
               <div
@@ -343,7 +355,7 @@ export function ReportesScreen() {
                   gap: 2,
                 }}
               >
-                <span style={{ font: "700 16px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{m.cfg.donaValor}</span>
+                <span style={{ font: "700 16px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{m.donaValor}</span>
                 <span
                   style={{
                     font: "500 8.5px/1 var(--font-barlow),Barlow,sans-serif",
@@ -351,12 +363,12 @@ export function ReportesScreen() {
                     color: t.ink2,
                   }}
                 >
-                  {m.cfg.donaSub}
+                  {m.donaSub}
                 </span>
               </div>
             </div>
             <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-              {m.cfg.donaItems.map((d) => (
+              {m.dona.map((d) => (
                 <div key={d.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span
                     style={{ width: 9, height: 9, flex: "0 0 auto", borderRadius: 3, background: d.color }}

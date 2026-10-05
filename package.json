@@ -15,10 +15,11 @@
     "sync": "npm run build && npx cap sync",
     "android:init": "node scripts/android-init.mjs",
     "android": "npm run sync && npx cap open android",
-    "test": "npm run test:directorio && npm run test:api && npm run test:nombre && npm run test:sin-ejemplo && npm run test:atras",
+    "test": "npm run test:directorio && npm run test:api && npm run test:nombre && npm run test:sin-ejemplo && npm run test:atras && npm run test:reportes",
     "test:directorio": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/directorio.mjs",
     "test:nombre": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/nombre.mjs",
     "test:sin-ejemplo": "node test/sin-ejemplo.mjs",
+    "test:reportes": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/reportes.mjs",
     "test:atras": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/atras.mjs",
     "test:api": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/api-erp.mjs"
   },

@@ -17,8 +17,7 @@ import {
 } from "../data";
 import { ivaContenido, msgsDe, rateOf, stockDe, totalCompra } from "../calc";
 import { norm } from "../format";
-import { buildReport, kpiDelta, kpiValor } from "../reportes";
-import { REP_KPIS, REP_TABLAS } from "../data";
+import { buildReport } from "../reportes";
 import type { Chat, ChatMsg, Cliente, Compra, InvProducto, Movimiento, Proveedor, Venta } from "../types";
 import type {
   AjusteInput,
@@ -389,20 +388,20 @@ export const mockRepo: Repo = {
 
   reportes: {
     async resumen(tab, desde, hasta): Promise<ResumenReporte> {
-      const m = buildReport(tab, desde, hasta);
-      const tabla = tab === "ventas" ? m.tabla : REP_TABLAS[tab];
+      // Los datos de ejemplo alimentan el mismo armado que usa el ERP, así
+      // que el reporte se calcula igual en los dos lados.
+      const m = buildReport(tab, desde, hasta, {
+        ventas: VENTAS_HIST,
+        compras: COMPRAS,
+        productos: INV,
+      });
       return demora({
         serie: m.buckets.map((b) => ({ fecha: b.dia, valor: b.v })),
         total: m.total,
-        kpis: REP_KPIS[tab].map((k) => ({
-          label: k.label,
-          valor: kpiValor(k, tab, m),
-          delta: kpiDelta(k, m),
-          up: k.up,
-        })),
-        dona: m.cfg.donaItems,
+        kpis: m.kpis.map((k) => ({ label: k.label, valor: k.valor, delta: k.delta, up: null })),
+        dona: m.dona,
         ranking: m.rank.map((r) => ({ label: r.label, valor: r.v, sub: r.sub })),
-        tabla,
+        tabla: m.tabla,
       });
     },
   },
