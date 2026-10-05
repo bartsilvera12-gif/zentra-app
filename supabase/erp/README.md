@@ -105,7 +105,10 @@ Los campos que espera la app están en [`docs/BACKEND.md`](../../docs/BACKEND.md
 | 4 | sin sesión no se llega a las vistas |
 | 5 | **la vista hereda el RLS de la tabla del ERP** |
 | 6 | cambiar el mapeo y regenerar alcanza |
-| 7 | genera todas de una vez, y una rota no frena a las demás |
+| 7 | en un schema compartido exige el `empresa_id` y filtra por él |
+| 8 | genera todas de una vez, y una rota no frena a las demás |
+| 9 | **se niega a escribir en un schema que no creó** |
+| 10 | el directorio lista sólo lo que generamos |
 
 La 5 es la que no puede fallar. Una vista normal corre con los permisos de quien
 la creó y **se saltea** el RLS de la tabla: dejaría leer lo que la tabla no deja.
@@ -171,6 +174,21 @@ npm run empresa -- JM "Distribuidora JM" https://api.ejemplo.com eyJ... zentra_j
 
 El quinto dato es el schema. Sin él la app busca `zentra`, que es el de una
 instalación nuestra.
+
+## Nada de esto pisa un schema ajeno
+
+El ERP de Distribuidora JM ya tiene un schema suyo llamado **`zentra_erp`**, con
+su catálogo de empresas y usuarios. Por eso lo nuestro vive en **`zentra_movil`**:
+meter nuestras tablas adentro del suyo habría sido ensuciar su base, y en el peor
+caso pisarle algo.
+
+Y el generador no escribe en ningún schema que no haya creado él. Cada schema que
+genera queda marcado con un comentario; si el destino existe sin esa marca, se
+niega con un error claro en vez de hacer `create or replace view` sobre lo que
+haya. Lo verifica la prueba 9.
+
+El directorio lista por esa marca y no por el nombre, así un schema ajeno que
+empiece con `zentra_` no aparece como si fuera nuestro.
 
 ## Lo que esto NO hace
 
