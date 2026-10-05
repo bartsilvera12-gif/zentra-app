@@ -287,5 +287,4 @@ export const SOPORTE = [
 export const HOY_ISO = "2026-09-30";
 export const EMPRESA = "Distribuidora JM";
 export const USUARIO = { nombre: "Ulises Gómez", rol: "VENDEDOR", inicial: "U" };
-export const FECHA_LARGA = "Vie 25 sep 2026";
 export const VERSION = "v 2.4.1";

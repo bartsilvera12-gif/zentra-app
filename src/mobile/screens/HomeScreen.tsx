@@ -1,7 +1,9 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { EMPRESA, FECHA_LARGA, USUARIO } from "@/lib/data";
+import { EMPRESA, USUARIO } from "@/lib/data";
+import { fechaDeHoy, inicialDe, nombreCorto, rolLegible } from "@/lib/nombre";
+import { usePanel } from "./usePanel";
 import { MODULES } from "@/lib/theme";
 import type { ModuleKey } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
@@ -119,9 +121,19 @@ export function HomeScreen() {
   // Con sesión real, empresa y usuario salen del perfil; si no, de los datos de ejemplo.
   const empresa = s.sesion?.empresa || (s.tenant && !s.tenant.publico ? s.tenant.nombre : EMPRESA);
   const usuario = s.sesion ?? USUARIO;
-  const inicial = (s.sesion?.nombre || USUARIO.nombre).slice(0, 1).toUpperCase();
-  const pct = 82 * p;
-  const barras = [38, 54, 44, 70, 60, 82, 100];
+  // El ERP devuelve el nombre legal completo y en mayúsculas. Entero empuja al
+  // nombre de la empresa y se lee como un grito.
+  const nombre = nombreCorto(usuario.nombre);
+  const inicial = inicialDe(usuario.nombre);
+  const rol = rolLegible(usuario.rol);
+  const fecha = fechaDeHoy();
+
+  // Los números salen del ERP. Antes estaban escritos acá y eran mentira.
+  const panel = usePanel(true);
+  const pct = (panel.inventario?.pctOptimo ?? 0) * p;
+  const tope = Math.max(1, ...(panel.ventas?.serie ?? [0]));
+  const barras = (panel.ventas?.serie ?? Array(7).fill(0)).map((v) => (v / tope) * 100);
+  const gs = (n: number) => "Gs. " + Math.round(n).toLocaleString("es-PY");
 
   const onDashScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -166,15 +178,28 @@ export function HomeScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
             <span style={{ font: "600 15.5px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{empresa}</span>
             <span style={{ font: "400 11px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink2, whiteSpace: "nowrap" }}>
-              {FECHA_LARGA}
+              {fecha}
             </span>
           </div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-            <span style={{ font: "600 13px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{usuario.nombre}</span>
+            <span
+              style={{
+                font: "600 13px/1.1 var(--font-barlow),Barlow,sans-serif",
+                color: t.ink,
+                // Un nombre largo empujaba el de la empresa fuera de la
+                // pantalla. Acá se corta con puntos suspensivos.
+                maxWidth: 150,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {nombre}
+            </span>
             <span style={{ font: "600 10.5px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".12em", color: roleInk }}>
-              {usuario.rol}
+              {rol}
             </span>
           </div>
           <IconCampana stroke={t.ink2} />
@@ -251,7 +276,7 @@ export function HomeScreen() {
                 }}
               >
                 <span style={{ font: "700 24px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>
-                  {Math.round(pct)}%
+                  {panel.inventario ? `${Math.round(pct)}%` : "—"}
                 </span>
                 <span style={{ font: "500 10px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".1em", color: "#8ECAE6" }}>
                   ÓPTIMO
@@ -270,17 +295,25 @@ export function HomeScreen() {
                 Inventario
               </div>
               <div style={{ font: "700 25px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>
-                {Math.round(1248 * p).toLocaleString("es-PY")} ítems
+                {panel.inventario
+                  ? `${Math.round(panel.inventario.total * p).toLocaleString("es-PY")} ítems`
+                  : panel.cargando
+                    ? "…"
+                    : "sin datos"}
               </div>
               <div style={{ display: "flex", gap: 14 }}>
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FFB701" }}>37</span>
+                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FFB701" }}>
+                    {panel.inventario ? panel.inventario.bajoMinimo : "—"}
+                  </span>
                   <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.72)" }}>
                     bajo mínimo
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FC8500" }}>6</span>
+                  <span style={{ font: "600 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: "#FC8500" }}>
+                    {panel.inventario ? panel.inventario.agotados : "—"}
+                  </span>
                   <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.72)" }}>
                     agotados
                   </span>
@@ -316,9 +349,22 @@ export function HomeScreen() {
                 >
                   Ventas de hoy
                 </div>
-                <div style={{ font: "700 26px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>Gs. 4.850.000</div>
+                <div style={{ font: "700 26px/1 var(--font-barlow),Barlow,sans-serif", color: "#fff" }}>
+                  {panel.ventas ? gs(panel.ventas.hoy * p) : panel.cargando ? "…" : "sin datos"}
+                </div>
                 <div style={{ font: "500 12.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#FFB701" }}>
-                  ▲ 12% vs. ayer · 18 facturas
+                  {panel.ventas
+                    ? [
+                        // Sin ventas ayer no hay con qué comparar: "subió 100%"
+                        // desde cero no dice nada.
+                        panel.ventas.deltaPct === null
+                          ? null
+                          : `${panel.ventas.deltaPct >= 0 ? "▲" : "▼"} ${Math.abs(panel.ventas.deltaPct)}% vs. ayer`,
+                        `${panel.ventas.facturas} ${panel.ventas.facturas === 1 ? "factura" : "facturas"}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : ""}
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 68, paddingTop: 6 }}>
@@ -367,8 +413,13 @@ export function HomeScreen() {
           padding: "4px 14px 10px",
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
+          // Las filas se reparten el alto que sobra, en vez de quedar de un
+          // tamaño fijo y dejar un hueco abajo. El mínimo evita que en una
+          // pantalla chica queden tan aplastadas que no se lea el texto: ahí
+          // la grilla vuelve a desbordar y se puede hacer scroll, que es
+          // preferible a un botón que no se entiende.
+          gridAutoRows: "minmax(96px, 1fr)",
           gap: 12,
-          alignContent: "start",
         }}
       >
         <Tile
