@@ -4,6 +4,12 @@ El SQL concreto detrás de [`API-ERP.md`](API-ERP.md), escrito contra las tablas
 reales del ERP de Distribuidora JM y **probado**: se corren contra una réplica de
 su estructura y devuelven lo que la app espera.
 
+> **Esto no se pega en el editor SQL.** Lo que va como `:empresa`, `:q` o
+> `:auth_user_id` son **parámetros** que la API pasa desde su código; Postgres no
+> los entiende si los recibe tal cual. Para probar una a mano hay que reemplazar
+> cada `:algo` por un valor entre comillas — o usar
+> [`consultas-erp-prueba.sql`](consultas-erp-prueba.sql), que ya lo hace.
+
 Dos cosas que valen para todas:
 
 - **`:empresa` sale del token, nunca del cuerpo del pedido.** Si viniera de
@@ -237,9 +243,17 @@ eso. Devuelve `null` si no existe.
 
 ## Probarlas
 
+Sin tocar el ERP, contra una réplica con datos inventados:
+
 ```bash
 psql "LA_CADENA_DE_CONEXION" -f docs/consultas-erp-prueba.sql
 ```
 
-Arma una réplica de la estructura con datos inventados y corre las cuatro
-consultas. No toca el ERP.
+Contra el ERP de verdad, con los valores ya puestos y sólo lectura:
+
+```bash
+psql "LA_CADENA_DE_CONEXION" -f docs/consultas-erp-reales.sql
+```
+
+El segundo también lista los valores que usa el ERP en `estado`, `tipo_venta`,
+`metodo_pago` y `tipo_iva`, que es lo que hace falta para ajustar los `case`.
