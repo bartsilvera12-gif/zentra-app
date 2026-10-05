@@ -41,6 +41,17 @@ export const repo: Repo = new Proxy({} as Repo, {
 
 export const usaSupabase = config.backend === "supabase";
 
+/**
+ * ¿La empresa activa lee de un ERP por API?
+ *
+ * Lo usan las pantallas de módulos que ese ERP no expone: con ERP avisan que no
+ * están conectadas, en vez de mostrar las conversaciones de ejemplo como si
+ * fueran los chats de esa empresa.
+ */
+export function usaApiDelErp(): boolean {
+  return implActiva() === httpRepo;
+}
+
 export * from "./ports";
 export { ApiError } from "./http";
 export { AuthError } from "./supabase-auth";

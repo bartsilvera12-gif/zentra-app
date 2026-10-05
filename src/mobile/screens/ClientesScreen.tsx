@@ -1,6 +1,8 @@
 "use client";
 
-import { CLIENTES } from "@/lib/data";
+import { repo } from "@/lib/repo";
+import { useRemoto } from "./useRemoto";
+import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { gs, norm } from "@/lib/format";
 import type { Cliente } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
@@ -29,7 +31,10 @@ const ACCENT = "#04617A";
 export function ClientesScreen() {
   const { s, t, set } = useApp();
 
-  const todos = CLIENTES.concat(s.cExtra);
+  // Los clientes salen del ERP de la empresa. Antes salían de un archivo de
+  // ejemplo: la pantalla se veía llena de gente que no existe.
+  const { datos, cargando, error, recargar } = useRemoto(() => repo.clientes.list(), []);
+  const todos = datos.concat(s.cExtra);
   const activos = todos.filter((c) => c.estado === "Activo").length;
   const cq = norm(s.cQuery.trim());
 
@@ -168,7 +173,9 @@ export function ClientesScreen() {
           </div>
 
           <ScrollBody>
-            {filtrados.map((c) => (
+            {cargando && <Cargando t={t} que="clientes" />}
+            {error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+            {!cargando && !error && filtrados.map((c) => (
               <button
                 key={c.id}
                 onClick={() => set({ cSub: "detalle", cSel: c.id })}
@@ -236,7 +243,7 @@ export function ClientesScreen() {
                 </span>
               </button>
             ))}
-            {filtrados.length === 0 && (
+            {!cargando && !error && filtrados.length === 0 && (
               <EmptyState titulo="Sin clientes" detalle="Probá con otro término o cambiá el filtro." />
             )}
           </ScrollBody>

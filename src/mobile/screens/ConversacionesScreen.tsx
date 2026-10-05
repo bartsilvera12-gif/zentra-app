@@ -1,6 +1,8 @@
 "use client";
 
 import { ADJUNTOS, CHATS, EMOJIS, GIFS, PLANTILLAS, STICKERS } from "@/lib/data";
+import { usaApiDelErp } from "@/lib/repo";
+import { NoDisponible } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
 import type { ChatMsg } from "@/lib/types";
@@ -14,6 +16,9 @@ const VIOLETA_INK = "#4B3C86";
 
 export function ConversacionesScreen() {
   const { s, t, set, abrirChat, pushMsg, startGrab, stopGrab } = useApp();
+  // Con ERP, los chats de ejemplo serían conversaciones de WhatsApp inventadas
+  // con nombres de clientes que no son los suyos. Eso no se muestra.
+  const sinConectar = usaApiDelErp();
 
   const noLeidosTotal = CHATS.reduce((a, c) => a + noLeidosDe(c, s.xLeidos), 0);
   const xq = norm(s.xQuery.trim());
@@ -215,6 +220,27 @@ export function ConversacionesScreen() {
       </div>
     );
   };
+
+  if (sinConectar) {
+    return (
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          animation: "zt-fade .22s ease",
+          background: t.bg,
+        }}
+      >
+        <StatusBar bg={topBg} />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <NoDisponible t={t} modulo="Conversaciones" />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div

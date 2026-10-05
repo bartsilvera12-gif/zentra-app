@@ -1,6 +1,9 @@
 "use client";
 
-import { INV, MOTIVOS, MOVS, PESABLES, UNIDADES } from "@/lib/data";
+import { MOTIVOS, MOVS, PESABLES, UNIDADES } from "@/lib/data";
+import { repo } from "@/lib/repo";
+import { useRemoto } from "./useRemoto";
+import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { margenPct, stockDe } from "@/lib/calc";
 import { gs, norm, num } from "@/lib/format";
 import type { InvProducto, Movimiento, MovTipo } from "@/lib/types";
@@ -31,7 +34,9 @@ const CIAN_CLARO = "#8ECAE6";
 export function InventarioScreen() {
   const { s, t, set } = useApp();
 
-  const prods = s.iExtra.concat(INV);
+  // El catálogo sale del ERP.
+  const { datos, cargando, error, recargar } = useRemoto(() => repo.inventario.list(), []);
+  const prods = s.iExtra.concat(datos);
   const stock = (p: InvProducto) => stockDe(p, s.iDelta);
   const unidades = prods.reduce((a, p) => a + stock(p), 0);
   const bajo = prods.filter((p) => stock(p) <= p.minimo);
@@ -287,7 +292,9 @@ export function InventarioScreen() {
           </div>
 
           <ScrollBody>
-            {filtrados.map((p) => {
+            {cargando && <Cargando t={t} que="el inventario" />}
+            {error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+            {!cargando && !error && filtrados.map((p) => {
               const st = stock(p);
               const agotado = st <= 0;
               const esBajo = st > 0 && st <= p.minimo;
@@ -384,7 +391,7 @@ export function InventarioScreen() {
                 </button>
               );
             })}
-            {filtrados.length === 0 && (
+            {!cargando && !error && filtrados.length === 0 && (
               <EmptyState titulo="Sin productos" detalle="Probá con otro término o cambiá el filtro." />
             )}
           </ScrollBody>

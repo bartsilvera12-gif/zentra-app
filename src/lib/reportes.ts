@@ -1,9 +1,13 @@
 /**
- * Report aggregation. Sales figures are real (summed from VENTAS_HIST over the
- * selected range); inventory and purchases are projected from a weekly base
- * series, then scaled so the totals stay plausible for any range the user picks.
+ * Armado de los reportes.
+ *
+ * Las ventas se suman de las ventas reales del rango, que entran por parámetro.
+ * Inventario y compras se proyectaban de una serie semanal inventada y se
+ * escalaban para que el total "quedara creíble" en cualquier rango: números
+ * verosímiles y falsos, que es la peor clase. Esas dos solapas ahora avisan que
+ * no están conectadas en vez de mostrarse. Ver `tabTieneDatos`.
  */
-import { REP, REP_SERIES, VENTAS_HIST } from "./data";
+import { REP, REP_SERIES } from "./data";
 import { neto, totalVenta } from "./calc";
 import { diaMes, gs, isoOf } from "./format";
 import type { Iva, RepCfg, RepKpi, RepTab, Venta } from "./types";
@@ -44,7 +48,15 @@ function soloDigitos(txt: string): number {
   return Number(String(txt).replace(/[^0-9]/g, "")) || 0;
 }
 
-export function buildReport(tab: RepTab, desde: string, hasta: string): ReportModel {
+/**
+ * Qué solapas tienen datos de verdad. Las otras no se dibujan: proyectar
+ * inventario y compras de una serie fija es inventar.
+ */
+export function tabTieneDatos(tab: RepTab): boolean {
+  return tab === "ventas";
+}
+
+export function buildReport(tab: RepTab, desde: string, hasta: string, ventas: Venta[] = []): ReportModel {
   const cfg = REP[tab];
   const d0 = new Date(desde + "T12:00:00");
   const d1 = new Date(hasta + "T12:00:00");
@@ -57,11 +69,11 @@ export function buildReport(tab: RepTab, desde: string, hasta: string): ReportMo
   for (let i = 0; i < dias; i++) fechas.push(new Date(d0.getTime() + i * 86400000));
 
   const base = REP_SERIES[tab];
-  const enRango = VENTAS_HIST.filter((v) => v.iso >= desde && v.iso <= hasta);
+  const enRango = ventas.filter((v) => v.iso >= desde && v.iso <= hasta);
 
   const ventasDia = (d: Date) => {
     const k = isoOf(d);
-    return VENTAS_HIST.filter((v) => v.iso === k).reduce((a, v) => a + totalVenta(v), 0);
+    return ventas.filter((v) => v.iso === k).reduce((a, v) => a + totalVenta(v), 0);
   };
 
   const valores = tab === "ventas" ? fechas.map(ventasDia) : fechas.map((d) => diario(d, base));
@@ -84,7 +96,7 @@ export function buildReport(tab: RepTab, desde: string, hasta: string): ReportMo
 
   const refTotal =
     (tab === "ventas"
-      ? VENTAS_HIST.reduce((a, v) => a + totalVenta(v), 0)
+      ? ventas.reduce((a, v) => a + totalVenta(v), 0)
       : base.reduce((a, b) => a + b, 0)) || 1;
   const factor = total / refTotal;
   const esc = (n: number) => Math.round(n * factor);

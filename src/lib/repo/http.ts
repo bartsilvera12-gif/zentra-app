@@ -19,7 +19,7 @@
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
 import { sb, tenantEnUso } from "../supabase/client";
-import type { Cliente, InvProducto, Iva, Venta } from "../types";
+import type { Cliente, Compra, InvProducto, Iva, Proveedor, Venta } from "../types";
 import type { Repo } from "./ports";
 
 export class ApiError extends Error {
@@ -398,6 +398,85 @@ function aVenta(v: VentaErp): Venta {
 }
 
 /**
+ * Una fila de `proveedores`. Este endpoint sí traduce del lado del ERP, así que
+ * los nombres vienen limpios — no como `clientes`, que llega crudo.
+ */
+interface ProveedorErp {
+  id: string;
+  nombre?: string | null;
+  nombre_comercial?: string | null;
+  razon_social?: string | null;
+  ruc?: string | null;
+  telefono?: string | null;
+  email?: string | null;
+  direccion?: string | null;
+  contacto?: string | null;
+  estado?: string | null;
+  condicion_pago?: string | null;
+  plazo_pago_dias?: number | null;
+  categorias?: { nombre?: string | null }[] | null;
+}
+
+function aProveedor(p: ProveedorErp): Proveedor {
+  const credito = (p.condicion_pago || "").toLowerCase().includes("credito");
+  return {
+    id: String(p.id),
+    nombre: primero(p.nombre, p.nombre_comercial, p.razon_social) || "Sin nombre",
+    doc: primero(p.ruc) || "Sin documento",
+    condicion: credito ? `Crédito ${p.plazo_pago_dias ?? 0} días` : "Contado",
+    // Las categorías del ERP hacen de rubro. Si no tiene, no se inventa uno.
+    rubro: (p.categorias || []).map((c) => c?.nombre).filter(Boolean).join(", "),
+    ciudad: primero(p.direccion),
+    contacto: primero(p.contacto),
+    tel: primero(p.telefono),
+    email: primero(p.email),
+    estado: (p.estado || "").toLowerCase() === "inactivo" ? "Inactivo" : "Activo",
+    entrega: 0,
+    chatId: null,
+  };
+}
+
+/** Una fila de `compras`, con los nombres de columna del ERP. */
+interface CompraErp {
+  id: string;
+  numero_control?: string | null;
+  proveedor_id?: string | null;
+  producto_nombre?: string | null;
+  cantidad?: number | string | null;
+  costo_unitario?: number | string | null;
+  iva_tipo?: string | null;
+  tipo_pago?: string | null;
+  plazo_dias?: number | null;
+  cuotas?: number | null;
+  estado?: string | null;
+  fecha?: string | null;
+  numero_comprobante?: string | null;
+  nro_timbrado?: string | null;
+}
+
+function aCompra(c: CompraErp): Compra {
+  const credito = /cred/i.test(c.tipo_pago || "");
+  return {
+    id: String(c.id),
+    numero: primero(c.numero_control) || String(c.id).slice(0, 8),
+    provId: c.proveedor_id ?? null,
+    producto: primero(c.producto_nombre) || "(sin nombre)",
+    cantidad: Number(c.cantidad) || 0,
+    costo: entero(c.costo_unitario),
+    iva: aIva(c.iva_tipo),
+    pago: credito ? "Crédito" : "Contado",
+    plazo: Number(c.plazo_dias) || 0,
+    cuotas: Number(c.cuotas) || 0,
+    // Lo que el ERP no da por pagado queda pendiente: una pagada mostrada como
+    // pendiente molesta; al revés, se deja de pagar a un proveedor.
+    estado: /pagad|cerrad|complet/i.test(c.estado || "") ? "Pagada" : "Pendiente",
+    fecha: (c.fecha || "").slice(0, 10),
+    factura: primero(c.numero_comprobante),
+    timbrado: primero(c.nro_timbrado),
+  };
+}
+
+/**
  * Implementación contra la API de un ERP.
  *
  * Está implementado lo que hace falta para el caso que motivó esto: ver clientes
@@ -518,8 +597,15 @@ export const httpRepo: Repo = {
   },
 
   proveedores: {
-    list: () => pendiente("proveedores.list"),
-    get: () => pendiente("proveedores.get"),
+    async list() {
+      const r = await request<{ proveedores: ProveedorErp[] }>("/proveedores");
+      return (r?.proveedores ?? []).map(aProveedor);
+    },
+    async get(id) {
+      const r = await request<{ proveedores: ProveedorErp[] }>("/proveedores");
+      const p = (r?.proveedores ?? []).find((x) => String(x.id) === id);
+      return p ? aProveedor(p) : null;
+    },
     create: () => pendiente("proveedores.create"),
     deuda: () => pendiente("proveedores.deuda"),
     consultarSet: () => pendiente("proveedores.consultarSet"),
@@ -648,8 +734,15 @@ export const httpRepo: Repo = {
   },
 
   compras: {
-    list: () => pendiente("compras.list"),
-    get: () => pendiente("compras.get"),
+    async list() {
+      const r = await request<{ compras: CompraErp[] }>("/compras");
+      return (r?.compras ?? []).map(aCompra);
+    },
+    async get(id) {
+      const r = await request<{ compras: CompraErp[] }>("/compras");
+      const c = (r?.compras ?? []).find((x) => String(x.id) === id);
+      return c ? aCompra(c) : null;
+    },
     create: () => pendiente("compras.create"),
   },
 

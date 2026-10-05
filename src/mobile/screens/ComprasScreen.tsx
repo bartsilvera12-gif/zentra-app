@@ -1,6 +1,9 @@
 "use client";
 
-import { COMPRAS, INV, IVA_RATE, PASOS_COMPRA, PROVEEDORES } from "@/lib/data";
+import { IVA_RATE, PASOS_COMPRA } from "@/lib/data";
+import { repo } from "@/lib/repo";
+import { useRemoto } from "./useRemoto";
+import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { lineasDeCompra, stockDe, totalCompra } from "@/lib/calc";
 import { gs, norm } from "@/lib/format";
 import type { Compra, CompraLinea, Iva } from "@/lib/types";
@@ -27,11 +30,16 @@ const ORO = "#96731A";
 export function ComprasScreen() {
   const { s, t, set, kQty, kRotarIva } = useApp();
 
-  const provs = s.vwExtra.concat(PROVEEDORES);
-  const prods = s.iExtra.concat(INV);
+  // Las tres listas salen del ERP. Las compras son lo que se muestra; los
+  // proveedores y el catálogo hacen falta para cargar una nueva.
+  const { datos: comprasErp, cargando, error, recargar } = useRemoto(() => repo.compras.list(), []);
+  const { datos: provsErp } = useRemoto(() => repo.proveedores.list(), []);
+  const { datos: prodsErp } = useRemoto(() => repo.inventario.list(), []);
+  const provs = s.vwExtra.concat(provsErp);
+  const prods = s.iExtra.concat(prodsErp);
   const provName = (id: string | null) => provs.find((x) => x.id === id)?.nombre ?? "—";
 
-  const todas = s.kExtra.concat(COMPRAS);
+  const todas = s.kExtra.concat(comprasErp);
   const pend = todas.filter((c) => c.estado === "Pendiente");
   const kq = norm(s.kQuery.trim());
   const filtradas = todas.filter((c) => {
@@ -205,7 +213,9 @@ export function ComprasScreen() {
           </div>
 
           <ScrollBody>
-            {filtradas.map((c) => {
+            {cargando && <Cargando t={t} que="compras" />}
+            {error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+            {!cargando && !error && filtradas.map((c) => {
               const pagada = c.estado === "Pagada";
               return (
                 <button
@@ -267,7 +277,7 @@ export function ComprasScreen() {
                 </button>
               );
             })}
-            {filtradas.length === 0 && (
+            {!cargando && !error && filtradas.length === 0 && (
               <EmptyState titulo="Sin compras" detalle="Probá con otro término o cambiá el filtro." />
             )}
           </ScrollBody>

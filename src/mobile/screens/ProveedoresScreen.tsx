@@ -1,6 +1,8 @@
 "use client";
 
-import { COMPRAS, PROVEEDORES } from "@/lib/data";
+import { repo } from "@/lib/repo";
+import { useRemoto } from "./useRemoto";
+import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { totalCompra } from "@/lib/calc";
 import { gs, norm, plural } from "@/lib/format";
 import type { Proveedor } from "@/lib/types";
@@ -31,9 +33,13 @@ const ORO = "#96731A";
 export function ProveedoresScreen() {
   const { s, t, set, abrirChat } = useApp();
 
-  const todos = s.vwExtra.concat(PROVEEDORES);
+  const { datos, cargando, error, recargar } = useRemoto(() => repo.proveedores.list(), []);
+  // Las compras dan la deuda de cada proveedor; si fallan, se muestra el
+  // proveedor sin deuda antes que no mostrarlo.
+  const { datos: comprasErp } = useRemoto(() => repo.compras.list(), []);
+  const todos = s.vwExtra.concat(datos);
   const activos = todos.filter((p) => p.estado === "Activo").length;
-  const compras = s.kExtra.concat(COMPRAS);
+  const compras = s.kExtra.concat(comprasErp);
   const pendientes = compras.filter((c) => c.estado === "Pendiente");
 
   const deudaDe = (id: string) =>
@@ -160,7 +166,9 @@ export function ProveedoresScreen() {
           </div>
 
           <ScrollBody>
-            {filtrados.map((p) => {
+            {cargando && <Cargando t={t} que="proveedores" />}
+            {error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+            {!cargando && !error && filtrados.map((p) => {
               const deuda = deudaDe(p.id);
               const esCredito = p.condicion.indexOf("Crédito") >= 0;
               return (
@@ -240,7 +248,7 @@ export function ProveedoresScreen() {
                 </button>
               );
             })}
-            {filtrados.length === 0 && (
+            {!cargando && !error && filtrados.length === 0 && (
               <EmptyState titulo="Sin proveedores" detalle="Probá con otro término o cambiá el filtro." />
             )}
           </ScrollBody>

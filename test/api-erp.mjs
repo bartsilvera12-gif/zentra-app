@@ -104,6 +104,25 @@ const server = createServer((req, res) => {
       return json(201, { success: true, data: { venta: v } });
     }
     if (ruta === "/ventas" && req.method === "GET") return ok([]);
+    // Estos dos sí traducen del lado del ERP, y van en su propio sobre.
+    if (ruta === "/proveedores") {
+      return ok({ proveedores: [{
+        id: "pr1", nombre: "Distribuidora del Este", ruc: "80011222-3",
+        telefono: "0981 111 222", email: null, direccion: "Ciudad del Este",
+        contacto: "Mario Ruiz", estado: "activo",
+        condicion_pago: "credito", plazo_pago_dias: 30,
+        categorias: [{ nombre: "Bebidas" }],
+      }] });
+    }
+    if (ruta === "/compras") {
+      return ok({ compras: [{
+        id: "k1", numero_control: "CMP-000045", proveedor_id: "pr1",
+        producto_nombre: "GASEOSA 2L", cantidad: 24, costo_unitario: 48000.4,
+        iva_tipo: "10%", tipo_pago: "CREDITO", plazo_dias: 30, cuotas: 1,
+        estado: "pendiente", fecha: "2026-10-01T00:00:00Z",
+        numero_comprobante: "001-001-0000045", nro_timbrado: "12345678",
+      }] });
+    }
     if (ruta === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
     return json(404, { success: false, error: "no existe" });
   });
@@ -297,6 +316,23 @@ t("sin nombre cargado, el perfil cae al correo y no queda vacio", async () => {
   if (nombre !== "sinnombre@jm.com.py") throw new Error("nombre: " + nombre);
 });
 
+t("proveedores y compras salen del sobre { proveedores } y { compras }", async () => {
+  const provs = await httpRepo.proveedores.list();
+  if (provs.length !== 1) throw new Error("proveedores: " + provs.length);
+  if (provs[0].nombre !== "Distribuidora del Este") throw new Error("nombre: " + provs[0].nombre);
+  // condicion_pago credito + plazo arma el texto que ve la persona.
+  if (provs[0].condicion !== "Crédito 30 días") throw new Error("condicion: " + provs[0].condicion);
+  if (provs[0].estado !== "Activo") throw new Error("estado: " + provs[0].estado);
+
+  const compras = await httpRepo.compras.list();
+  if (compras.length !== 1) throw new Error("compras: " + compras.length);
+  // Lo que el ERP no da por pagado queda pendiente: al reves se deja de pagar
+  // a un proveedor.
+  if (compras[0].estado !== "Pendiente") throw new Error("estado: " + compras[0].estado);
+  if (compras[0].pago !== "Crédito") throw new Error("pago: " + compras[0].pago);
+  if (compras[0].costo !== 48000) throw new Error("costo: " + compras[0].costo);
+});
+
 t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
   const { transporte } = await import("../src/lib/repo/http.ts");
   if (transporte() !== "navegador") throw new Error("sin Capacitor debería ser navegador");
@@ -320,7 +356,8 @@ t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
 
 t("lo que no está implementado lo dice, no inventa datos", async () => {
   let msg = "";
-  try { await httpRepo.compras.list(); } catch (e) { msg = e.message; }
+  // compras.list ya existe; chats sigue sin endpoint en estos ERPs.
+  try { await httpRepo.chats.list(); } catch (e) { msg = e.message; }
   if (!/no está implementado/.test(msg)) throw new Error("mensaje poco claro: " + msg);
 });
 
