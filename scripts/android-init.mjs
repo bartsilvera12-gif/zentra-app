@@ -175,6 +175,39 @@ function agregarPermisos() {
 
 agregarPermisos();
 
+/**
+ * Que los íconos generados sean los nuestros y no los de la plantilla.
+ *
+ * `@capacitor/assets` puede terminar sin error y haber escrito poco: si falta
+ * un archivo en `assets/`, o la versión no entiende un parámetro, el proyecto
+ * queda con el ícono genérico de Capacitor. Eso no se nota hasta que la app
+ * está instalada en un teléfono, y para entonces ya nadie se acuerda de este
+ * paso.
+ */
+async function verificarIcono() {
+  const RUTA = "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png";
+  if (!existsSync(RUTA)) {
+    console.log("\nERROR: no se generaron los íconos. El APK saldría con el de Capacitor.");
+    process.exit(1);
+  }
+  const { default: sharp } = await import("sharp");
+  const { data } = await sharp(RUTA).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let n = 0, r = 0, g = 0, b = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] > 10) { n++; r += data[i]; g += data[i + 1]; b += data[i + 2]; }
+  }
+  const medio = [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  const MARCA = [28, 140, 132]; // #1C8C84
+  if (medio.some((c, i) => Math.abs(c - MARCA[i]) > 12)) {
+    console.log(`\nERROR: el ícono generado es ${medio}, se esperaba ${MARCA}.`);
+    console.log("Probablemente quedó el genérico de Capacitor. Revisá assets/.");
+    process.exit(1);
+  }
+  console.log(`\nOK: el ícono es el de la marca (${medio}).`);
+}
+
+await verificarIcono();
+
 if (existsSync(COPIA)) {
   mkdirSync("android/app", { recursive: true });
   copyFileSync(COPIA, GS);
@@ -185,8 +218,7 @@ if (existsSync(COPIA)) {
 console.log(`
 Listo. Ahora:
 
-  npm run android        compila y abre Android Studio
-                         (Build → Build Bundle(s)/APK(s) → Build APK(s))
+  npm run apk            arma el APK de una, sin abrir nada
 
 El APK sale en android/app/build/outputs/apk/debug/app-debug.apk
 `);

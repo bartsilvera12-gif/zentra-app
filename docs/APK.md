@@ -25,6 +25,26 @@ lado: uno va a mirar el `import`, que está bien.
 
 `npm run android:init` ahora lo verifica antes de empezar y dice qué falta.
 
+## Si compilás desde Android Studio, leé esto
+
+**Android Studio sólo corre Gradle.** No corre `npm run build` ni genera los
+íconos: empaqueta lo que ya está en `android/`. Así que apretar *Build APK*
+después de cambiar código te da el APK **anterior**, y si los íconos nunca se
+generaron, el genérico de Capacitor.
+
+Un comando hace todo y evita esa clase de error:
+
+```bash
+npm run apk
+```
+
+Compila el web, regenera el proyecto Android con sus íconos y permisos, arma el
+APK y te dice dónde quedó. Si los íconos no se generaron bien, **falla ahí** en
+vez de dejarte un APK con el de Capacitor.
+
+Android Studio sigue sirviendo para lo que es bueno: ver el **Logcat** mientras
+usás la app en el teléfono. Para eso, `npm run android`.
+
 ## El ícono no cambia aunque el APK lo tenga
 
 Android **cachea el ícono en el launcher**. Si instalás encima de una versión
