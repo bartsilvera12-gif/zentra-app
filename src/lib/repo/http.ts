@@ -597,8 +597,22 @@ export const httpRepo: Repo = {
         };
       });
 
+      // Los totales van aparte de las líneas, y son obligatorios: el ERP hace
+      // Number(o.subtotal) y si sale NaN corta con "Totales inválidos.". Y no
+      // son decorativos — son los que guarda, así que tienen que ser la suma
+      // exacta de las líneas o la venta queda con un total que no cierra.
+      const totales = items.reduce(
+        (a, i) => ({
+          subtotal: a.subtotal + i.subtotal,
+          monto_iva: a.monto_iva + i.monto_iva,
+          total: a.total + i.total_linea,
+        }),
+        { subtotal: 0, monto_iva: 0, total: 0 },
+      );
+
       const cuerpo: Record<string, unknown> = {
         items,
+        ...totales,
         // El ERP llama GS a los guaraníes, la app PYG.
         moneda: input.moneda === "USD" ? "USD" : "GS",
         tipo_venta: input.pago.tipo === "credito" ? "CREDITO" : "CONTADO",
@@ -610,12 +624,26 @@ export const httpRepo: Repo = {
 
       // La clave de intento viaja en la cabecera: si el teléfono pierde señal y
       // se reintenta, el ERP tiene que devolver la misma venta y no crear otra.
-      const v = await request<VentaErp>("/ventas/create", {
+      // La respuesta viene doblemente envuelta: { success, data: { venta } }.
+      // `request` saca el sobre de afuera; el `venta` de adentro va acá.
+      const r = await request<{ venta: VentaErp }>("/ventas/create", {
         method: "POST",
         headers: { "Idempotency-Key": claveDeIntento() },
         body: JSON.stringify(cuerpo),
       });
-      return aVenta(v);
+      const v = r?.venta;
+      if (!v?.id) {
+        // Una venta sin número es peor que un error: el vendedor se va creyendo
+        // que quedó registrada.
+        throw new ApiError("El ERP no devolvió la venta registrada.", 500, "/ventas/create");
+      }
+      // Una venta recién creada no trae estado: el ERP lo deriva del tipo. De
+      // contado ya se cobró; a crédito queda por cobrar.
+      return aVenta({
+        ...v,
+        estado: v.estado || (input.pago.tipo === "credito" ? "pendiente" : "completada"),
+        metodo_pago: v.metodo_pago ?? (input.pago.tipo === "contado" ? input.pago.metodo : null),
+      });
     },
   },
 

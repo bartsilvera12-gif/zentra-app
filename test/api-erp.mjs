@@ -76,22 +76,32 @@ const server = createServer((req, res) => {
       ]);
     }
     if (ruta === "/ventas/create" && req.method === "POST") {
+      const o = JSON.parse(cuerpo);
+      // Los dos ERPs hacen Number(o.subtotal) y cortan si sale NaN. Si la app
+      // no manda los totales arriba, ninguna venta entra.
+      const declarados = [o.subtotal, o.monto_iva, o.total].map(Number);
+      if (declarados.some((n) => Number.isNaN(n))) {
+        return json(400, { success: false, error: "Totales inválidos." });
+      }
       const clave = req.headers["idempotency-key"];
       // Lo que tiene que hacer el ERP: misma clave, misma venta.
-      if (ventasPorClave.has(clave)) return json(200, { success: true, data: ventasPorClave.get(clave) });
+      if (ventasPorClave.has(clave)) {
+        return json(200, { success: true, data: { venta: ventasPorClave.get(clave) } });
+      }
+      // Como lo devuelven de verdad: sin estado ni cliente, y envuelto dos
+      // veces — { success, data: { venta } }.
       const v = {
         id: "v" + (ventasPorClave.size + 1),
         numero_control: "VTA-00000" + (ventasPorClave.size + 7),
         fecha: "2026-10-05T10:00:00Z",
-        cliente_nombre: "Supermercado Aurora SA",
-        cliente_doc: "80012345-6",
-        estado: "completada",
-        tipo_venta: "CONTADO",
-        metodo_pago: "efectivo",
-        items: [{ producto_nombre: "MUSLO PAQUETE CONG. POR KG", cantidad: 0.5, precio_venta: 10650, tipo_iva: "5%" }],
+        moneda: o.moneda,
+        tipo_venta: o.tipo_venta,
+        plazo_dias: o.plazo_dias,
+        subtotal: declarados[0], monto_iva: declarados[1], total: declarados[2],
+        items: o.items,
       };
       ventasPorClave.set(clave, v);
-      return json(201, { success: true, data: v });
+      return json(201, { success: true, data: { venta: v } });
     }
     if (ruta === "/ventas" && req.method === "GET") return ok([]);
     if (ruta === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
@@ -159,6 +169,59 @@ t("venta: manda el cuerpo que el ERP espera, con el IVA contenido", async () => 
   if (l.total_linea !== 31800) throw new Error("total_linea: " + l.total_linea);
   if (l.monto_iva !== 2891) throw new Error("el IVA tiene que ir contenido, dio " + l.monto_iva);
   if (l.subtotal !== 31800 - 2891) throw new Error("subtotal: " + l.subtotal);
+});
+
+t("la venta manda los totales arriba, y son la suma exacta de las líneas", async () => {
+  const antes = recibido.length;
+  await httpRepo.ventas.create({
+    clienteId: "c1", moneda: "PYG",
+    pago: { tipo: "contado", metodo: "efectivo" },
+    lineas: [
+      { prodId: "p2", cantidad: 2, precio: 15900, iva: "10%" },
+      { prodId: "p3", cantidad: 1, precio: 20000, iva: "Exenta" },
+    ],
+  });
+  const env = recibido.slice(antes).find((r) => r.ruta === "/ventas/create").cuerpo;
+
+  // Sin estos tres el ERP corta con "Totales inválidos." y no entra ninguna venta.
+  for (const k of ["subtotal", "monto_iva", "total"]) {
+    if (typeof env[k] !== "number") throw new Error("falta " + k);
+  }
+  // Y no son decorativos: son los que el ERP guarda. Si no cierran con las
+  // líneas, la venta queda con un total que no coincide con lo que la compone.
+  const suma = env.items.reduce(
+    (a, i) => ({ s: a.s + i.subtotal, i: a.i + i.monto_iva, t: a.t + i.total_linea }),
+    { s: 0, i: 0, t: 0 },
+  );
+  if (env.subtotal !== suma.s) throw new Error(`subtotal ${env.subtotal} vs ${suma.s}`);
+  if (env.monto_iva !== suma.i) throw new Error(`monto_iva ${env.monto_iva} vs ${suma.i}`);
+  if (env.total !== suma.t) throw new Error(`total ${env.total} vs ${suma.t}`);
+
+  // 2 x 15.900 al 10% = 2.891 de IVA contenido; el libro va exento.
+  if (env.total !== 51800) throw new Error("total: " + env.total);
+  if (env.monto_iva !== 2891) throw new Error("iva: " + env.monto_iva);
+});
+
+t("la venta creada se saca del { venta } de adentro, con su número", async () => {
+  const v = await httpRepo.ventas.create({
+    clienteId: "c1", moneda: "PYG",
+    pago: { tipo: "contado", metodo: "efectivo" },
+    lineas: [{ prodId: "p2", cantidad: 1, precio: 15900, iva: "10%" }],
+  });
+  // El número lo asigna el ERP: la app nunca inventa un comprobante.
+  if (!/^VTA-/.test(v.numero)) throw new Error("numero: " + v.numero);
+  // Recién creada no trae estado; de contado ya está cobrada.
+  if (v.estado !== "Cobrada") throw new Error("estado: " + v.estado);
+});
+
+t("una venta a crédito queda pendiente, no cobrada", async () => {
+  const v = await httpRepo.ventas.create({
+    clienteId: "c1", moneda: "PYG",
+    pago: { tipo: "credito", plazoDias: 30 },
+    lineas: [{ prodId: "p2", cantidad: 1, precio: 15900, iva: "10%" }],
+  });
+  // Mostrar una venta a crédito como cobrada esconde plata sin cobrar.
+  if (v.estado !== "Pendiente") throw new Error("estado: " + v.estado);
 });
 
 t("una venta a crédito manda el plazo y no el método", async () => {

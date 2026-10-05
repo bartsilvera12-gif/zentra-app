@@ -62,6 +62,32 @@ APK el origen es `https://localhost`, no un dominio.
 Es un cambio chico, pero **sin él nada de esto funciona**, y el error que se ve
 es confuso: parece un problema de red y es una política del navegador.
 
+### Verificado contra dos ERPs distintos (JM y Sistemas Propio)
+
+Los dos tienen los cinco endpoints que la app usa, pero **los archivos
+divergieron**: `productos` difiere en 343 líneas, `ventas` en 126,
+`ventas/create` en 103. Igual el contrato que la app necesita es el mismo en los
+dos. Lo que encontré comparándolos:
+
+- **Los totales de la venta van arriba y son obligatorios.** Los dos hacen
+  `Number(o.subtotal)` y cortan con `"Totales inválidos."` si sale `NaN`. Yo no
+  los mandaba: **ninguna venta habría entrado, en ningún ERP.**
+- **No son decorativos**: son los que el ERP guarda, así que tienen que ser la
+  suma exacta de las líneas o la venta queda con un total que no cierra con lo
+  que la compone.
+- **La respuesta viene envuelta dos veces**: `{ success, data: { venta } }`. Yo
+  leía `data` y esperaba la venta ahí.
+- **La venta recién creada no trae `estado` ni cliente.** Se deriva del tipo: de
+  contado ya está cobrada, a crédito queda pendiente.
+- JM pide más cosas que Sistemas Propio (lista de precios, caja, reparto,
+  permiso para vender a crédito), pero todo con valor por defecto o resuelto
+  solo: JM abre la caja si hace falta. Nada de eso hay que mandarlo.
+- **Las columnas de las tablas varían por tenant.** El propio ERP lo dice en un
+  comentario: `es_tecnico` existía en 2 de 72 schemas, y pedir una columna que
+  falta hace fallar todo el request con 400. Por eso ese endpoint hace `select *`
+  — y por eso la app arma cada campo con varias columnas candidatas en vez de
+  una sola.
+
 ### El perfil no se llama `/perfil`
 
 Yo había escrito `/perfil`. **No existe.** El endpoint real es
