@@ -173,6 +173,8 @@ export interface AppState {
   xQuery: string;
   /** Lo que dijo el ERP si un mensaje no se pudo enviar. */
   xEnvioError: string;
+  /** El menú que se abre al tocar la foto de perfil. */
+  menuPerfil: boolean;
   xFiltro: string;
   xSel: string | null;
   xTexto: string;
@@ -364,6 +366,7 @@ export const initialState: AppState = {
   xSub: "lista",
   xQuery: "",
   xEnvioError: "",
+  menuPerfil: false,
   xFiltro: "Todas",
   xSel: null,
   xTexto: "",

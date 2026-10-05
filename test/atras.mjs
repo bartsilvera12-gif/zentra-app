@@ -13,6 +13,14 @@ const casos = [];
 function t(nombre, fn) { casos.push([nombre, fn]); }
 const base = (extra) => ({ ...initialState, ...extra });
 
+t("con el menú de la cuenta abierto, atrás lo cierra y nada más", () => {
+  // Lo primero que cierra "atrás" es lo último que se abrió.
+  const r = decidirAtras(base({ screen: "clientes", cSub: "detalle", menuPerfil: true }));
+  if (r === "fondo") throw new Error("se salió de la app");
+  if (r.menuPerfil !== false) throw new Error("no cerró el menú");
+  if (r.cSub) throw new Error("además se llevó la pantalla puesta");
+});
+
 t("desde un detalle vuelve a la lista, no se sale", () => {
   const r = decidirAtras(base({ screen: "clientes", cSub: "detalle", cSel: "c1" }));
   if (r === "fondo") throw new Error("se salió de la app");

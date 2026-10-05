@@ -11,9 +11,9 @@ import {
   type ReactNode,
 } from "react";
 import { IVAS } from "@/lib/data";
-import { escucharAvisos, pushPreferido } from "@/lib/push";
+import { desactivarPush, escucharAvisos, pushPreferido } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
-import { usaSupabase } from "@/lib/repo";
+import { repo, usaSupabase } from "@/lib/repo";
 import { activarTenant } from "@/lib/supabase/client";
 import { resolverTenant } from "@/lib/tenant/directory";
 import { leerUltimoCodigo } from "@/lib/tenant/storage";
@@ -51,6 +51,8 @@ interface AppApi {
   runDash: (dur?: number, keepIndex?: boolean) => void;
   startGrab: () => void;
   stopGrab: () => void;
+  /** Cierra la sesión y vuelve al login. */
+  cerrarSesion: () => Promise<void>;
   go: (k: ModuleKey) => void;
   /**
    * Resuelve el código de empresa a una instalación concreta.
@@ -91,6 +93,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     grabTimer.current = setInterval(() => {
       setS((prev) => ({ ...prev, xSeg: prev.xSeg + 1 }));
     }, 1000);
+  }, []);
+
+  /**
+   * Cerrar sesión, con los dos pasos que no se pueden olvidar.
+   *
+   * Estaba escrito sólo en la pantalla de Configuración. Al agregar el mismo
+   * botón en otro lado habría quedado duplicado, y el día que alguien copie
+   * mal uno de los dos pasos no se nota hasta que es tarde:
+   *
+   *  - Dar de baja el token de avisos. Si queda, el próximo que entre en este
+   *    teléfono recibe las notificaciones de quien se fue.
+   *  - Cerrar la sesión en Supabase. Si no, el próximo arranque la reabre sola
+   *    y el que se fue sigue adentro.
+   */
+  const cerrarSesion = useCallback(async () => {
+    await desactivarPush().catch(() => {});
+    if (usaSupabase) await repo.auth.logout().catch(() => {});
+    setS((prev) => ({
+      ...prev,
+      screen: "login",
+      user: "",
+      pass: "",
+      sesion: null,
+      authError: "",
+      modoAcceso: "login",
+      menuPerfil: false,
+    }));
   }, []);
 
   const stopGrab = useCallback(() => {
@@ -240,12 +269,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       abrirChat,
       pushMsg,
       runDash,
+      cerrarSesion,
       startGrab,
       stopGrab,
       go,
       elegirInstalacion,
     }),
-    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, startGrab, stopGrab, go, elegirInstalacion],
+    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, cerrarSesion, startGrab, stopGrab, go, elegirInstalacion],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

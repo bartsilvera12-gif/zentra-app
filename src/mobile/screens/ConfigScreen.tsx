@@ -5,7 +5,7 @@ import { MARCA } from "@/lib/theme";
 import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
 import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
-import { repo, usaSupabase } from "@/lib/repo";
+import { repo } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
@@ -29,7 +29,7 @@ function IconLuna({ stroke }: { stroke: string }) {
 }
 
 export function ConfigScreen() {
-  const { s, t, set } = useApp();
+  const { s, t, set, cerrarSesion } = useApp();
 
   /** A labelled switch row. */
   const row = (titulo: string, detalle: string, on: boolean, key: keyof typeof s) => (
@@ -380,14 +380,7 @@ export function ConfigScreen() {
         </Card>
 
         <button
-          onClick={async () => {
-            // Dar de baja el token antes de salir: si queda, el próximo que entre
-            // en este teléfono recibiría los avisos de quien se fue.
-            await desactivarPush().catch(() => {});
-            // Cerrar la sesión en Supabase, si no el próximo arranque la reabre.
-            if (usaSupabase) await repo.auth.logout().catch(() => {});
-            set({ screen: "login", user: "", pass: "", sesion: null, authError: "", modoAcceso: "login" });
-          }}
+          onClick={cerrarSesion}
           style={{
             borderRadius: 14,
             padding: 15,

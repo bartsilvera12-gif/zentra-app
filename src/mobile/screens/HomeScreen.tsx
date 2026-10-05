@@ -147,7 +147,7 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
 }
 
 export function HomeScreen() {
-  const { s, t, set, runDash } = useApp();
+  const { s, t, set, runDash, cerrarSesion } = useApp();
   const p = s.dashP;
 
   const roleInk = s.theme === "oscuro" ? MARCA.aviso : MARCA.avisoInk;
@@ -187,6 +187,9 @@ export function HomeScreen() {
         display: "flex",
         flexDirection: "column",
         minHeight: 0,
+        // El menú de la cuenta se ancla acá; sin esto se iría al borde de la
+        // pantalla en vez de quedar bajo la inicial.
+        position: "relative",
         animation: "zt-fade .22s ease",
         background: t.bg,
       }}
@@ -239,13 +242,18 @@ export function HomeScreen() {
             </span>
           </div>
           <IconCampana stroke={t.ink2} />
-          <div
+          <button
+            onClick={() => set({ menuPerfil: !s.menuPerfil })}
+            aria-label="Tu cuenta"
             style={{
               width: 32,
               height: 32,
+              flex: "0 0 auto",
               borderRadius: "50%",
-              background: "#04617A",
-              color: "#fff",
+              background: MARCA.headerSuave,
+              color: MARCA.sobre,
+              border: 0,
+              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -253,9 +261,82 @@ export function HomeScreen() {
             }}
           >
             {inicial}
-          </div>
+          </button>
         </div>
       </div>
+
+      {/* El menú de la cuenta. Se abre tocando la inicial del encabezado:
+          cerrar sesión estaba sólo adentro de Configuración, tres toques más
+          abajo, y en un teléfono compartido entre turnos eso se usa seguido. */}
+      {s.menuPerfil && (
+        <>
+          {/* Una capa que cubre todo para poder cerrarlo tocando al costado,
+              que es lo que uno hace sin pensar. */}
+          <div
+            onClick={() => set({ menuPerfil: false })}
+            style={{ position: "fixed", inset: 0, zIndex: 20, background: "rgba(0,0,0,.18)" }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              zIndex: 21,
+              top: 64,
+              right: 14,
+              minWidth: 210,
+              borderRadius: 14,
+              overflow: "hidden",
+              background: t.card,
+              border: `1px solid ${t.border}`,
+              boxShadow: "0 10px 28px rgba(0,0,0,.18)",
+              animation: "zt-fade .14s ease",
+            }}
+          >
+            <div style={{ padding: "12px 14px", borderBottom: `1px solid ${t.border}` }}>
+              <div style={{ font: "600 13.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
+                {nombre}
+              </div>
+              <div style={{ font: "400 11.5px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2, paddingTop: 2 }}>
+                {[rol, empresa].filter(Boolean).join(" · ")}
+              </div>
+            </div>
+
+            <button
+              onClick={() => set({ menuPerfil: false, screen: "config" })}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "12px 14px",
+                border: 0,
+                borderBottom: `1px solid ${t.border}`,
+                background: "none",
+                cursor: "pointer",
+                font: "500 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+                color: t.ink,
+              }}
+            >
+              Configuración
+            </button>
+
+            <button
+              onClick={cerrarSesion}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "12px 14px",
+                border: 0,
+                background: "none",
+                cursor: "pointer",
+                font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+                // Salir es la única acción de acá que cuesta deshacer: hay que
+                // volver a escribir la contraseña.
+                color: "#9E3B3B",
+              }}
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Swipeable dashboard cards */}
       <div style={{ padding: "16px 0 8px" }}>

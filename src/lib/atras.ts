@@ -28,6 +28,11 @@ type Parche = Partial<AppState>;
 export function decidirAtras(s: AppState): Parche | "fondo" {
   if (s.screen === "login") return "fondo";
 
+  // Lo primero que cierra "atrás" es lo último que se abrió. Si el menú de la
+  // cuenta está abierto y en cambio te saca de la pantalla, el gesto se siente
+  // impredecible.
+  if (s.menuPerfil) return { menuPerfil: false };
+
   // Cada módulo con subpantallas vuelve a su lista antes de salir del módulo.
   const subs: [keyof AppState, string, Parche][] = [
     ["cSub", "lista", { cSub: "lista", cSel: null }],
