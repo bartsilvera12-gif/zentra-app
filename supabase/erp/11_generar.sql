@@ -4,8 +4,8 @@
 /**
  * Crea (o rehace) el schema de vistas de una empresa.
  *
- *   select zentra_erp.generar('JM', 'erp_jm');
- *   select zentra_erp.generar('JM', 'distribuidorajmerp', '...-uuid-...');
+ *   select zentra_movil.generar('JM', 'erp_jm');
+ *   select zentra_movil.generar('JM', 'distribuidorajmerp', '...-uuid-...');
  *
  * Deja un schema `zentra_jm` con una vista por cada entrada de `origen`.
  * Es idempotente: correrla de nuevo rehace las vistas con el mapeo actual, que
@@ -17,7 +17,7 @@
  * empresa vería los datos de todas. Si la tabla tiene `empresa_id` y no se pasa
  * el id, esto falla a propósito en vez de generar una vista que filtra nada.
  */
-create or replace function zentra_erp.generar(
+create or replace function zentra_movil.generar(
   p_codigo     text,
   p_schema_erp text,
   p_empresa_id uuid default null
@@ -26,7 +26,7 @@ returns text
 language plpgsql
 volatile
 security definer
-set search_path = zentra_erp, pg_catalog
+set search_path = zentra_movil, pg_catalog
 as $fn$
 declare
   v_codigo  text := lower(regexp_replace(p_codigo, '[^a-zA-Z0-9]', '', 'g'));
@@ -37,6 +37,8 @@ declare
   v_donde   text;
   v_tiene_empresa boolean;
   v_origen  record;
+  -- La marca que distingue un schema generado por nosotros de uno ajeno.
+  MARCA constant text := 'zentra-movil: vistas generadas, no editar a mano';
 begin
   if coalesce(v_codigo, '') = '' then
     raise exception 'El código no puede quedar vacío después de limpiarlo: %', p_codigo;
@@ -48,9 +50,25 @@ begin
   end if;
 
   v_destino := 'zentra_' || v_codigo;
-  execute format('create schema if not exists %I', v_destino);
 
-  for v_origen in select * from zentra_erp.origen loop
+  -- Nunca escribir adentro de un schema que no es nuestro.
+  --
+  -- `create or replace view` sobre un schema ajeno pisaría lo que haya. Y pasa:
+  -- en este mismo ERP ya existe un `zentra_erp` suyo, que no tiene nada que ver
+  -- con esto. Por eso cada schema que generamos queda marcado con un comentario,
+  -- y si el destino existe sin esa marca, esto se niega.
+  if exists (select 1 from information_schema.schemata where schema_name = v_destino) then
+    if coalesce(obj_description(v_destino::regnamespace, 'pg_namespace'), '') <> MARCA then
+      raise exception
+        'El schema % ya existe y no lo creamos nosotros. Elegi otro codigo para % o renombra ese schema.',
+        v_destino, p_codigo;
+    end if;
+  else
+    execute format('create schema %I', v_destino);
+  end if;
+  execute format('comment on schema %I is %L', v_destino, MARCA);
+
+  for v_origen in select * from zentra_movil.origen loop
     v_vista := v_origen.vista;
 
     -- ¿Esta tabla del ERP mezcla empresas?
@@ -70,7 +88,7 @@ begin
     -- acá se arma SQL con datos de una tabla y no hay que dejar rendija.
     select string_agg(format('%s as %I', m.expresion, m.campo), ', ' order by m.orden, m.campo)
       into v_cols
-      from zentra_erp.mapeo m
+      from zentra_movil.mapeo m
      where m.vista = v_vista;
 
     if v_cols is null then

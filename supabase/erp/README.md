@@ -18,7 +18,7 @@ sale —"unterminated dollar-quoted string"— no dice eso.
 
 | | |
 |---|---|
-| `10_tablas.sql` | el schema `zentra_erp` y las dos tablas de mapeo |
+| `10_tablas.sql` | el schema `zentra_movil` y las dos tablas de mapeo |
 | `11_generar.sql` | la función que arma el schema de vistas de una empresa |
 | `12_generar_todas.sql` | la que lo hace para todas |
 | `13_directorio.sql` | una vista para ver qué quedó generado |
@@ -36,11 +36,11 @@ psql "LA_CADENA_DE_CONEXION" -f supabase/erp/20_mapeo_jm.sql
 
 ## Un schema de vistas por empresa, generado
 
-No se escriben a mano. `zentra_erp.generar()` los crea, y `generar_todas()` lo
+No se escriben a mano. `zentra_movil.generar()` los crea, y `generar_todas()` lo
 hace para todas las empresas leyendo la tabla de empresas del propio ERP:
 
 ```sql
-select * from zentra_erp.generar_todas(
+select * from zentra_movil.generar_todas(
   'distribuidorajmerp.empresas',  -- la tabla de empresas del ERP
   'nombre_empresa',               -- de dónde sale el código
   'data_schema',                  -- dónde dice el ERP en qué schema está cada una
@@ -78,11 +78,11 @@ Lo único que cambia entre un ERP y otro son dos tablas:
 
 ```sql
 -- De qué tabla del ERP sale cada vista
-insert into zentra_erp.origen (vista, tabla, filtro) values
+insert into zentra_movil.origen (vista, tabla, filtro) values
   ('clientes', 'clientes', 'activo is not false');
 
 -- Qué columna corresponde a cada campo que la app espera
-insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
   ('clientes', 'id',     'id::text',                                1),
   ('clientes', 'nombre', 'coalesce(razon_social, nombre_contacto)', 2),
   ('clientes', 'doc',    'ruc',                                     3);
@@ -125,7 +125,7 @@ El generador no lo permite: si la tabla tiene `empresa_id` y no se le pasa el id
 falla. Para esos casos:
 
 ```sql
-select zentra_erp.generar('JM', 'distribuidorajmerp', 'EL-UUID-DE-LA-EMPRESA');
+select zentra_movil.generar('JM', 'distribuidorajmerp', 'EL-UUID-DE-LA-EMPRESA');
 ```
 
 ## El mapeo de Distribuidora JM

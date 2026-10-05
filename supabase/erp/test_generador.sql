@@ -31,10 +31,10 @@ insert into erp_ferre.clientes (razon_social, nombre_contacto, tipo_cliente, ruc
 \i supabase/erp/13_directorio.sql
 
 -- ---------- el mapeo: lo único que cambia entre un ERP y otro ----------
-insert into zentra_erp.origen (vista, tabla, filtro) values
+insert into zentra_movil.origen (vista, tabla, filtro) values
   ('clientes', 'clientes', 'activo is not false');
 
-insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
   ('clientes', 'id',       'id::text',                                        1),
   ('clientes', 'nombre',   'coalesce(razon_social, nombre_contacto)',         2),
   ('clientes', 'doc',      'ruc',                                             3),
@@ -43,8 +43,8 @@ insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
   ('clientes', 'lista',    'tipo_cliente',                                    6);
 
 -- ---------- generar ----------
-select zentra_erp.generar('JM', 'erp_jm');
-select zentra_erp.generar('FERRE', 'erp_ferre');
+select zentra_movil.generar('JM', 'erp_jm');
+select zentra_movil.generar('FERRE', 'erp_ferre');
 
 -- ---------- 1. la vista traduce los nombres ----------
 do $$
@@ -126,9 +126,9 @@ end $$;
 \echo '  OK 5 · la vista hereda el RLS de la tabla del ERP'
 
 -- ---------- 6. regenerar toma el mapeo nuevo ----------
-insert into zentra_erp.mapeo (vista, campo, expresion, orden)
+insert into zentra_movil.mapeo (vista, campo, expresion, orden)
 values ('clientes', 'zona', '''Central''::text', 7);
-select zentra_erp.generar('JM', 'erp_jm');
+select zentra_movil.generar('JM', 'erp_jm');
 do $$
 declare n int;
 begin
@@ -162,7 +162,7 @@ do $$
 declare falló boolean := false;
 begin
   begin
-    perform zentra_erp.generar('UNO', 'erp_compartido');
+    perform zentra_movil.generar('UNO', 'erp_compartido');
   exception when others then
     falló := true;
   end;
@@ -172,8 +172,8 @@ end $$;
 do $$
 declare n int;
 begin
-  perform zentra_erp.generar('UNO', 'erp_compartido', '11111111-1111-1111-1111-111111111111');
-  perform zentra_erp.generar('DOS', 'erp_compartido', '22222222-2222-2222-2222-222222222222');
+  perform zentra_movil.generar('UNO', 'erp_compartido', '11111111-1111-1111-1111-111111111111');
+  perform zentra_movil.generar('DOS', 'erp_compartido', '22222222-2222-2222-2222-222222222222');
 
   select count(*) into n from zentra_uno.clientes;
   assert n = 2, 'la empresa UNO tendría que ver 2 clientes, ve ' || n;
@@ -202,20 +202,53 @@ insert into public.empresas (id_empresa, nombre, codigo, data_schema)
 do $$
 declare n int;
 begin
-  perform zentra_erp.generar_todas('public.empresas', 'codigo', 'data_schema', 'id_empresa', 'erp_compartido');
+  perform zentra_movil.generar_todas('public.empresas', 'codigo', 'data_schema', 'id_empresa', 'erp_compartido');
 
-  select count(*) into n from zentra_erp.directorio where codigo in ('jm','ferre');
+  select count(*) into n from zentra_movil.directorio where codigo in ('jm','ferre');
   assert n = 2, 'esperaba las dos empresas buenas en el directorio, hay ' || n;
-  select count(*) into n from zentra_erp.directorio where codigo = 'no_existe';
+  select count(*) into n from zentra_movil.directorio where codigo = 'no_existe';
   assert n = 0, 'generó un schema para una empresa con el schema inexistente';
-  select count(*) into n from zentra_erp.directorio where codigo = 'sinsc';
+  select count(*) into n from zentra_movil.directorio where codigo = 'sinsc';
   assert n = 1, 'la empresa sin data_schema tendría que ir al compartido, y no fue';
 
-  select count(*) into n from zentra_erp.generar_todas(
+  select count(*) into n from zentra_movil.generar_todas(
     'public.empresas', 'codigo', 'data_schema', 'id_empresa', 'erp_compartido') where error is not null;
   assert n = 1, 'esperaba exactamente 1 empresa con error, hubo ' || n;
 end $$;
 \echo '  OK 8 · genera todas de una vez, y una rota no frena a las demás'
+
+-- ---------- 9. no pisa un schema ajeno ----------
+-- En el ERP de verdad ya existe un `zentra_erp` suyo. Si el generador escribiera
+-- adentro de un schema que no creó, le pisaría las vistas o las tablas.
+create schema zentra_ajeno;
+create table zentra_ajeno.clientes (id int, cosa text);
+insert into zentra_ajeno.clientes values (1, 'dato del ERP que no hay que perder');
+
+do $$
+declare falló boolean := false; n int;
+begin
+  begin
+    perform zentra_movil.generar('AJENO', 'erp_jm');
+  exception when others then
+    falló := true;
+  end;
+  assert falló, 'escribió adentro de un schema que no era nuestro';
+
+  select count(*) into n from zentra_ajeno.clientes where cosa like 'dato del ERP%';
+  assert n = 1, 'pisó la tabla ajena';
+end $$;
+\echo '  OK 9 · se niega a escribir en un schema que no creó'
+
+-- ---------- 10. el directorio no lista schemas ajenos ----------
+do $$
+declare n int;
+begin
+  select count(*) into n from zentra_movil.directorio where codigo = 'ajeno';
+  assert n = 0, 'el directorio está listando un schema ajeno';
+  select count(*) into n from zentra_movil.directorio where codigo = 'jm';
+  assert n = 1, 'el directorio no lista el schema que sí generamos';
+end $$;
+\echo '  OK 10 · el directorio lista sólo lo que generamos'
 
 \echo ''
 \echo 'Generador de vistas: todas las pruebas pasaron.'

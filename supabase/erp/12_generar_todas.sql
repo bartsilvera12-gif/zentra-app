@@ -4,7 +4,7 @@
 /**
  * Genera las vistas de TODAS las empresas de una sola vez.
  *
- *   select * from zentra_erp.generar_todas(
+ *   select * from zentra_movil.generar_todas(
  *     'distribuidorajmerp.empresas', 'nombre_empresa', 'data_schema', 'id', 'distribuidorajmerp');
  *
  * Lee la tabla de empresas del propio ERP, así que alta una empresa nueva allá y
@@ -22,7 +22,7 @@
  * primera: con veinte empresas, que una tenga el schema mal no puede dejar a las
  * otras diecinueve sin vistas.
  */
-create or replace function zentra_erp.generar_todas(
+create or replace function zentra_movil.generar_todas(
   p_tabla_empresas  text,
   p_col_codigo      text,
   p_col_schema      text,
@@ -33,7 +33,7 @@ returns table (codigo text, schema_erp text, destino text, error text)
 language plpgsql
 volatile
 security definer
-set search_path = zentra_erp, pg_catalog
+set search_path = zentra_movil, pg_catalog
 as $fn$
 declare
   r record;
@@ -51,7 +51,7 @@ begin
       error := 'sin data_schema y sin p_schema_defecto: no sé dónde están sus datos';
     else
       begin
-        destino := zentra_erp.generar(r.codigo, schema_erp, r.id);
+        destino := zentra_movil.generar(r.codigo, schema_erp, r.id);
       exception when others then
         error := sqlerrm;
       end;

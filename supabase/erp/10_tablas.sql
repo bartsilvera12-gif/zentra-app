@@ -22,14 +22,14 @@
 -- SÓLO LECTURA. Estas vistas no crean, modifican ni borran nada del ERP.
 -- =============================================================================
 
-create schema if not exists zentra_erp;
+create schema if not exists zentra_movil;
 
 -- Qué columna del ERP corresponde a cada campo que la app espera.
 --
 -- Vive en una tabla y no adentro de la función porque es lo único que cambia
 -- entre un ERP y otro: cuando un cliente tenga las columnas con otros nombres,
 -- se agregan filas acá y la misma función genera sus vistas.
-create table if not exists zentra_erp.mapeo (
+create table if not exists zentra_movil.mapeo (
   vista     text not null,   -- la tabla como la ve la app: clientes, productos…
   campo     text not null,   -- el campo que la app espera: nombre, doc…
   expresion text not null,   -- de dónde sale en el ERP: una columna o una expresión SQL
@@ -38,7 +38,7 @@ create table if not exists zentra_erp.mapeo (
 );
 
 -- De qué tabla del ERP sale cada vista.
-create table if not exists zentra_erp.origen (
+create table if not exists zentra_movil.origen (
   vista  text primary key,
   tabla  text not null,
   -- Filtro opcional, por si el ERP marca bajas con una columna en vez de borrar.

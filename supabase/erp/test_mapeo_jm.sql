@@ -73,7 +73,7 @@ values
 \i supabase/erp/13_directorio.sql
 \i supabase/erp/20_mapeo_jm.sql
 
-select zentra_erp.generar('JM', 'distribuidorajmerp', 'aaaa1111-1111-1111-1111-111111111111');
+select zentra_movil.generar('JM', 'distribuidorajmerp', 'aaaa1111-1111-1111-1111-111111111111');
 
 \echo ''
 \echo 'CLIENTES que vería la app:'

@@ -4,7 +4,7 @@
 -- Escrito a partir de las columnas reales de ese ERP. Correr DESPUÉS de los
 -- cuatro archivos 10 a 13, y después generar:
 --
---   select zentra_erp.generar('JM', 'distribuidorajmerp', 'EL-UUID-DE-LA-EMPRESA');
+--   select zentra_movil.generar('JM', 'distribuidorajmerp', 'EL-UUID-DE-LA-EMPRESA');
 --
 -- El uuid es obligatorio: ese schema guarda varias empresas juntas y sin él la
 -- app de una vería los clientes de todas. El generador se niega si falta.
@@ -12,7 +12,7 @@
 
 -- ---------- de qué tabla sale cada vista ----------
 
-insert into zentra_erp.origen (vista, tabla, filtro) values
+insert into zentra_movil.origen (vista, tabla, filtro) values
   -- `deleted_at` es borrado lógico: esas filas no existen para la app.
   ('clientes',     'clientes',     'deleted_at is null'),
   -- Lo que no es vendible no va al catálogo de una app de ventas.
@@ -28,7 +28,7 @@ on conflict (vista) do update
 -- razon_social, empresa y nombre_contacto. La app muestra una sola, así que se
 -- toma la primera que tenga algo.
 
-insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
   ('clientes', 'id',        'id::text', 1),
   ('clientes', 'nombre',    $sql$coalesce(nullif(btrim(nombre), ''), nullif(btrim(razon_social), ''), nullif(btrim(empresa), ''), nombre_contacto, '(sin nombre)')$sql$, 2),
   -- ruc_factura es el que se usa para facturar; ruc y documento son el respaldo.
@@ -48,7 +48,7 @@ on conflict (vista, campo) do update
 
 -- ---------- productos ----------
 
-insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
   ('productos', 'id',      'id::text', 1),
   ('productos', 'nombre',  'nombre', 2),
   ('productos', 'sku',     'sku', 3),
@@ -85,7 +85,7 @@ on conflict (vista, campo) do update
 -- El ERP guarda contado/crédito en `tipo_venta` y la app en `condicion`; los
 -- valores no tienen por qué coincidir, así que se traducen.
 
-insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
   ('ventas', 'id',          'id::text', 1),
   ('ventas', 'numero',      $sql$coalesce(nullif(btrim(numero_control), ''), left(id::text, 8))$sql$, 2),
   ('ventas', 'cliente_id',  'cliente_id::text', 3),
@@ -110,7 +110,7 @@ on conflict (vista, campo) do update
 -- sigue diciendo lo que decía aunque después le cambien el nombre al producto.
 -- Se usa eso y no un join con productos, que además perdería los borrados.
 
-insert into zentra_erp.mapeo (vista, campo, expresion, orden) values
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
   ('venta_lineas', 'id',          'id::text', 1),
   ('venta_lineas', 'venta_id',    'venta_id::text', 2),
   ('venta_lineas', 'producto_id', 'producto_id::text', 3),
