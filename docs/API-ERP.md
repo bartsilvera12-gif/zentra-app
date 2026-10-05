@@ -62,6 +62,28 @@ APK el origen es `https://localhost`, no un dominio.
 Es un cambio chico, pero **sin él nada de esto funciona**, y el error que se ve
 es confuso: parece un problema de red y es una política del navegador.
 
+### Los valores reales, verificados contra la base de JM
+
+No los supuse: salieron de consultar las tablas del ERP de Distribuidora JM.
+
+| Columna | Lo que hay de verdad | Lo que muestra la app |
+|---|---|---|
+| `ventas.estado` | `completada` | `Cobrada` |
+| `ventas.tipo_venta` | `CONTADO` (mayúscula) | `Contado` |
+| `ventas.metodo_pago` | `efectivo` (minúscula) | `Contado · efectivo` |
+| `productos.tipo_iva` | `5%`, `10%` | `5%`, `10%` |
+| `ventas_items.tipo_iva` | `EXENTA`, `5%`, `10%` | `Exenta`, `5%`, `10%` |
+| `ventas.moneda` | `GS` | guaraníes |
+
+Tres de esos seis rompen si se escriben como uno esperaría: el ERP llama `GS` a
+los guaraníes y no `PYG`, pone `tipo_venta` en mayúscula y `metodo_pago` en
+minúscula, y escribe `EXENTA` en las líneas pero `Exenta` no existe. Están
+traducidos en `src/lib/repo/http.ts` y cada traducción tiene su prueba en
+`test/api-erp.mjs`.
+
+Un cuidado con el IVA: ante un texto que no reconozco asumo **10%**, el más alto.
+Equivocarse para abajo subfactura, y eso es un problema con la SET, no un bug.
+
 ---
 
 ---

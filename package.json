@@ -15,7 +15,8 @@
     "sync": "npm run build && npx cap sync",
     "android:init": "node scripts/android-init.mjs",
     "android": "npm run sync && npx cap open android",
-    "test": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/directorio.mjs",
+    "test": "npm run test:directorio && npm run test:api",
+    "test:directorio": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/directorio.mjs",
     "test:api": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/api-erp.mjs"
   },
   "dependencies": {

@@ -17,6 +17,7 @@
  * segundo sistema de contraseñas que mantener.
  */
 import { config } from "../config";
+import { ivaContenido, rateOf } from "../calc";
 import { sb } from "../supabase/client";
 import type { Cliente, InvProducto, Iva, Venta } from "../types";
 import type { Repo } from "./ports";
@@ -69,16 +70,33 @@ export async function request<T>(
     });
 
     if (!res.ok) {
-      const cuerpo = await res.text().catch(() => "");
+      // El ERP contesta { success: false, error: "..." }. Ese texto está escrito
+      // para mostrarle a una persona, así que se usa tal cual en vez de un
+      // "algo falló" genérico.
+      const crudo = await res.text().catch(() => "");
+      let mensaje = crudo;
+      try {
+        const j = JSON.parse(crudo);
+        mensaje = j?.error || j?.message || crudo;
+      } catch {
+        /* no era JSON */
+      }
       throw new ApiError(
-        cuerpo || `La API respondió ${res.status}`,
+        mensaje || `La API respondió ${res.status}`,
         res.status,
         url.pathname,
       );
     }
 
     if (res.status === 204) return undefined as T;
-    return (await res.json()) as T;
+
+    // El ERP envuelve todo en { success, data }. Se desenvuelve acá para que el
+    // resto del archivo trabaje con los datos y no con el sobre.
+    const json = await res.json();
+    if (json && typeof json === "object" && "success" in json && "data" in json) {
+      return (json as { data: T }).data;
+    }
+    return json as T;
   } catch (e) {
     if (e instanceof ApiError) throw e;
     if (e instanceof DOMException && e.name === "AbortError") {
@@ -109,113 +127,176 @@ function claveDeIntento(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-/** Lo que la API devuelve para un cliente. Ver docs/API-ERP.md. */
-interface ClienteApi {
+/** Primer valor con contenido. El ERP reparte el mismo dato en varias columnas. */
+function primero(...vs: (string | null | undefined)[]): string {
+  for (const v of vs) if (v && v.trim()) return v.trim();
+  return "";
+}
+
+const entero = (n: unknown): number => Math.round(Number(n) || 0);
+
+/**
+ * Una fila de `clientes` tal como la devuelve el ERP: `select *` de su tabla.
+ * La traducción de nombres la hace la app porque el ERP no tiene una forma
+ * propia para nosotros, y no se la vamos a pedir.
+ */
+interface ClienteErp {
   id: string;
-  nombre: string;
-  doc?: string | null;
-  contacto?: string | null;
-  tel?: string | null;
+  nombre?: string | null;
+  razon_social?: string | null;
+  empresa?: string | null;
+  nombre_contacto?: string | null;
+  ruc_factura?: string | null;
+  ruc?: string | null;
+  documento?: string | null;
+  telefono?: string | null;
+  telefono_secundario?: string | null;
   email?: string | null;
-  zona?: string | null;
+  email_secundario?: string | null;
+  ciudad?: string | null;
   direccion?: string | null;
-  lista?: string | null;
-  estado?: string | null;
-  saldo?: number | null;
-  /** Cuántas compras hizo. La ficha del cliente lo muestra. */
-  compras?: number | null;
-  desde?: string | null;
-  origen?: string | null;
+  tipo_cliente?: string | null;
+  baja_operativa_at?: string | null;
+  created_at?: string | null;
 }
 
-function aCliente(c: ClienteApi): Cliente {
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function desdeFecha(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "" : `${MESES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function aCliente(c: ClienteErp): Cliente {
   return {
-    id: c.id,
-    nombre: c.nombre,
-    doc: c.doc || "",
-    contacto: c.contacto || "",
-    tel: c.tel || "",
-    email: c.email || "",
-    zona: c.zona || "",
+    id: String(c.id),
+    nombre: primero(c.nombre, c.razon_social, c.empresa, c.nombre_contacto) || "(sin nombre)",
+    // ruc_factura es el que se usa para facturar; los otros son el respaldo.
+    doc: primero(c.ruc_factura, c.ruc, c.documento),
+    contacto: c.nombre_contacto || "",
+    tel: primero(c.telefono, c.telefono_secundario),
+    email: primero(c.email, c.email_secundario),
+    zona: c.ciudad || "",
     direccion: c.direccion || "",
-    lista: c.lista || "Mayorista",
-    estado: c.estado === "Inactivo" ? "Inactivo" : "Activo",
-    saldo: c.saldo ?? 0,
-    compras: c.compras ?? 0,
-    desde: c.desde || "",
-    origen: (c.origen as Cliente["origen"]) || "Manual",
+    lista: c.tipo_cliente || "Mayorista",
+    // La baja operativa no borra la fila, pero el cliente deja de operar.
+    estado: c.baja_operativa_at ? "Inactivo" : "Activo",
+    // El saldo y la cantidad de compras los calcula el ERP sólo en su pantalla,
+    // así que acá salen en cero hasta que los exponga.
+    saldo: 0,
+    compras: 0,
+    desde: desdeFecha(c.created_at),
+    origen: "Manual",
   };
 }
 
-interface ProductoApi {
+/**
+ * El IVA del ERP a lo que usa la app.
+ *
+ * El ERP guarda "10%", "5%" y "EXENTA"; la app usa "Exenta" con minúsculas. Se
+ * extrae el número en vez de comparar el texto: preguntar si contiene un "0"
+ * para decidir exenta haría que "10%" lo sea, y las facturas saldrían sin IVA.
+ */
+function aIva(v?: string | null): Iva {
+  const t = (v || "").trim();
+  if (/exent|exonerad/i.test(t)) return "Exenta";
+  const n = t.match(/([0-9]+)/)?.[1];
+  if (n === "5") return "5%";
+  if (n === "0") return "Exenta";
+  // Ante la duda, 10%: es la tasa general, y equivocarse para abajo subfactura.
+  return "10%";
+}
+
+/** Y de vuelta, para mandar una venta: el ERP espera EXENTA en mayúscula. */
+function ivaParaErp(iva: Iva): "10%" | "5%" | "EXENTA" {
+  if (iva === "5%") return "5%";
+  if (iva === "10%") return "10%";
+  return "EXENTA";
+}
+
+interface ProductoErp {
   id: string;
-  nombre: string;
+  nombre?: string | null;
   sku?: string | null;
-  barras?: string | null;
-  unidad?: string | null;
-  categoria?: string | null;
-  deposito?: string | null;
-  costo?: number | null;
-  precio?: number | null;
-  iva?: string | null;
-  stock?: number | null;
-  minimo?: number | null;
-  metodo?: string | null;
+  codigo_barras?: string | null;
+  unidad_medida?: string | null;
+  costo_promedio?: number | null;
+  precio_venta?: number | null;
+  tipo_iva?: string | null;
+  stock_actual?: number | null;
+  stock_minimo?: number | null;
+  metodo_valuacion?: string | null;
 }
 
-function aProducto(p: ProductoApi): InvProducto {
+function aProducto(p: ProductoErp): InvProducto {
   return {
-    id: p.id,
-    nombre: p.nombre,
+    id: String(p.id),
+    nombre: p.nombre || "(sin nombre)",
     sku: p.sku || "",
-    barras: p.barras || "",
-    unidad: p.unidad || "UN",
-    categoria: p.categoria || "",
-    deposito: p.deposito || "",
-    costo: p.costo ?? 0,
-    precio: p.precio ?? 0,
-    iva: (p.iva as Iva) || "10%",
-    stock: p.stock ?? 0,
-    minimo: p.minimo ?? 0,
-    metodo: (p.metodo as InvProducto["metodo"]) || "CPP",
+    barras: p.codigo_barras || "",
+    unidad: p.unidad_medida || "UN",
+    categoria: "",
+    deposito: "",
+    // Enteros: el guaraní no tiene centavos.
+    costo: entero(p.costo_promedio),
+    precio: entero(p.precio_venta),
+    iva: aIva(p.tipo_iva),
+    // El stock NO se redondea: se vende por kilo y hay medios kilos.
+    stock: Number(p.stock_actual) || 0,
+    minimo: Number(p.stock_minimo) || 0,
+    metodo: (p.metodo_valuacion as InvProducto["metodo"]) || "CPP",
   };
 }
 
-interface VentaApi {
+interface VentaErp {
   id: string;
-  numero: string;
-  fecha: string;
-  clienteId?: string | null;
-  cliente?: string | null;
-  doc?: string | null;
-  pago?: string | null;
+  numero_control?: string | null;
+  fecha?: string | null;
+  created_at?: string | null;
+  cliente_id?: string | null;
+  cliente_nombre?: string | null;
+  cliente_doc?: string | null;
+  tipo_venta?: string | null;
+  metodo_pago?: string | null;
+  plazo_dias?: number | null;
   estado?: string | null;
-  lineas?: {
-    nombre: string;
-    /** Unidades vendidas. */
-    cantidad: number;
-    /** Unitario, CON IVA incluido: es como se factura en Paraguay. */
-    precio: number;
-    iva?: string | null;
+  total?: number | null;
+  items?: {
+    producto_nombre?: string | null;
+    sku?: string | null;
+    cantidad?: number | null;
+    cantidad_total_base?: number | null;
+    precio_venta?: number | null;
+    tipo_iva?: string | null;
   }[];
 }
 
-function aVenta(v: VentaApi): Venta {
+function aVenta(v: VentaErp): Venta {
+  const fecha = (v.fecha || v.created_at || "").slice(0, 10);
+  const credito = /cred|cuota/i.test(v.tipo_venta || "");
   return {
-    id: v.id,
-    iso: v.fecha,
-    numero: v.numero,
-    cliId: v.clienteId ?? null,
-    cliente: v.cliente || "Sin nombre",
-    doc: v.doc || "Sin documento",
-    fecha: v.fecha,
-    pago: v.pago || "",
-    estado: v.estado === "Cobrada" ? "Cobrada" : "Pendiente",
-    lineas: (v.lineas || []).map((l) => ({
-      nombre: l.nombre,
-      qty: l.cantidad,
-      precio: l.precio,
-      iva: (l.iva as Iva) || "10%",
+    id: String(v.id),
+    iso: fecha,
+    numero: v.numero_control || String(v.id).slice(0, 8),
+    cliId: v.cliente_id ?? null,
+    cliente: v.cliente_nombre || "Sin nombre",
+    doc: v.cliente_doc || "Sin documento",
+    fecha,
+    pago: credito
+      ? `Crédito · ${v.plazo_dias ?? "?"} días`
+      : `Contado · ${v.metodo_pago || "efectivo"}`,
+    // La app sólo distingue cobrada de pendiente. Lo que el ERP no da por
+    // cerrado queda pendiente: una pendiente mostrada como cobrada esconde
+    // plata sin cobrar. Confirmado que este ERP usa "completada".
+    estado: /cobrad|pagad|cerrad|complet/i.test(v.estado || "") ? "Cobrada" : "Pendiente",
+    lineas: (v.items || []).map((l) => ({
+      // El nombre va copiado en la línea: una factura vieja sigue diciendo lo
+      // que decía aunque después le cambien el nombre al producto.
+      nombre: primero(l.producto_nombre, l.sku) || "(sin nombre)",
+      qty: Number(l.cantidad_total_base ?? l.cantidad) || 0,
+      precio: entero(l.precio_venta),
+      iva: aIva(l.tipo_iva),
     })),
   };
 }
@@ -304,17 +385,17 @@ export const httpRepo: Repo = {
 
   clientes: {
     async list(params) {
-      const filas = await request<ClienteApi[]>("/clientes", {
+      const filas = await request<ClienteErp[]>("/clientes", {
         query: { q: params?.q, estado: params?.estado },
       });
       return filas.map(aCliente);
     },
     async get(id) {
-      const c = await request<ClienteApi | null>(`/clientes/${encodeURIComponent(id)}`);
+      const c = await request<ClienteErp | null>(`/clientes/${encodeURIComponent(id)}`);
       return c ? aCliente(c) : null;
     },
     async create(input) {
-      const c = await request<ClienteApi>("/clientes", {
+      const c = await request<ClienteErp>("/clientes", {
         method: "POST",
         headers: { "Idempotency-Key": claveDeIntento() },
         body: JSON.stringify(input),
@@ -338,13 +419,13 @@ export const httpRepo: Repo = {
 
   inventario: {
     async list(params) {
-      const filas = await request<ProductoApi[]>("/productos", {
+      const filas = await request<ProductoErp[]>("/productos", {
         query: { q: params?.q, filtro: params?.filtro },
       });
       return filas.map(aProducto);
     },
     async get(id) {
-      const p = await request<ProductoApi | null>(`/productos/${encodeURIComponent(id)}`);
+      const p = await request<ProductoErp | null>(`/productos/${encodeURIComponent(id)}`);
       return p ? aProducto(p) : null;
     },
     create: () => pendiente("inventario.create"),
@@ -354,7 +435,7 @@ export const httpRepo: Repo = {
 
   ventas: {
     async productos(params) {
-      const filas = await request<ProductoApi[]>("/productos", {
+      const filas = await request<ProductoErp[]>("/productos", {
         query: { q: params?.q, vendibles: true },
       });
       return filas.map((p) => {
@@ -370,22 +451,61 @@ export const httpRepo: Repo = {
       });
     },
     async list(params) {
-      const filas = await request<VentaApi[]>("/ventas", {
+      const filas = await request<VentaErp[]>("/ventas", {
         query: { desde: params.desde, hasta: params.hasta, q: params.q, estado: params.estado },
       });
       return filas.map(aVenta);
     },
     async get(id) {
-      const v = await request<VentaApi | null>(`/ventas/${encodeURIComponent(id)}`);
+      const v = await request<VentaErp | null>(`/ventas/${encodeURIComponent(id)}`);
       return v ? aVenta(v) : null;
     },
     async create(input) {
+      // El ERP quiere cada línea con sus importes ya calculados, y con los
+      // nombres de sus columnas. Los calcula la app con la misma regla que usa
+      // en pantalla, así lo que el vendedor ve y lo que se guarda coinciden.
+      //
+      // EL IVA VA CONTENIDO EN EL PRECIO, que es como se factura en Paraguay:
+      // de ₲33.500 al 10% el impuesto son ₲3.045, no ₲3.350. Calcularlo por
+      // encima inflaría cada factura.
+      const catalogo = await this.productos();
+      const porId = new Map(catalogo.map((p) => [p.id, p]));
+
+      const items = input.lineas.map((l) => {
+        const prod = porId.get(l.prodId);
+        const bruto = Math.round(l.precio * l.cantidad);
+        const iva = Math.round(ivaContenido(bruto, rateOf(l.iva)));
+        return {
+          producto_id: l.prodId,
+          producto_nombre: prod?.nombre ?? "",
+          sku: prod?.sku ?? "",
+          cantidad: l.cantidad,
+          precio_venta_original: l.precio,
+          precio_venta: l.precio,
+          tipo_iva: ivaParaErp(l.iva),
+          subtotal: bruto - iva,
+          monto_iva: iva,
+          total_linea: bruto,
+        };
+      });
+
+      const cuerpo: Record<string, unknown> = {
+        items,
+        // El ERP llama GS a los guaraníes, la app PYG.
+        moneda: input.moneda === "USD" ? "USD" : "GS",
+        tipo_venta: input.pago.tipo === "credito" ? "CREDITO" : "CONTADO",
+        cliente_id: input.clienteId,
+        ...(input.pago.tipo === "credito"
+          ? { plazo_dias: input.pago.plazoDias }
+          : { metodo_pago: input.pago.metodo }),
+      };
+
       // La clave de intento viaja en la cabecera: si el teléfono pierde señal y
-      // se reintenta, la API tiene que devolver la misma venta y no crear otra.
-      const v = await request<VentaApi>("/ventas", {
+      // se reintenta, el ERP tiene que devolver la misma venta y no crear otra.
+      const v = await request<VentaErp>("/ventas/create", {
         method: "POST",
         headers: { "Idempotency-Key": claveDeIntento() },
-        body: JSON.stringify(input),
+        body: JSON.stringify(cuerpo),
       });
       return aVenta(v);
     },
