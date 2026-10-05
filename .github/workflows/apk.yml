@@ -1,0 +1,88 @@
+# Arma el APK en GitHub, no en la máquina de nadie.
+#
+# El contenedor donde trabajo no tiene el SDK de Android y no puede bajarlo, y
+# pedirle a cada uno que instale Android Studio para probar un cambio es una
+# forma de que nadie lo pruebe. Acá sale un APK instalable de cada push, y queda
+# guardado con el commit del que salió.
+#
+# Se dispara a mano (Actions -> Armar APK -> Run workflow) o en cada push a main.
+name: Armar APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # El SDK de Android ya viene en el runner; sólo hace falta el JDK.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - run: npm ci
+
+      # Las pruebas antes del APK: un APK que no funciona cuesta una instalación
+      # y la confianza de quien lo probó.
+      - run: npx tsc --noEmit
+      - run: npm test
+
+      # ESTO ES LO QUE IMPORTA: estas variables se hornean adentro del
+      # JavaScript al compilar. Si llegan vacías, el APK sale con datos de
+      # ejemplo y no hay forma de arreglarlo sin recompilar.
+      - name: Compilar el web
+        env:
+          NEXT_PUBLIC_BACKEND: supabase
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_DIRECTORIO_JSON: ${{ secrets.NEXT_PUBLIC_DIRECTORIO_JSON }}
+          NEXT_PUBLIC_SOPORTE_WHATSAPP: ${{ secrets.NEXT_PUBLIC_SOPORTE_WHATSAPP }}
+        run: |
+          if [ -z "$NEXT_PUBLIC_DIRECTORIO_JSON" ]; then
+            echo "ERROR: falta el secret NEXT_PUBLIC_DIRECTORIO_JSON."
+            echo "Sin el directorio, ningun codigo de empresa resuelve y nadie puede entrar."
+            exit 1
+          fi
+          npm run build
+
+      - name: Generar el proyecto Android
+        run: npm run android:init
+
+      - name: Compilar el APK
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: android
+
+      # Que el directorio haya quedado adentro de verdad. Buscar "supabase.co"
+      # no probaria nada: esa cadena esta tambien en la libreria.
+      - name: Verificar que las variables quedaron horneadas
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          d = json.loads(os.environ["DIR_JSON"])
+          chunks = "".join(
+              p.read_text(errors="ignore")
+              for p in pathlib.Path("out/_next/static/chunks").rglob("*.js")
+          )
+          faltan = [c for c in d if d[c].get("apiUrl", "") not in chunks]
+          if faltan:
+              sys.exit(f"ERROR: no quedaron en el build las APIs de: {faltan}")
+          print("OK: el directorio quedo dentro del build:", ", ".join(d))
+          PY
+        env:
+          DIR_JSON: ${{ secrets.NEXT_PUBLIC_DIRECTORIO_JSON }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zentra-movil-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
