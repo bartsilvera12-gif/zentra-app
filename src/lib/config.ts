@@ -13,11 +13,30 @@
 /** Qué fuente de datos usa la app. */
 export type Backend = "mock" | "supabase" | "http";
 
+/**
+ * Normaliza la URL base del ERP: sin barra final y terminada en `/api`.
+ * Vacío devuelve vacío — `assertConfig` es quien se queja de eso.
+ */
+export function urlDeApi(crudo: string | undefined): string {
+  const base = (crudo || "").trim().replace(/\/+$/, "");
+  if (!base) return "";
+  return /\/api$/i.test(base) ? base : `${base}/api`;
+}
+
 export const config = {
   /** "mock" datos de ejemplo · "supabase" el proyecto real · "http" una API propia. */
   backend: (process.env.NEXT_PUBLIC_BACKEND as Backend) || "mock",
-  /** URL base de la API, sin barra final. Ej: https://api.zentra.com.py */
-  apiUrl: (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, ""),
+  /**
+   * URL base de la API del ERP. Se escribe como el host nomás
+   * (`https://api.neura.com.py`) y acá se le agrega el `/api` donde el ERP
+   * monta sus rutas, porque es un Next.js: `/api/ventas/create` y compañía.
+   *
+   * Si alguien ya lo escribe con `/api` al final, no se duplica. Una barra
+   * final tampoco molesta. Es la clase de detalle que, mal resuelto, da un 404
+   * que parece "el endpoint no existe" cuando en realidad la URL quedó con
+   * `/api/api/` en el medio.
+   */
+  apiUrl: urlDeApi(process.env.NEXT_PUBLIC_API_URL),
   /** Timeout de red en milisegundos. */
   timeoutMs: Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS || 15000),
 

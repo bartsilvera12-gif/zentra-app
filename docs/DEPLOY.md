@@ -32,6 +32,10 @@ Opcionales:
 ```
 NEXT_PUBLIC_SOPORTE_WHATSAPP=595981000450  # enlace de soporte en el login
 
+# API del ERP. Se escribe el host nomas: la app le agrega el /api donde el ERP
+# monta sus rutas. Escrito con /api al final tampoco se rompe, no se duplica.
+NEXT_PUBLIC_API_URL=https://api.neura.com.py
+
 # Código de empresa — una de las dos, no las dos:
 NEXT_PUBLIC_DIRECTORIO_JSON={"JM":{"nombre":"…","supabaseUrl":"https://…","anonKey":"…"}}
 NEXT_PUBLIC_DIRECTORIO_URL=https://…
@@ -48,7 +52,9 @@ El Dockerfile imprime qué variables llegaron, antes de compilar:
   NEXT_PUBLIC_BACKEND         = supabase
   NEXT_PUBLIC_SUPABASE_URL    = https://xxxx.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY = presente
+  NEXT_PUBLIC_API_URL         = https://api.neura.com.py
 ...
+OK: la URL de la API quedó dentro del build.
 OK: la URL de Supabase quedó dentro del build.
 ```
 

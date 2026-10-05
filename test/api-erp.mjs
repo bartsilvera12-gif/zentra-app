@@ -22,9 +22,16 @@ const server = createServer((req, res) => {
   req.on("data", (d) => (cuerpo += d));
   req.on("end", () => {
     const u = new URL(req.url, "http://x");
+    // El ERP es un Next.js: sus rutas viven bajo /api. El servidor simulado
+    // monta igual, así se prueba también que la app arme bien la URL base.
+    if (!u.pathname.startsWith("/api/")) {
+      res.writeHead(404, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ success: false, error: "fuera de /api: " + u.pathname }));
+    }
+    const ruta = u.pathname.slice("/api".length);
     recibido.push({
       metodo: req.method,
-      ruta: u.pathname,
+      ruta,
       query: Object.fromEntries(u.searchParams),
       auth: req.headers.authorization || null,
       idempotencia: req.headers["idempotency-key"] || null,
@@ -35,10 +42,10 @@ const server = createServer((req, res) => {
     // El ERP envuelve todo en { success, data } y devuelve sus columnas crudas.
     const ok = (data) => json(200, { success: true, data });
 
-    if (u.pathname === "/perfil") {
+    if (ruta === "/perfil") {
       return ok({ id: "u1", nombre: "Ulises Gomez", rol: "VENDEDOR", empresa: "Distribuidora JM" });
     }
-    if (u.pathname === "/clientes" && req.method === "GET") {
+    if (ruta === "/clientes" && req.method === "GET") {
       return ok([{
         id: "c1", nombre: null, razon_social: "Supermercado Aurora SA", empresa: null,
         nombre_contacto: "Lucia Benitez", ruc_factura: "80012345-6", ruc: "999",
@@ -46,7 +53,7 @@ const server = createServer((req, res) => {
         tipo_cliente: "Mayorista", baja_operativa_at: null, created_at: "2024-03-15T00:00:00Z",
       }]);
     }
-    if (u.pathname === "/productos") {
+    if (ruta === "/productos") {
       return ok([
         { id: "p1", nombre: "MUSLO PAQUETE CONG. POR KG", sku: "73", precio_venta: 10650.6,
           costo_promedio: 8800.4, stock_actual: 0.5, stock_minimo: 0, tipo_iva: "5%", unidad_medida: "KG" },
@@ -56,7 +63,7 @@ const server = createServer((req, res) => {
           costo_promedio: 15000, stock_actual: 2, stock_minimo: 0, tipo_iva: "EXENTA" },
       ]);
     }
-    if (u.pathname === "/ventas/create" && req.method === "POST") {
+    if (ruta === "/ventas/create" && req.method === "POST") {
       const clave = req.headers["idempotency-key"];
       // Lo que tiene que hacer el ERP: misma clave, misma venta.
       if (ventasPorClave.has(clave)) return json(200, { success: true, data: ventasPorClave.get(clave) });
@@ -74,8 +81,8 @@ const server = createServer((req, res) => {
       ventasPorClave.set(clave, v);
       return json(201, { success: true, data: v });
     }
-    if (u.pathname === "/ventas" && req.method === "GET") return ok([]);
-    if (u.pathname === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
+    if (ruta === "/ventas" && req.method === "GET") return ok([]);
+    if (ruta === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
     return json(404, { success: false, error: "no existe" });
   });
 });
@@ -174,6 +181,26 @@ t("el mensaje del ERP se muestra tal cual, no un 'algo falló'", async () => {
   if (err.status !== 500) throw new Error("status: " + err.status);
   // El ERP escribe mensajes para mostrarle a una persona; se usan tal cual.
   if (err.message !== "La caja no esta abierta.") throw new Error("mensaje: " + err.message);
+});
+
+t("la URL base se escribe como host y termina en /api, sin duplicar", async () => {
+  const { urlDeApi } = await import("../src/lib/config.ts");
+  const esperado = "https://api.neura.com.py/api";
+  for (const crudo of [
+    "https://api.neura.com.py",
+    "https://api.neura.com.py/",
+    "https://api.neura.com.py///",
+    "  https://api.neura.com.py/  ",
+    // Quien ya lo escribió con /api no termina con /api/api/, que da un 404 que
+    // parece "el endpoint no existe".
+    "https://api.neura.com.py/api",
+    "https://api.neura.com.py/api/",
+  ]) {
+    const vista = urlDeApi(crudo);
+    if (vista !== esperado) throw new Error(`${JSON.stringify(crudo)} -> ${vista}`);
+  }
+  // Vacío queda vacío: de eso se queja assertConfig, no esta función.
+  if (urlDeApi(undefined) !== "" || urlDeApi("  ") !== "") throw new Error("vacío no quedó vacío");
 });
 
 t("lo que no está implementado lo dice, no inventa datos", async () => {
