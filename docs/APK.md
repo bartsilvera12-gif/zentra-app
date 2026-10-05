@@ -17,6 +17,24 @@ Capacitor ya está configurado en `capacitor.config.ts` — `appId` es
 `py.com.zentra.movil`, el mismo `package_name` que trae el `google-services.json`
 de Firebase. **No corras `npx cap init` de nuevo**: sobreescribiría eso.
 
+## Dos errores de Android Studio, y por qué vuelven
+
+Los dos pasan porque `android:init` **borra y regenera `android/`** en cada
+corrida. Lo que Android Studio había configurado ahí se va con la carpeta.
+
+**"SDK location not found"** → falta `android/local.properties`, que es donde
+Gradle lee la ruta del SDK. Ahora `android:init` lo escribe solo: busca el SDK
+en los lugares de siempre según el sistema, y si no lo encuentra avisa qué
+poner. No se versiona porque la ruta cambia en cada máquina.
+
+En Windows va con **barras dobles** (`C:\\Users\\...`): en un `.properties`
+la barra simple es un escape, así que la ruta queda partida y el error no
+menciona las barras por ningún lado.
+
+**"Invalid Gradle JDK configuration"** → hacé clic en *Use Embedded JDK*, el
+link que ofrece el propio error. El JDK que viene con Android Studio es el
+correcto; no instales otro.
+
 ## El error que compila bien y sale mal
 
 `npm run android:init` **vuelve a correr `npm run build` por dentro** —tiene

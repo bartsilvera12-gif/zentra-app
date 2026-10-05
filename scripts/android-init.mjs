@@ -11,8 +11,10 @@
  * Esto lo resuelve: guarda ese archivo, genera el proyecto y lo devuelve a su
  * lugar.
  */
-import { existsSync, mkdirSync, copyFileSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { homedir, platform } from "node:os";
+import { join } from "node:path";
 
 const GS = "android/app/google-services.json";
 // La copia va a un archivo, no a una variable en memoria: si esto se corta a la
@@ -53,6 +55,45 @@ correr(
     " --iconBackgroundColor '#1c8c84' --iconBackgroundColorDark '#1c8c84'" +
     " --splashBackgroundColor '#1c8c84' --splashBackgroundColorDark '#023047'",
 );
+
+/**
+ * Gradle necesita saber dónde está el SDK de Android, y lo lee de
+ * `android/local.properties`. Ese archivo lo escribe Android Studio la primera
+ * vez — pero acá se borra `android/` en cada corrida, así que vuelve a faltar
+ * siempre y el build muere con "SDK location not found".
+ *
+ * No se versiona a propósito: la ruta es distinta en cada máquina.
+ */
+function escribirLocalProperties() {
+  if (process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT) {
+    console.log("\nSDK tomado de ANDROID_HOME; no hace falta local.properties.");
+    return;
+  }
+
+  const casa = homedir();
+  const candidatos =
+    platform() === "win32"
+      ? [join(casa, "AppData", "Local", "Android", "Sdk")]
+      : platform() === "darwin"
+        ? [join(casa, "Library", "Android", "sdk")]
+        : [join(casa, "Android", "Sdk"), "/usr/lib/android-sdk", "/opt/android-sdk"];
+
+  const sdk = candidatos.find((d) => existsSync(d));
+  if (!sdk) {
+    console.log("\nAviso: no encontré el SDK de Android en los lugares de siempre.");
+    console.log("Si el build falla con 'SDK location not found', creá android/local.properties con:");
+    console.log("  sdk.dir=<la ruta de tu SDK>   (en Windows, con barras dobles)");
+    return;
+  }
+
+  // En Windows las barras simples son escapes dentro de un .properties: la
+  // ruta queda partida y el error no menciona las barras por ningún lado.
+  const ruta = sdk.replace(/\\/g, "\\\\");
+  writeFileSync("android/local.properties", `sdk.dir=${ruta}\n`);
+  console.log(`\nandroid/local.properties escrito con sdk.dir=${sdk}`);
+}
+
+escribirLocalProperties();
 
 if (existsSync(COPIA)) {
   mkdirSync("android/app", { recursive: true });
