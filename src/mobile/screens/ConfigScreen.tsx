@@ -2,6 +2,8 @@
 
 import { config } from "@/lib/config";
 import { MARCA } from "@/lib/theme";
+import { guardarPreferencia, temaDelSistema } from "@/lib/tema";
+import type { ThemeName } from "@/lib/types";
 import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
 import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
@@ -43,6 +45,22 @@ export function ConfigScreen() {
   );
 
   const claro = s.theme === "claro";
+
+  /**
+   * Elegir un tema a mano apaga el seguimiento al sistema, que es lo que esa
+   * elección quiere decir: si no, el teléfono lo pisaría al rato y parecería
+   * que el botón no funciona.
+   */
+  const elegirTema = (tema: ThemeName) => {
+    set({ theme: tema, auto: false });
+    guardarPreferencia({ auto: false, tema });
+  };
+
+  const seguirAlSistema = () => {
+    const auto = !s.auto;
+    set({ auto, ...(auto ? { theme: temaDelSistema() } : {}) });
+    guardarPreferencia({ auto, tema: auto ? temaDelSistema() : s.theme });
+  };
 
   // Escribir la palabra evita el borrado accidental de un toque. Es irreversible.
   const confirmado = s.borrarTexto.trim().toUpperCase() === "ELIMINAR";
@@ -186,7 +204,7 @@ export function ConfigScreen() {
               claro ? "#e6f2f1" : t.card,
               claro ? MARCA.acento : t.border,
               t.ink,
-              () => set({ theme: "claro" }),
+              () => elegirTema("claro"),
             )}
             {temaBtn(
               !claro,
@@ -195,7 +213,7 @@ export function ConfigScreen() {
               claro ? t.card : "#1e2438",
               claro ? t.border : MARCA.acento,
               t.ink,
-              () => set({ theme: "oscuro" }),
+              () => elegirTema("oscuro"),
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4 }}>
@@ -203,7 +221,7 @@ export function ConfigScreen() {
               <div style={{ font: "600 14.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>Seguir al sistema</div>
               <div style={{ font: "400 12px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>Usar el tema del teléfono</div>
             </div>
-            <Toggle on={s.auto} onToggle={() => set({ auto: !s.auto })} label="Seguir al sistema" />
+            <Toggle on={s.auto} onToggle={seguirAlSistema} label="Seguir al sistema" />
           </div>
         </Card>
 

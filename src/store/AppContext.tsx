@@ -13,6 +13,7 @@ import {
 import { IVAS } from "@/lib/data";
 import { desactivarPush, escucharAvisos, pushPreferido } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
+import { escucharTemaDelSistema, leerPreferencia, temaDelSistema } from "@/lib/tema";
 import { repo, usaSupabase } from "@/lib/repo";
 import { activarTenant } from "@/lib/supabase/client";
 import { resolverTenant } from "@/lib/tenant/directory";
@@ -107,6 +108,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
    *  - Cerrar la sesión en Supabase. Si no, el próximo arranque la reabre sola
    *    y el que se fue sigue adentro.
    */
+  /**
+   * El tema: el del teléfono, o el que la persona haya elegido.
+   *
+   * Se aplica después del primer dibujo y no antes, porque el estado inicial
+   * se arma también en el servidor, donde no hay `matchMedia`. Con tema oscuro
+   * eso significa un parpadeo claro de un cuadro; evitarlo pide guardar el
+   * tema fuera de React y no vale la complicación.
+   */
+  useEffect(() => {
+    const p = leerPreferencia();
+    setS((prev) => ({ ...prev, auto: p.auto, theme: p.auto ? temaDelSistema() : p.tema }));
+  }, []);
+
+  // Y si el sistema cambia con la app abierta —el modo oscuro automático al
+  // atardecer— la app acompaña, salvo que haya una elección hecha a mano.
+  useEffect(() => {
+    if (!s.auto) return;
+    return escucharTemaDelSistema((t) => setS((prev) => ({ ...prev, theme: t })));
+  }, [s.auto]);
+
   const cerrarSesion = useCallback(async () => {
     await desactivarPush().catch(() => {});
     if (usaSupabase) await repo.auth.logout().catch(() => {});

@@ -415,7 +415,9 @@ export const initialState: AppState = {
   fLimite: "",
   fPlazoCli: "30",
 
-  auto: false,
+  // Arranca siguiendo al teléfono. El valor de verdad lo pone AppContext al
+  // montar, leyendo la preferencia guardada y el tema del sistema.
+  auto: true,
   // Arranca apagado: activarlo pide permiso al sistema, y el sistema sólo
   // pregunta una vez. Mostrarlo encendido sin haber pedido nada sería mentir.
   push: false,
