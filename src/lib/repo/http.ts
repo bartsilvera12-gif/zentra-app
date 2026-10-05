@@ -425,6 +425,12 @@ interface VentaErp {
 function aVenta(v: VentaErp): Venta {
   const fecha = (v.fecha || v.created_at || "").slice(0, 10);
   const credito = /cred|cuota/i.test(v.tipo_venta || "");
+  // Los dos ERPs no devuelven lo mismo: JM manda `estado` en el listado y
+  // Sistemas Propio no lo selecciona. Sin esto, con el segundo TODAS las
+  // ventas se veían pendientes y el reporte mostraba cobranza cero.
+  // Sin estado se deriva del tipo, igual que al registrarla: de contado ya se
+  // cobró, a crédito queda por cobrar.
+  const estado = v.estado || (credito ? "pendiente" : "completada");
   return {
     id: String(v.id),
     iso: fecha,
@@ -439,7 +445,10 @@ function aVenta(v: VentaErp): Venta {
     // La app sólo distingue cobrada de pendiente. Lo que el ERP no da por
     // cerrado queda pendiente: una pendiente mostrada como cobrada esconde
     // plata sin cobrar. Confirmado que este ERP usa "completada".
-    estado: /cobrad|pagad|cerrad|complet/i.test(v.estado || "") ? "Cobrada" : "Pendiente",
+    estado: /cobrad|pagad|cerrad|complet/i.test(estado) ? "Cobrada" : "Pendiente",
+    // Las líneas traen `total_linea` ya calculado por el ERP; se usa ese y no
+    // precio × cantidad, que redondea distinto y haría que la suma del
+    // reporte no cierre con la factura.
     lineas: (v.items || []).map((l) => ({
       // El nombre va copiado en la línea: una factura vieja sigue diciendo lo
       // que decía aunque después le cambien el nombre al producto.

@@ -103,7 +103,17 @@ const server = createServer((req, res) => {
       ventasPorClave.set(clave, v);
       return json(201, { success: true, data: { venta: v } });
     }
-    if (ruta === "/ventas" && req.method === "GET") return ok([]);
+    // Como lo devuelve Sistemas Propio: en su sobre, sin estado y sin cliente.
+    if (ruta === "/ventas" && req.method === "GET") {
+      return ok({ ventas: [
+        { id: "vh1", numero_control: "VTA-000100", fecha: "2026-10-05T09:00:00Z",
+          tipo_venta: "CONTADO", moneda: "GS", total: 31800,
+          items: [{ producto_nombre: "PAPAS PRE FRITAS", cantidad: 2, precio_venta: 15900, tipo_iva: "10%" }] },
+        { id: "vh2", numero_control: "VTA-000101", fecha: "2026-10-04T09:00:00Z",
+          tipo_venta: "CREDITO", plazo_dias: 30, moneda: "GS", total: 20000,
+          items: [{ producto_nombre: "LIBRO", cantidad: 1, precio_venta: 20000, tipo_iva: "EXENTA" }] },
+      ] });
+    }
     // Estos dos sí traducen del lado del ERP, y van en su propio sobre.
     if (ruta === "/proveedores") {
       return ok({ proveedores: [{
@@ -331,6 +341,18 @@ t("proveedores y compras salen del sobre { proveedores } y { compras }", async (
   if (compras[0].estado !== "Pendiente") throw new Error("estado: " + compras[0].estado);
   if (compras[0].pago !== "Crédito") throw new Error("pago: " + compras[0].pago);
   if (compras[0].costo !== 48000) throw new Error("costo: " + compras[0].costo);
+});
+
+t("sin estado en el listado, se deriva del tipo y no queda todo pendiente", async () => {
+  // Sistemas Propio no selecciona `estado`; JM sí. Con el primero, TODAS las
+  // ventas se veían pendientes y el reporte mostraba cobranza cero.
+  const vs = await httpRepo.ventas.list({ desde: "2026-10-01", hasta: "2026-10-31" });
+  if (vs.length !== 2) throw new Error("ventas: " + vs.length);
+  if (vs[0].estado !== "Cobrada") throw new Error("la de contado tenía que estar cobrada");
+  if (vs[1].estado !== "Pendiente") throw new Error("la de crédito tenía que estar pendiente");
+  if (vs[0].numero !== "VTA-000100") throw new Error("numero: " + vs[0].numero);
+  // El listado viene en su sobre, igual que productos y proveedores.
+  if (vs[0].lineas.length !== 1) throw new Error("no leyó las líneas");
 });
 
 t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {

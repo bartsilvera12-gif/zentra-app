@@ -88,6 +88,37 @@ dos. Lo que encontré comparándolos:
   — y por eso la app arma cada campo con varias columnas candidatas en vez de
   una sola.
 
+### Cada endpoint envuelve distinto, y no hay regla
+
+Esto costó un error en el celular (`.map is not a function`):
+
+| Endpoint | Dónde viene la lista |
+|---|---|
+| `/clientes` | `data` pelado |
+| `/productos` | `data.productos` |
+| `/ventas` | `data.ventas` |
+| `/proveedores` | `data.proveedores` |
+| `/compras` | `data.compras` |
+
+La app acepta las dos formas y, si no es ninguna, el error nombra el endpoint.
+Nunca devuelve una lista vacía en silencio: "no hay productos" se lee como que
+el depósito está vacío, y el problema sería otro.
+
+### Y los dos ERPs no devuelven lo mismo en `/ventas`
+
+JM selecciona `estado`; Sistemas Propio **no**. Con el segundo, todas las ventas
+se veían pendientes y el reporte mostraba cobranza cero. Cuando no viene, la app
+lo deriva del tipo: de contado ya se cobró, a crédito queda por cobrar.
+
+Dos límites de ese endpoint, que conviene tener presentes:
+
+- **Ignora `desde` y `hasta`**: devuelve las últimas 500 y el filtro por fecha lo
+  hace la app. Para un rango viejo, puede faltar lo que quedó afuera de esas 500.
+- **No trae el cliente** (ni `cliente_id` ni el nombre), así que el historial no
+  puede mostrar a quién se le vendió.
+
+Las dos se arreglan del lado del ERP, no acá.
+
 ### El perfil no se llama `/perfil`
 
 Yo había escrito `/perfil`. **No existe.** El endpoint real es
