@@ -519,14 +519,19 @@ async function main() {
           String(v.anonKey),
         );
       }
-      // Dos destinos al mismo proyecto es el error que hace parecer que el
-      // aislamiento entre empresas no funciona.
+      // Dos destinos al mismo proyecto: a veces es un error de copiar y pegar,
+      // y a veces es a propósito —para probar el flujo del código sin crear un
+      // segundo proyecto—. Por eso avisa en vez de frenar.
       const urls = Object.values(mapa).map((v) => v && v.supabaseUrl).filter(Boolean).map((u) => String(u).replace(/\/$/, ""));
       const todas = urlPub ? [urlPub, ...urls] : urls;
       if (new Set(todas).size !== todas.length) {
         console.log("");
-        mal("Dos destinos apuntan al MISMO proyecto",
-            "Las dos empresas van a ver los mismos datos, y va a parecer que el aislamiento está roto.");
+        aviso("Dos destinos apuntan al MISMO proyecto", [
+          "Si fue sin querer, revisá las URLs.",
+          "Si es a propósito para probar el código sin crear otro proyecto, está bien: cada cuenta",
+          "sigue viendo sólo lo suyo, porque eso lo separa el RLS por empresa, no el proyecto.",
+          "Lo único que no se ejercita así es el salto a OTRO Supabase.",
+        ].join("\n    "));
       }
     }
   } else if (env.NEXT_PUBLIC_DIRECTORIO_URL) {
