@@ -2,8 +2,9 @@
 
 import { MARCA } from "@/lib/theme";
 import { ADJUNTOS, CHATS, EMOJIS, GIFS, PLANTILLAS, STICKERS } from "@/lib/data";
-import { usaApiDelErp } from "@/lib/repo";
-import { NoDisponible } from "../ui/Estado";
+import { repo, SinCola, usaApiDelErp } from "@/lib/repo";
+import { useRemoto } from "./useRemoto";
+import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
 import type { ChatMsg } from "@/lib/types";
@@ -17,24 +18,46 @@ const VIOLETA_INK = MARCA.headerSuave;
 
 export function ConversacionesScreen() {
   const { s, t, set, abrirChat, pushMsg, startGrab, stopGrab } = useApp();
-  // Con ERP, los chats de ejemplo serían conversaciones de WhatsApp inventadas
-  // con nombres de clientes que no son los suyos. Eso no se muestra.
-  const sinConectar = usaApiDelErp();
 
-  const noLeidosTotal = CHATS.reduce((a, c) => a + noLeidosDe(c, s.xLeidos), 0);
+  // Las conversaciones salen del ERP: son los chats de WhatsApp asignados a
+  // este asesor. Sin ERP quedan las de ejemplo, para poder ver la pantalla.
+  const conErp = usaApiDelErp();
+  const { datos, cargando, error, recargar } = useRemoto(
+    () => (conErp ? repo.chats.list() : Promise.resolve(CHATS)),
+    [conErp],
+  );
+  // No es lo mismo "no tenés conversaciones" que "no atendés chats": a quien no
+  // está en ninguna cola hay que decirle eso, no dejarlo mirando una lista
+  // vacía creyendo que nadie le escribió.
+  const sinCola = error === new SinCola().message;
+  const CHATS_VIVOS = datos;
+
+  const noLeidosTotal = CHATS_VIVOS.reduce((a, c) => a + noLeidosDe(c, s.xLeidos), 0);
   const xq = norm(s.xQuery.trim());
 
-  const filtrados = CHATS.filter((c) => {
+  const filtrados = CHATS_VIVOS.filter((c) => {
     if (s.xFiltro === "No leídas" && noLeidosDe(c, s.xLeidos) === 0) return false;
     if (s.xFiltro === "Clientes" && c.tipo !== "Cliente") return false;
     if (s.xFiltro === "Proveedores" && c.tipo !== "Proveedor") return false;
     return norm(c.nombre + " " + ultimoDe(c, s.xEnviados)).indexOf(xq) >= 0;
   });
 
-  const det = CHATS.find((c) => c.id === s.xSel) ?? null;
-  const detMsgs = det ? msgsDe(det, s.xEnviados) : [];
+  const det = CHATS_VIVOS.find((c) => c.id === s.xSel) ?? null;
 
-  const contactos = CHATS.map((c) => ({
+  // El listado sólo trae la vista previa del último mensaje; la conversación
+  // entera se pide al abrirla. Sin esto se vería un solo globo y parecería que
+  // no hay historial.
+  const { datos: conversacion } = useRemoto(
+    () => (conErp && s.xSel ? repo.chats.get(s.xSel).then((c) => (c ? [c] : [])) : Promise.resolve([])),
+    [conErp, s.xSel],
+  );
+  const detMsgs = conErp
+    ? [...(conversacion[0]?.msgs ?? []), ...(s.xEnviados[s.xSel ?? ""] ?? [])]
+    : det
+      ? msgsDe(det, s.xEnviados)
+      : [];
+
+  const contactos = CHATS_VIVOS.map((c) => ({
     nombre: c.nombre,
     tipo: c.tipo,
     chatId: c.id,
@@ -61,7 +84,23 @@ export function ConversacionesScreen() {
   const enviarTexto = () => {
     const texto = s.xTexto.trim();
     if (!texto || !det) return;
-    pushMsg(det.id, { de: "yo", texto, hora: "11:42", tick: "✓" });
+
+    // Se muestra enseguida y se manda en paralelo: en la calle la señal va y
+    // viene, y esperar la respuesta del servidor para ver lo que uno escribió
+    // hace sentir que la app se colgó.
+    const hora = new Date().toTimeString().slice(0, 5);
+    pushMsg(det.id, { de: "yo", texto, hora, tick: conErp ? "…" : "✓" });
+    if (!conErp) return;
+
+    repo.chats
+      .enviar(det.id, { de: "yo", texto })
+      .then(() => set({ xEnvioError: "" }))
+      .catch((e: unknown) => {
+        // Si no salió hay que decirlo: un mensaje que se ve en la pantalla y
+        // nunca llegó es peor que un error, porque el vendedor se queda
+        // esperando una respuesta que no va a venir.
+        set({ xEnvioError: e instanceof Error ? e.message : "No se pudo enviar el mensaje." });
+      });
   };
 
   const enviarAudio = () => {
@@ -222,7 +261,7 @@ export function ConversacionesScreen() {
     );
   };
 
-  if (sinConectar) {
+  if (sinCola) {
     return (
       <div
         style={{
@@ -235,8 +274,16 @@ export function ConversacionesScreen() {
         }}
       >
         <StatusBar bg={topBg} />
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <NoDisponible t={t} modulo="Conversaciones" />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ font: "600 14px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
+              No atendés conversaciones
+            </div>
+            <div style={{ font: "400 13px/1.5 var(--font-barlow),Barlow,sans-serif", color: t.ink2, paddingTop: 8 }}>
+              Tu usuario no está asignado a ninguna cola de atención. Pedile a
+              quien administra el ERP que te agregue a una.
+            </div>
+          </div>
         </div>
         <BottomNav />
       </div>
@@ -320,7 +367,9 @@ export function ConversacionesScreen() {
           </div>
 
           <ScrollBody>
-            {filtrados.map((c) => {
+            {cargando && <Cargando t={t} que="las conversaciones" />}
+            {!cargando && error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+            {!cargando && !error && filtrados.map((c) => {
               const nl = noLeidosDe(c, s.xLeidos);
               const esCliente = c.tipo === "Cliente";
               return (
@@ -436,7 +485,7 @@ export function ConversacionesScreen() {
                 </button>
               );
             })}
-            {filtrados.length === 0 && (
+            {!cargando && !error && filtrados.length === 0 && (
               <EmptyState titulo="Sin conversaciones" detalle="Probá con otro término o cambiá el filtro." />
             )}
           </ScrollBody>
@@ -695,6 +744,23 @@ export function ConversacionesScreen() {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Un mensaje que se ve en la pantalla y nunca salió es peor que un
+              error: el vendedor se queda esperando una respuesta que no va a
+              venir. El mensaje del ERP va tal cual. */}
+          {s.xEnvioError && (
+            <div
+              style={{
+                padding: "9px 14px",
+                background: "#FBE9E7",
+                color: "#8C2F2B",
+                borderTop: "1px solid #E8B4AE",
+                font: "500 12px/1.4 var(--font-barlow),Barlow,sans-serif",
+              }}
+            >
+              {s.xEnvioError}
             </div>
           )}
 

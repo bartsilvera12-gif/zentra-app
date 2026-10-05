@@ -171,6 +171,8 @@ export interface AppState {
   xSeg: number;
   xSub: "lista" | "chat" | "nuevo";
   xQuery: string;
+  /** Lo que dijo el ERP si un mensaje no se pudo enviar. */
+  xEnvioError: string;
   xFiltro: string;
   xSel: string | null;
   xTexto: string;
@@ -361,6 +363,7 @@ export const initialState: AppState = {
   xSeg: 0,
   xSub: "lista",
   xQuery: "",
+  xEnvioError: "",
   xFiltro: "Todas",
   xSel: null,
   xTexto: "",

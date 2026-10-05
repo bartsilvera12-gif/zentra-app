@@ -19,7 +19,7 @@
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
 import { hayTenantActivo, sb, tenantEnUso } from "../supabase/client";
-import type { Cliente, Compra, InvProducto, Iva, Proveedor, Venta } from "../types";
+import type { Chat, ChatMsg, Cliente, Compra, InvProducto, Iva, Proveedor, Venta } from "../types";
 import type { Repo } from "./ports";
 
 export class ApiError extends Error {
@@ -540,6 +540,103 @@ function aCompra(c: CompraErp): Compra {
 }
 
 /**
+ * Las conversaciones del ERP. Tercera forma de sobre: ni el array pelado de
+ * `/clientes` ni el `{ success, data }` del resto, sino `{ ok, ... }`.
+ */
+interface ConversacionErp {
+  id: string;
+  status?: string | null;
+  last_message_at?: string | null;
+  last_message_preview?: string | null;
+  unread_count?: number | null;
+  contact_nombre?: string | null;
+  contact_telefono?: string | null;
+}
+
+interface ConversacionesErp {
+  ok?: boolean;
+  /** false cuando el usuario no está en ninguna cola de atención. */
+  is_agent?: boolean;
+  conversations?: ConversacionErp[];
+}
+
+interface MensajeErp {
+  id: string;
+  from_me?: boolean;
+  content?: string | null;
+  message_type?: string | null;
+  created_at?: string | null;
+  whatsapp_delivery_status?: string | null;
+}
+
+interface DetalleConversacionErp {
+  ok?: boolean;
+  conversation?: ConversacionErp | null;
+  messages?: MensajeErp[];
+}
+
+/**
+ * El usuario no es agente de ninguna cola de chat.
+ *
+ * No es un error: es una respuesta válida que la pantalla tiene que mostrar
+ * distinto de "no hay conversaciones". A alguien que no atiende chats hay que
+ * decirle eso, no dejarlo mirando una lista vacía creyendo que nadie le
+ * escribió.
+ */
+export class SinCola extends Error {
+  constructor() {
+    super("Tu usuario no está asignado a ninguna cola de atención.");
+    this.name = "SinCola";
+  }
+}
+
+/** `2026-10-05T14:03:00Z` → `14:03`, en la hora del teléfono. */
+function horaCorta(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function aChat(c: ConversacionErp): Chat {
+  return {
+    id: String(c.id),
+    nombre: primero(c.contact_nombre, c.contact_telefono) || "Sin nombre",
+    // El ERP no distingue cliente de proveedor en el chat; son conversaciones
+    // de WhatsApp con quien sea que escribió.
+    tipo: "Cliente",
+    refId: null,
+    enLinea: false,
+    hora: horaCorta(c.last_message_at),
+    noLeidos: Number(c.unread_count) || 0,
+    // El listado trae sólo la vista previa del último mensaje. Los mensajes de
+    // verdad llegan al abrir la conversación.
+    msgs: c.last_message_preview
+      ? [{ de: "ellos", texto: c.last_message_preview, hora: horaCorta(c.last_message_at) }]
+      : [],
+  };
+}
+
+function aMensaje(m: MensajeErp): ChatMsg {
+  const tipo = (m.message_type || "text").toLowerCase();
+  const base = { de: (m.from_me ? "yo" : "ellos") as "yo" | "ellos", hora: horaCorta(m.created_at) };
+
+  // Una foto o un audio sin su contenido se mostraría como un globo vacío: se
+  // dice qué era, aunque no se pueda abrir desde acá todavía.
+  if (tipo.includes("image")) return { ...base, texto: m.content || "📷 Foto" };
+  if (tipo.includes("audio") || tipo.includes("voice")) return { ...base, texto: m.content || "🎤 Audio" };
+  if (tipo.includes("document")) return { ...base, texto: m.content || "📎 Documento" };
+
+  return {
+    ...base,
+    texto: m.content || "",
+    ...(m.from_me
+      ? { tick: /read/i.test(m.whatsapp_delivery_status || "") ? "✓✓" : "✓" }
+      : {}),
+  };
+}
+
+/**
  * Implementación contra la API de un ERP.
  *
  * Está implementado lo que hace falta para el caso que motivó esto: ver clientes
@@ -805,10 +902,52 @@ export const httpRepo: Repo = {
   },
 
   chats: {
-    list: () => pendiente("chats.list"),
-    get: () => pendiente("chats.get"),
-    enviar: () => pendiente("chats.enviar"),
-    marcarLeido: () => pendiente("chats.marcarLeido"),
+    async list() {
+      const r = await request<ConversacionesErp>("/mobile/asesor/conversations");
+      // `is_agent: false` no es "no tenés conversaciones": es que este usuario
+      // no está en ninguna cola de atención. Son cosas distintas y la pantalla
+      // las dice distinto, así que acá se marca.
+      if (r && r.is_agent === false) throw new SinCola();
+      return (r?.conversations ?? []).map(aChat);
+    },
+
+    async get(id) {
+      const r = await request<DetalleConversacionErp>(
+        `/mobile/asesor/conversations/${encodeURIComponent(id)}`,
+      );
+      const c = r?.conversation;
+      if (!c) return null;
+      return {
+        id: String(c.id),
+        nombre: primero(c.contact_nombre, c.contact_telefono) || "Sin nombre",
+        tipo: "Cliente" as const,
+        refId: null,
+        enLinea: false,
+        hora: "",
+        noLeidos: 0,
+        msgs: (r.messages ?? []).map(aMensaje),
+      };
+    },
+
+    async enviar(chatId, msg) {
+      if (!msg.texto) {
+        // Fotos, audios y stickers van por otros endpoints del ERP
+        // (/send-media, /send-sticker). Mejor decirlo que fallar callado.
+        throw new ApiError(
+          "Por ahora desde la app se pueden mandar sólo mensajes de texto.",
+          400,
+          "/mobile/asesor/conversations/enviar",
+        );
+      }
+      await request(`/mobile/asesor/conversations/${encodeURIComponent(chatId)}/send`, {
+        method: "POST",
+        body: JSON.stringify({ message: msg.texto }),
+      });
+      return { ...msg, hora: horaCorta(new Date().toISOString()), tick: "✓" };
+    },
+
+    // El ERP marca leído solo al abrir la conversación; no hay endpoint aparte.
+    async marcarLeido() {},
   },
 
   reportes: {

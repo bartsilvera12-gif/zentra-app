@@ -15,6 +15,8 @@ function t(nombre, fn) { casos.push([nombre, fn]); }
 
 /** Lo que recibió el servidor, para poder afirmar sobre el pedido y no sólo sobre la respuesta. */
 const recibido = [];
+/** Lo pone en true la prueba que simula un usuario fuera de toda cola. */
+let fueraDeCola = false;
 const ventasPorClave = new Map();
 
 const server = createServer((req, res) => {
@@ -132,6 +134,33 @@ const server = createServer((req, res) => {
         estado: "pendiente", fecha: "2026-10-01T00:00:00Z",
         numero_comprobante: "001-001-0000045", nro_timbrado: "12345678",
       }] });
+    }
+    // Las conversaciones usan su propio sobre: { ok, ... }
+    if (ruta === "/mobile/asesor/conversations") {
+      // Como contesta el ERP a alguien que no atiende chats: lista vacía, pero
+      // con la bandera que explica por qué.
+      if (fueraDeCola) return json(200, { ok: true, is_agent: false, conversations: [] });
+      return json(200, { ok: true, is_agent: true, conversations: [{
+        id: "c1", status: "open", last_message_at: "2026-10-05T14:03:00Z",
+        last_message_preview: "Buenas, tenes stock?", unread_count: 2,
+        contact_nombre: "Lucia Benitez", contact_telefono: "0981 555 123",
+      }] });
+    }
+    if (ruta === "/mobile/asesor/conversations/c1") {
+      return json(200, { ok: true,
+        conversation: { id: "c1", contact_nombre: "Lucia Benitez", contact_telefono: "0981 555 123" },
+        messages: [
+          { id: "m1", from_me: false, content: "Buenas, tenes stock?", message_type: "text", created_at: "2026-10-05T14:03:00Z" },
+          { id: "m2", from_me: true, content: "Si, te paso precios", message_type: "text", created_at: "2026-10-05T14:05:00Z", whatsapp_delivery_status: "read" },
+        ] });
+    }
+    if (ruta === "/mobile/asesor/conversations/sin-nombre") {
+      return json(200, { ok: true,
+        conversation: { id: "x", contact_nombre: null, contact_telefono: "0981 555 123" }, messages: [] });
+    }
+    if (ruta === "/mobile/asesor/conversations/con-foto") {
+      return json(200, { ok: true, conversation: { id: "f", contact_nombre: "Ana" },
+        messages: [{ id: "m1", from_me: false, content: "", message_type: "image", created_at: "2026-10-05T14:03:00Z" }] });
     }
     if (ruta === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
     return json(404, { success: false, error: "no existe" });
@@ -355,6 +384,48 @@ t("sin estado en el listado, se deriva del tipo y no queda todo pendiente", asyn
   if (vs[0].lineas.length !== 1) throw new Error("no leyó las líneas");
 });
 
+t("las conversaciones salen del sobre { ok, conversations }", async () => {
+  const cs = await httpRepo.chats.list();
+  if (cs.length !== 1) throw new Error("conversaciones: " + cs.length);
+  if (cs[0].nombre !== "Lucia Benitez") throw new Error("nombre: " + cs[0].nombre);
+  if (cs[0].noLeidos !== 2) throw new Error("no leidos: " + cs[0].noLeidos);
+});
+
+t("sin contacto cargado, la conversacion se nombra por el telefono", async () => {
+  const d = await httpRepo.chats.get("sin-nombre");
+  if (d.nombre !== "0981 555 123") throw new Error("nombre: " + d.nombre);
+});
+
+t("quien no esta en ninguna cola no ve una lista vacia, ve por que", async () => {
+  // "No tenes conversaciones" y "no atendes chats" son cosas distintas: con la
+  // primera alguien se queda esperando un mensaje que nunca le iba a llegar.
+  const { SinCola } = await import("../src/lib/repo/http.ts");
+  fueraDeCola = true;
+  try {
+    let err = null;
+    try { await httpRepo.chats.list(); } catch (e) { err = e; }
+    if (!(err instanceof SinCola)) throw new Error("no avisó que está fuera de cola: " + err);
+  } finally {
+    fueraDeCola = false;
+  }
+  // Y con cola, la lista sale normal.
+  if ((await httpRepo.chats.list()).length !== 1) throw new Error("con cola tenía que listar");
+});
+
+t("al abrir una conversacion llegan sus mensajes, con el tick del propio", async () => {
+  const d = await httpRepo.chats.get("c1");
+  if (!d) throw new Error("no trajo la conversacion");
+  // El listado sólo trae la vista previa: sin esto se veria un solo globo.
+  if (d.msgs.length !== 2) throw new Error("mensajes: " + d.msgs.length);
+  if (d.msgs[1].de !== "yo") throw new Error("el segundo era nuestro");
+  if (d.msgs[1].tick !== "✓✓") throw new Error("leido lleva doble tilde: " + d.msgs[1].tick);
+});
+
+t("una foto no queda como globo vacio: dice que era", async () => {
+  const d = await httpRepo.chats.get("con-foto");
+  if (!/Foto/.test(d.msgs[0].texto)) throw new Error("texto: " + d.msgs[0].texto);
+});
+
 t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
   const { transporte } = await import("../src/lib/repo/http.ts");
   if (transporte() !== "navegador") throw new Error("sin Capacitor debería ser navegador");
@@ -378,8 +449,8 @@ t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
 
 t("lo que no está implementado lo dice, no inventa datos", async () => {
   let msg = "";
-  // compras.list ya existe; chats sigue sin endpoint en estos ERPs.
-  try { await httpRepo.chats.list(); } catch (e) { msg = e.message; }
+  // Los chats ya existen; compras.create sigue sin implementar.
+  try { await httpRepo.compras.create(); } catch (e) { msg = e.message; }
   if (!/no está implementado/.test(msg)) throw new Error("mensaje poco claro: " + msg);
 });
 

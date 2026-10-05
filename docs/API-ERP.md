@@ -119,6 +119,25 @@ Dos límites de ese endpoint, que conviene tener presentes:
 
 Las dos se arreglan del lado del ERP, no acá.
 
+### Conversaciones: una tercera forma de sobre
+
+`/mobile/asesor/conversations` no usa ninguna de las dos anteriores: contesta
+`{ ok, is_agent, conversations }`.
+
+Lo importante de ese endpoint es `is_agent`. Cuando es `false`, la lista viene
+vacía **y no es que no haya conversaciones**: es que ese usuario no está en
+ninguna cola de atención. Son cosas distintas y la app las dice distinto —
+mostrar una lista vacía dejaría a alguien esperando un mensaje que nunca le iba
+a llegar.
+
+Dos límites de lo que la app hace hoy con esto:
+
+- **Sólo texto.** Fotos, audios y stickers van por `/send-media` y
+  `/send-sticker`, que todavía no están implementados acá. Mandar uno avisa en
+  vez de fallar callado.
+- **Los adjuntos recibidos se nombran, no se abren**: una foto aparece como
+  `📷 Foto`. Mejor que un globo vacío, pero no es ver la foto.
+
 ### El perfil no se llama `/perfil`
 
 Yo había escrito `/perfil`. **No existe.** El endpoint real es

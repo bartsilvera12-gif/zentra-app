@@ -38,7 +38,8 @@ const CON_GUARDA = new Map([
   // Movimientos de stock: la API no los expone, así que con ERP se muestran
   // sólo los hechos desde la app.
   ["InventarioScreen.tsx", new Set(["MOVS"])],
-  // Conversaciones: con ERP la pantalla entera avisa que no está conectada.
+  // Conversaciones: con ERP salen del ERP; las de ejemplo quedan sólo para
+  // poder ver la pantalla sin una empresa conectada.
   ["ConversacionesScreen.tsx", new Set(["CHATS"])],
   // Compartir factura por WhatsApp: con ERP no busca chat.
   ["DetVentasScreen.tsx", new Set(["CHATS"])],
