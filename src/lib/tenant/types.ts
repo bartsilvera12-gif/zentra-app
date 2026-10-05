@@ -21,6 +21,18 @@ export interface TenantConfig {
    * ese cliente sin que nadie copie nada.
    */
   schema: string;
+  /**
+   * API del ERP de esa empresa, si tiene una. Vacío usa `NEXT_PUBLIC_API_URL`.
+   *
+   * Un ERP puede atender a varias empresas desde un solo dominio: resuelve a qué
+   * empresa pertenece quien entra mirando su token, no la URL. En ese caso todas
+   * comparten esta URL y no hace falta ponerla por empresa.
+   *
+   * Pero si mañana un cliente tiene su ERP en su propio dominio, la app tiene que
+   * poder apuntar ahí sin recompilarse con otra variable de entorno. Por eso vive
+   * en el directorio, al lado del código de empresa.
+   */
+  apiUrl: string;
   /** true cuando es la instalación pública, donde el registro está abierto. */
   publico: boolean;
 }

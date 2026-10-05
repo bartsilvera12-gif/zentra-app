@@ -1,7 +1,43 @@
 # CORS en el ERP: el único cambio que falta
 
-Este es un cambio **en el ERP** (`neura-erp-distribuidorajm`), no en esta app. Yo
-no lo toco. Acá está el parche para que lo apliquen de aquel lado.
+Este es un cambio **en el ERP**, no en esta app. Yo no lo toco. Acá está el
+parche para que lo apliquen de aquel lado.
+
+## ¿En qué ERP? Se parchea una vez y sirve para todas las empresas
+
+El ERP ya es multiempresa en un solo deploy. Lo verifiqué leyendo
+`src/lib/middleware/api-auth-context.ts` y
+`src/lib/auth/resolve-usuario-empresa-context.ts`: con el token del usuario
+busca su fila en `zentra_erp.usuarios`, de ahí saca su `empresa_id`, y con eso
+resuelve `empresas.data_schema`. O sea que **la empresa la decide el token, no la
+URL**, y no hay ninguna variable de entorno que ate ese deploy a JM — el nombre
+del repo dice JM, el código no.
+
+Consecuencia: el parche va **una sola vez** en el deploy que está en
+`api.neura.com.py`, y a partir de ahí cualquier empresa que tenga usuarios ahí
+entra por la app. No hay que repetir nada por empresa, ni crear schemas, ni
+tocar el ERP de nuevo cuando se sume un cliente.
+
+Lo único que hay que agregar por empresa está en el ERP y ya existe: el usuario
+en `zentra_erp.usuarios` con su `empresa_id`.
+
+### Y si algún cliente tiene su ERP en su propio dominio
+
+Pasa a ser otro deploy, con su propio dominio, y hay que aplicarle el mismo
+parche. Para eso la app resuelve la API **por empresa**: cada entrada del
+directorio puede traer su `apiUrl`, y si no la trae usa la global
+(`NEXT_PUBLIC_API_URL`).
+
+```json
+{
+  "JM":     { "nombre": "Distribuidora JM", "supabaseUrl": "...", "anonKey": "..." },
+  "OTRA":   { "nombre": "Otra SA", "supabaseUrl": "...", "anonKey": "...",
+              "apiUrl": "https://erp.otra.com.py" }
+}
+```
+
+JM usa la global; `OTRA` apunta a su dominio. Agregar un cliente así no pide
+tocar código, y sumar uno que comparte el ERP no pide ni eso.
 
 ## Por qué sin esto no funciona nada
 

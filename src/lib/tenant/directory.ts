@@ -23,7 +23,7 @@
  * demostración: un código que resuelve a una URL inventada falla más tarde y con
  * un mensaje que culpa a la conexión.
  */
-import { config } from "../config";
+import { config, urlDeApi } from "../config";
 import { SCHEMA } from "../supabase/client";
 import { guardarTenant, guardarUltimoCodigo, leerTenantGuardado } from "./storage";
 import { TenantError, type TenantConfig } from "./types";
@@ -43,6 +43,7 @@ export function tenantPublico(): TenantConfig {
     supabaseUrl: config.supabaseUrl,
     anonKey: config.supabaseAnonKey,
     schema: SCHEMA,
+    apiUrl: config.apiUrl,
     publico: true,
   };
 }
@@ -60,6 +61,9 @@ function parseRespuesta(codigo: string, json: unknown): TenantConfig {
     // Opcional: una instalación que expone vistas sobre las tablas del cliente
     // usa el schema de esas vistas en vez del nuestro.
     schema: typeof o.schema === "string" && o.schema.trim() ? o.schema.trim() : SCHEMA,
+    // Se normaliza igual que la de la variable de entorno: host nomás, y la app
+    // le agrega el /api. Si no viene, se usa la global.
+    apiUrl: typeof o.apiUrl === "string" && o.apiUrl.trim() ? urlDeApi(o.apiUrl) : config.apiUrl,
     publico: false,
   };
 }

@@ -18,7 +18,7 @@
  */
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
-import { sb } from "../supabase/client";
+import { sb, tenantEnUso } from "../supabase/client";
 import type { Cliente, InvProducto, Iva, Venta } from "../types";
 import type { Repo } from "./ports";
 
@@ -31,6 +31,27 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/**
+ * A qué ERP se le pide. Gana la URL de la empresa activa sobre la global.
+ *
+ * Un ERP puede atender a varias empresas desde un solo dominio: resuelve a qué
+ * empresa pertenece quien entra mirando su token, no la URL. Mientras sea así,
+ * la global alcanza para todas. La de la empresa existe para el día que un
+ * cliente tenga su ERP en su propio dominio, y para que ese día no haya que
+ * recompilar la app con otra variable de entorno.
+ */
+function baseDeApi(): string {
+  const base = tenantEnUso()?.apiUrl || config.apiUrl;
+  if (!base) {
+    // Sin esto el `new URL()` tira "Invalid URL", que no le dice nada a nadie.
+    throw new Error(
+      "No hay API configurada para esta empresa. Revisá NEXT_PUBLIC_API_URL, o el " +
+        "campo apiUrl de esa empresa en el directorio.",
+    );
+  }
+  return base;
 }
 
 let token: string | null = null;
@@ -48,7 +69,7 @@ export async function request<T>(
   init: RequestInit & { query?: Record<string, string | number | boolean | undefined> } = {},
 ): Promise<T> {
   const { query, ...rest } = init;
-  const url = new URL(config.apiUrl + path);
+  const url = new URL(baseDeApi() + path);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
       if (v !== undefined && v !== "") url.searchParams.set(k, String(v));

@@ -151,6 +151,26 @@ t("el schema es opcional y por defecto es zentra", async () => {
   if (b.schema !== "zentra_jm") throw new Error("esperaba zentra_jm, fue " + b.schema);
 });
 
+t("la API es por empresa, y si no la trae usa la global", async () => {
+  const { resolverTenant } = await cargar({
+    NEXT_PUBLIC_BACKEND: "supabase",
+    NEXT_PUBLIC_API_URL: "https://api.neura.com.py",
+    NEXT_PUBLIC_DIRECTORIO_JSON: JSON.stringify({
+      // Comparte el ERP con las demás: resuelve la empresa por el token.
+      JM: { nombre: "JM", supabaseUrl: "https://a.supabase.co", anonKey: "k" },
+      // Tiene el ERP en su propio dominio. Escrito como host, sin /api.
+      PROPIO: {
+        nombre: "Con su ERP", supabaseUrl: "https://b.supabase.co", anonKey: "k",
+        apiUrl: "https://erp.otracosa.com.py/",
+      },
+    }),
+  });
+  const jm = await resolverTenant("JM");
+  if (jm.apiUrl !== "https://api.neura.com.py/api") throw new Error("JM: " + jm.apiUrl);
+  const propio = await resolverTenant("PROPIO");
+  if (propio.apiUrl !== "https://erp.otracosa.com.py/api") throw new Error("PROPIO: " + propio.apiUrl);
+});
+
 t("el tenant público usa el schema propio", async () => {
   const { resolverTenant } = await cargar({
     NEXT_PUBLIC_BACKEND: "supabase",
