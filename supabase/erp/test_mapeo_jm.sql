@@ -67,6 +67,21 @@ values
   ('aaaa1111-1111-1111-1111-111111111111', 'cccc0001-0000-0000-0000-000000000001', 'Leche Larga Vida 1L',  'LEC-1L',  1, 7300,    '5%',  7300),
   ('bbbb2222-2222-2222-2222-222222222222', 'cccc0001-0000-0000-0000-000000000004', 'De otra empresa',      'OTRO',    1, 1,       '10%', 1);
 
+create table distribuidorajmerp.usuarios (
+  id uuid primary key default gen_random_uuid(), empresa_id uuid, nombre text, email text,
+  rol text, auth_user_id uuid, activo boolean
+);
+create table distribuidorajmerp.empresas (
+  id uuid primary key, nombre_empresa text, ruc text, data_schema text
+);
+insert into distribuidorajmerp.empresas values
+  ('aaaa1111-1111-1111-1111-111111111111', 'Distribuidora JM', '80012345-6', null),
+  ('bbbb2222-2222-2222-2222-222222222222', 'Otra Empresa',     '80099999-9', null);
+insert into distribuidorajmerp.usuarios (empresa_id, nombre, email, rol, auth_user_id, activo) values
+  ('aaaa1111-1111-1111-1111-111111111111', 'Ulises Gomez', 'ulises@jm.py', 'VENDEDOR', 'dddd0001-0000-0000-0000-000000000001', true),
+  ('aaaa1111-1111-1111-1111-111111111111', 'Dado de baja', 'baja@jm.py',   'VENDEDOR', 'dddd0001-0000-0000-0000-000000000002', false),
+  ('bbbb2222-2222-2222-2222-222222222222', 'De otra',      'otro@x.py',    'ADMIN',    'dddd0001-0000-0000-0000-000000000003', true);
+
 \i supabase/erp/10_tablas.sql
 \i supabase/erp/11_generar.sql
 \i supabase/erp/12_generar_todas.sql
@@ -139,6 +154,29 @@ begin
   select * into r from zentra_jm.venta_lineas where nombre like 'Aceite%';
   assert r.precio = 11501, 'el precio de la línea tiene que redondear, fue ' || r.precio;
   assert r.iva = '10%', 'IVA de la línea mal mapeado: ' || r.iva;
+end $$;
+\echo ''
+\echo 'PERFIL que leeria el login:'
+select id, nombre, rol, empresa_id from zentra_jm.usuarios;
+\echo ''
+\echo 'EMPRESA:'
+select id, nombre, ruc from zentra_jm.empresas;
+
+do $$
+declare n int; r record;
+begin
+  select count(*) into n from zentra_jm.usuarios;
+  assert n = 1, 'esperaba 1 usuario activo de esta empresa, hay ' || n;
+  select * into r from zentra_jm.usuarios;
+  -- Lo que no puede fallar: el id tiene que ser el de la sesion de Supabase.
+  assert r.id = 'dddd0001-0000-0000-0000-000000000001',
+    'el id del perfil tiene que ser auth_user_id, fue ' || r.id;
+  assert r.nombre = 'Ulises Gomez', 'nombre mal mapeado: ' || coalesce(r.nombre, '(null)');
+
+  select count(*) into n from zentra_jm.empresas;
+  assert n = 1, 'la app tendria que ver 1 empresa, ve ' || n;
+  select * into r from zentra_jm.empresas;
+  assert r.nombre = 'Distribuidora JM', 'empresa equivocada: ' || coalesce(r.nombre, '(null)');
 end $$;
 \echo ''
 \echo 'Mapeo de JM: todas las comprobaciones pasaron.'

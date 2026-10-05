@@ -37,6 +37,7 @@ declare
   v_donde   text;
   v_tiene_empresa boolean;
   v_schema  text;
+  v_filtro  text;
   v_origen  record;
   -- La marca que distingue un schema generado por nosotros de uno ajeno.
   MARCA constant text := 'zentra-movil: vistas generadas, no editar a mano';
@@ -113,7 +114,19 @@ begin
       v_donde := format('empresa_id = %L::uuid', p_empresa_id);
     end if;
     if v_origen.filtro is not null and btrim(v_origen.filtro) <> '' then
-      v_donde := coalesce(v_donde || ' and ', '') || '(' || v_origen.filtro || ')';
+      -- `{{empresa_id}}` en el filtro se reemplaza por el uuid de la empresa.
+      --
+      -- Hace falta para las tablas que identifican a la empresa con otra columna:
+      -- `empresas` la tiene en `id`, no en `empresa_id`, así que la detección
+      -- automática no la agarra y sin esto la app vería TODAS las empresas del
+      -- ERP. El uuid entra por %L, igual que el otro filtro.
+      v_filtro := replace(v_origen.filtro, '{{empresa_id}}',
+                          coalesce(quote_literal(p_empresa_id::text) || '::uuid', 'null'));
+      if v_filtro <> v_origen.filtro and p_empresa_id is null then
+        raise exception
+          'La vista % filtra por {{empresa_id}} y no se paso ningun empresa_id.', v_vista;
+      end if;
+      v_donde := coalesce(v_donde || ' and ', '') || '(' || v_filtro || ')';
     end if;
     if v_donde is not null then
       v_sql := v_sql || ' where ' || v_donde;

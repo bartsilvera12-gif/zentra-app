@@ -12,16 +12,22 @@
 
 -- ---------- de qué tabla sale cada vista ----------
 
-insert into zentra_movil.origen (vista, tabla, filtro) values
+insert into zentra_movil.origen (vista, tabla, filtro, schema_origen) values
   -- `deleted_at` es borrado lógico: esas filas no existen para la app.
-  ('clientes',     'clientes',     'deleted_at is null'),
+  ('clientes',     'clientes',     'deleted_at is null', null),
   -- Lo que no es vendible no va al catálogo de una app de ventas.
-  ('productos',    'productos',    'activo is not false and es_vendible is not false'),
+  ('productos',    'productos',    'activo is not false and es_vendible is not false', null),
   -- Una venta anulada no es una venta: no puede sumar en los totales del día.
-  ('ventas',       'ventas',       'anulada_at is null'),
-  ('venta_lineas', 'ventas_items', null)
+  ('ventas',       'ventas',       'anulada_at is null', null),
+  ('venta_lineas', 'ventas_items', null, null),
+  -- El perfil de quien entra. Sin esto la app valida la contraseña y después no
+  -- sabe quién es: "tu cuenta no tiene perfil en esta instalación".
+  ('usuarios',     'usuarios',     'coalesce(activo, true) is not false', null),
+  -- `empresas` identifica a la empresa con `id`, no con `empresa_id`, así que el
+  -- filtro va explícito: sin él la app vería todas las empresas del ERP.
+  ('empresas',     'empresas',     'id = {{empresa_id}}', null)
 on conflict (vista) do update
-  set tabla = excluded.tabla, filtro = excluded.filtro;
+  set tabla = excluded.tabla, filtro = excluded.filtro, schema_origen = excluded.schema_origen;
 
 -- ---------- clientes ----------
 -- El ERP tiene cuatro columnas que podrían ser "el nombre": nombre,
@@ -127,5 +133,31 @@ insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
        else '10%'
      end$sql$, 7),
   ('venta_lineas', 'total',       'round(coalesce(total_linea, 0))::bigint', 8)
+on conflict (vista, campo) do update
+  set expresion = excluded.expresion, orden = excluded.orden;
+
+-- ---------- usuarios ----------
+-- Lo que la app usa para saber quién entró.
+--
+-- `id` sale de `auth_user_id` y NO del id de la fila: la app busca el perfil por
+-- el id de la sesión de Supabase, y son dos uuid distintos. Confundirlos deja al
+-- login validando la contraseña y rechazando después por "sin perfil".
+
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
+  ('usuarios', 'id',         'auth_user_id::text', 1),
+  ('usuarios', 'nombre',     $sql$coalesce(nullif(btrim(nombre), ''), split_part(email, '@', 1))$sql$, 2),
+  ('usuarios', 'rol',        $sql$coalesce(nullif(btrim(rol), ''), 'VENDEDOR')$sql$, 3),
+  ('usuarios', 'empresa_id', 'empresa_id::text', 4),
+  ('usuarios', 'email',      'email', 5)
+on conflict (vista, campo) do update
+  set expresion = excluded.expresion, orden = excluded.orden;
+
+-- ---------- empresas ----------
+-- Sólo para mostrar el nombre en el encabezado de la app.
+
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
+  ('empresas', 'id',     'id::text', 1),
+  ('empresas', 'nombre', $sql$coalesce(nullif(btrim(nombre_empresa), ''), '(sin nombre)')$sql$, 2),
+  ('empresas', 'ruc',    'ruc', 3)
 on conflict (vista, campo) do update
   set expresion = excluded.expresion, orden = excluded.orden;

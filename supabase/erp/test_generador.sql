@@ -284,5 +284,31 @@ begin
 end $$;
 \echo '  OK 11 · una vista puede salir de otro schema que el de los datos'
 
+-- ---------- 12. filtrar por una columna que no se llama empresa_id ----------
+-- `empresas` identifica a la empresa con `id`. Sin un filtro explícito la app
+-- vería todas las empresas del ERP.
+create table erp_catalogo.empresas (id uuid primary key, nombre_empresa text);
+insert into erp_catalogo.empresas values
+  ('11111111-1111-1111-1111-111111111111', 'Empresa UNO'),
+  ('22222222-2222-2222-2222-222222222222', 'Empresa DOS');
+
+insert into zentra_movil.origen (vista, tabla, filtro, schema_origen)
+  values ('empresas', 'empresas', 'id = {{empresa_id}}', 'erp_catalogo');
+insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
+  ('empresas', 'id', 'id::text', 1),
+  ('empresas', 'nombre', 'nombre_empresa', 2);
+
+do $$
+declare n int; r record;
+begin
+  perform zentra_movil.generar('UNO', 'erp_compartido', '11111111-1111-1111-1111-111111111111');
+
+  select count(*) into n from zentra_uno.empresas;
+  assert n = 1, 'la vista de empresas tendria que traer 1, trajo ' || n;
+  select * into r from zentra_uno.empresas;
+  assert r.nombre = 'Empresa UNO', 'trajo la empresa equivocada: ' || coalesce(r.nombre, '(null)');
+end $$;
+\echo '  OK 12 · se puede filtrar por una columna que no se llama empresa_id'
+
 \echo ''
 \echo 'Generador de vistas: todas las pruebas pasaron.'
