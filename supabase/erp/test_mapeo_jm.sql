@@ -78,7 +78,8 @@ insert into distribuidorajmerp.empresas values
   ('aaaa1111-1111-1111-1111-111111111111', 'Distribuidora JM', '80012345-6', null),
   ('bbbb2222-2222-2222-2222-222222222222', 'Otra Empresa',     '80099999-9', null);
 insert into distribuidorajmerp.usuarios (empresa_id, nombre, email, rol, auth_user_id, activo) values
-  ('aaaa1111-1111-1111-1111-111111111111', 'Ulises Gomez', 'ulises@jm.py', 'VENDEDOR', 'dddd0001-0000-0000-0000-000000000001', true),
+  -- Los roles del ERP vienen asi: minuscula y con guion bajo.
+  ('aaaa1111-1111-1111-1111-111111111111', 'Ulises Gomez', 'ulises@jm.py', 'vendedor_movil', 'dddd0001-0000-0000-0000-000000000001', true),
   ('aaaa1111-1111-1111-1111-111111111111', 'Dado de baja', 'baja@jm.py',   'VENDEDOR', 'dddd0001-0000-0000-0000-000000000002', false),
   ('bbbb2222-2222-2222-2222-222222222222', 'De otra',      'otro@x.py',    'ADMIN',    'dddd0001-0000-0000-0000-000000000003', true);
 
@@ -172,6 +173,7 @@ begin
   assert r.id = 'dddd0001-0000-0000-0000-000000000001',
     'el id del perfil tiene que ser auth_user_id, fue ' || r.id;
   assert r.nombre = 'Ulises Gomez', 'nombre mal mapeado: ' || coalesce(r.nombre, '(null)');
+  assert r.rol = 'VENDEDOR', 'el rol tendria que quedar legible, fue ' || coalesce(r.rol, '(null)');
 
   select count(*) into n from zentra_jm.empresas;
   assert n = 1, 'la app tendria que ver 1 empresa, ve ' || n;

@@ -146,7 +146,16 @@ on conflict (vista, campo) do update
 insert into zentra_movil.mapeo (vista, campo, expresion, orden) values
   ('usuarios', 'id',         'auth_user_id::text', 1),
   ('usuarios', 'nombre',     $sql$coalesce(nullif(btrim(nombre), ''), split_part(email, '@', 1))$sql$, 2),
-  ('usuarios', 'rol',        $sql$coalesce(nullif(btrim(rol), ''), 'VENDEDOR')$sql$, 3),
+  -- El rol se muestra tal cual en el encabezado de la app. El ERP lo guarda en
+  -- minúscula y con guión bajo ("vendedor_movil"), que leído en pantalla queda
+  -- mal. Se traducen los conocidos y el resto se limpia.
+  ('usuarios', 'rol',        $sql$case
+       when rol ~* '^admin'    then 'ADMIN'
+       when rol ~* 'vendedor'  then 'VENDEDOR'
+       when rol ~* 'caj'       then 'CAJA'
+       when rol ~* 'deposit|almac' then 'DEPOSITO'
+       else upper(replace(coalesce(nullif(btrim(rol), ''), 'VENDEDOR'), '_', ' '))
+     end$sql$, 3),
   ('usuarios', 'empresa_id', 'empresa_id::text', 4),
   ('usuarios', 'email',      'email', 5)
 on conflict (vista, campo) do update
