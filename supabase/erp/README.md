@@ -16,11 +16,21 @@ No se escriben a mano. `zentra_erp.generar()` los crea, y `generar_todas()` lo
 hace para todas las empresas leyendo la tabla de empresas del propio ERP:
 
 ```sql
-select * from zentra_erp.generar_todas('public.empresas', 'codigo', 'data_schema');
+select * from zentra_erp.generar_todas(
+  'distribuidorajmerp.empresas',  -- la tabla de empresas del ERP
+  'nombre_empresa',               -- de dónde sale el código
+  'data_schema',                  -- dónde dice el ERP en qué schema está cada una
+  'id',                           -- el id, para filtrar cuando comparten schema
+  'distribuidorajmerp'            -- a dónde van las que tienen data_schema vacío
+);
 ```
 
 Devuelve qué hizo con cada una, incluidas las que fallaron. Una empresa con el
 schema mal cargado no deja a las demás sin vistas.
+
+El último dato importa: el ERP trata `data_schema` vacío como "está en el schema
+compartido", y sin decírselo esas empresas quedarían sin vistas y nadie se
+enteraría.
 
 Alta una empresa nueva en el ERP y volvé a correr eso: no hay una lista nuestra
 en paralelo que se pueda desincronizar.

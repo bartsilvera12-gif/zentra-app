@@ -182,24 +182,34 @@ end $$;
 \echo '  OK 7 · en un schema compartido exige el empresa_id y filtra por él'
 
 -- ---------- 8. todas de una vez, leyendo la tabla de empresas del ERP ----------
-create table public.empresas (id serial primary key, nombre text, codigo text, data_schema text);
-insert into public.empresas (nombre, codigo, data_schema) values
-  ('Distribuidora JM', 'JM', 'erp_jm'),
-  ('Ferrecolor', 'FERRE', 'erp_ferre'),
+create table public.empresas (
+  id serial primary key, id_empresa uuid default gen_random_uuid(),
+  nombre text, codigo text, data_schema text
+);
+insert into public.empresas (id_empresa, nombre, codigo, data_schema) values
+  (gen_random_uuid(), 'Distribuidora JM', 'JM', 'erp_jm'),
+  (gen_random_uuid(), 'Ferrecolor', 'FERRE', 'erp_ferre'),
   -- Una con el schema mal, a propósito: no puede frenar a las demás.
-  ('Rota', 'ROTA', 'erp_no_existe');
+  (gen_random_uuid(), 'Rota', 'ROTA', 'erp_no_existe');
+
+-- Y una sin data_schema: el ERP las manda al schema compartido.
+insert into public.empresas (id_empresa, nombre, codigo, data_schema)
+  values ('11111111-1111-1111-1111-111111111111', 'Sin schema', 'SINSC', null);
 
 do $$
 declare n int;
 begin
-  perform zentra_erp.generar_todas('public.empresas', 'codigo', 'data_schema');
+  perform zentra_erp.generar_todas('public.empresas', 'codigo', 'data_schema', 'id_empresa', 'erp_compartido');
 
   select count(*) into n from zentra_erp.directorio where codigo in ('jm','ferre');
   assert n = 2, 'esperaba las dos empresas buenas en el directorio, hay ' || n;
   select count(*) into n from zentra_erp.directorio where codigo = 'no_existe';
   assert n = 0, 'generó un schema para una empresa con el schema inexistente';
-  select count(*) into n from zentra_erp.generar_todas('public.empresas', 'codigo', 'data_schema')
-   where error is not null;
+  select count(*) into n from zentra_erp.directorio where codigo = 'sinsc';
+  assert n = 1, 'la empresa sin data_schema tendría que ir al compartido, y no fue';
+
+  select count(*) into n from zentra_erp.generar_todas(
+    'public.empresas', 'codigo', 'data_schema', 'id_empresa', 'erp_compartido') where error is not null;
   assert n = 1, 'esperaba exactamente 1 empresa con error, hubo ' || n;
 end $$;
 \echo '  OK 8 · genera todas de una vez, y una rota no frena a las demás'
