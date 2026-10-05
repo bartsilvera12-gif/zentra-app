@@ -23,6 +23,49 @@ contrato: lo que la app ya sabe pedir y entender, verificado por
 
 ---
 
+## Antes de escribir nada: el ERP ya la tiene
+
+Mirando su código, los endpoints existen:
+
+| Lo que la app necesita | Lo que el ERP ya expone |
+|---|---|
+| perfil | lo resuelve `getUserAndEmpresa` en cada ruta |
+| listar y crear clientes | `GET` y `POST /api/clientes`, `GET /api/clientes/[id]` |
+| listar productos | `GET /api/productos`, `GET /api/productos/search` |
+| listar ventas | `GET /api/ventas` |
+| **crear una venta** | `POST /api/ventas/create` |
+
+Y `POST /api/ventas/create` ya hace lo que importa: transacción, caja, reparto,
+permisos y numeración, con `createVentaTransaccionalPg`.
+
+**Y acepta `Authorization: Bearer`**, no sólo cookies: su
+`resolveApiAuthContext` saca el token de la cabecera. O sea que la app puede
+llamarlo con el token de Supabase, igual que este documento describe.
+
+Entonces conviene **apuntar la app a esos endpoints** en vez de escribir una API
+nueva. Lo que cambia respecto de lo de abajo:
+
+- Las rutas son las suyas (`/api/ventas/create` en vez de `/ventas`).
+- Las respuestas vienen envueltas: `{ "success": true, "data": … }`.
+- Los datos salen **crudos de sus tablas** (`select *`), así que la traducción de
+  nombres de columna la hace la app en vez del servidor. Es el mismo mapeo que
+  está en [`API-ERP-CONSULTAS.md`](API-ERP-CONSULTAS.md), pero en TypeScript.
+- `tipo_iva` en sus líneas de venta es `"EXENTA" | "5%" | "10%"` — en mayúscula,
+  mientras la app usa `"Exenta"`.
+
+### Lo único que falta del lado del ERP: CORS
+
+No encontré cabeceras `Access-Control-Allow-Origin` en ninguna parte. Sin eso el
+navegador bloquea los pedidos de la app, que viene de otro origen — y dentro del
+APK el origen es `https://localhost`, no un dominio.
+
+Es un cambio chico, pero **sin él nada de esto funciona**, y el error que se ve
+es confuso: parece un problema de red y es una política del navegador.
+
+---
+
+---
+
 ## Cómo se autentica
 
 No hay usuarios nuevos ni contraseñas nuevas. La app entra con **Supabase Auth**
