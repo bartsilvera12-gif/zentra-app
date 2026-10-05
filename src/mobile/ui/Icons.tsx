@@ -89,11 +89,15 @@ export function IconInventario({ size = 26, stroke = "#023047" }: IconProps) {
 export function IconConversaciones({ size = 26, stroke = "#023047" }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-      {/* Dos globos en diagonal, cada uno entero y con su colita. Un solo
-          globo se confunde con "una nota"; dos se leen como conversación.
-          Superpuestos quedaban los trazos cruzados, que a 26px es un enredo. */}
-      <path d="M11 2.8h8a1.9 1.9 0 0 1 1.9 1.9v4.1a1.9 1.9 0 0 1-1.9 1.9h-4.3l-2.8 2.2v-2.2h-.9a1.9 1.9 0 0 1-1.9-1.9V4.7A1.9 1.9 0 0 1 11 2.8z" />
-      <path d="M5 13.6h8a1.9 1.9 0 0 1 1.9 1.9v4.1A1.9 1.9 0 0 1 13 21.5H8.7l-2.8 2.2v-2.2H5a1.9 1.9 0 0 1-1.9-1.9v-4.1A1.9 1.9 0 0 1 5 13.6z" />
+      {/* Dos globos en diagonal, grandes y bien separados, cada uno con su
+          colita. Un solo globo se confunde con "una nota"; dos se leen como
+          conversación.
+          
+          Superpuestos quedaban los trazos cruzados, y chicos se veían como dos
+          cuadraditos apretados: a 26px, que es el tamaño real, el detalle fino
+          desaparece y sólo queda la silueta. Por eso van grandes. */}
+      <path d="M13.4 3h5.3A2.3 2.3 0 0 1 21 5.3v3.9a2.3 2.3 0 0 1-2.3 2.3h-.6v2.4l-2.7-2.4h-2A2.3 2.3 0 0 1 11.1 9.2V5.3A2.3 2.3 0 0 1 13.4 3z" />
+      <path d="M5.3 12.8h5.3a2.3 2.3 0 0 1 2.3 2.3V19a2.3 2.3 0 0 1-2.3 2.3h-2L5.9 23.7v-2.4h-.6A2.3 2.3 0 0 1 3 19v-3.9a2.3 2.3 0 0 1 2.3-2.3z" />
     </svg>
   );
 }

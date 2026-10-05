@@ -54,7 +54,22 @@ function CurrentScreen() {
 }
 
 export function ZentraApp() {
-  const { s, set } = useApp();
+  const { s, t, set } = useApp();
+
+  /**
+   * El fondo de la página, igual al de la app.
+   *
+   * Cada pantalla entra con un fundido desde opacidad 0, así que durante esos
+   * 220 ms se ve lo que haya detrás. Con un gris fijo eso era un flash blanco
+   * al abrir cualquier tarjeta — y con el tema oscuro, un fogonazo.
+   *
+   * `color-scheme` va de la mano: sin eso, el teclado y los selectores de
+   * fecha del sistema salen claros sobre una app oscura.
+   */
+  useEffect(() => {
+    document.documentElement.style.setProperty("--zt-fondo", t.bg);
+    document.documentElement.style.colorScheme = s.theme === "oscuro" ? "dark" : "light";
+  }, [t.bg, s.theme]);
 
   // El botón "atrás" de Android. Sin esto, el gesto más usado del sistema
   // cerraba la app desde cualquier pantalla.

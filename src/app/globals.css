@@ -1,8 +1,21 @@
 /* Global rules ported from the prototype's <helmet> block. */
 
+/*
+ * El fondo de la página sigue al tema de la app.
+ *
+ * Estaba fijo en un gris claro. Como cada pantalla entra con un fundido desde
+ * opacidad 0, durante esos 220 ms se veía ese gris por detrás: un flash blanco
+ * al abrir cualquier tarjeta, y con el tema oscuro, peor.
+ *
+ * El valor lo escribe la app al cambiar de tema (ver ZentraApp).
+ */
+:root {
+  --zt-fondo: #e9ecf0;
+}
+
 body {
   margin: 0;
-  background: #e9ecf0;
+  background: var(--zt-fondo);
   font-family: var(--font-barlow), Barlow, Helvetica, Arial, sans-serif;
 }
 
@@ -61,7 +74,10 @@ body {
   height: 740px;
   border-radius: 34px;
   overflow: hidden;
-  background: #f3f5f8;
+  /* El fondo del tema, no uno claro fijo: cada pantalla entra con un fundido
+     y lo que se ve por detrás durante esos 220 ms es esto. Con el gris claro
+     fijo, en tema oscuro era un fogonazo blanco en cada toque. */
+  background: var(--zt-fondo);
   display: flex;
   flex-direction: column;
 }
@@ -90,7 +106,7 @@ body {
     padding: 0;
     border-radius: 0;
     box-shadow: none;
-    background: #f3f5f8;
+    background: var(--zt-fondo);
   }
 
   .zt-pantalla {
