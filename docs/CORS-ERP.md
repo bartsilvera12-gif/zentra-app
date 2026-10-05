@@ -19,9 +19,66 @@ navegador.
 Hoy el ERP no tiene ninguna cabecera `Access-Control-Allow-Origin` en ninguna
 parte. Lo verifiqué buscando en todo el repo.
 
-## El parche
+## Paso a paso
 
-Va en `src/middleware.ts`. Ese archivo ya corre para todas las rutas `/api/*` (su
+El archivo ya quedó escrito, completo y listo para pegar, en
+[`cors-erp-middleware.ts.txt`](cors-erp-middleware.ts.txt). No hay que empalmar
+nada a mano: reemplaza todo el contenido de `src/middleware.ts` del ERP.
+
+Está hecho sobre el archivo que el ERP tiene hoy (commit `0192c6d`), y verifiqué
+con `diff` que lo único distinto son las dos cosas nuevas: el bloque de CORS
+arriba, y la función de siempre renombrada a `sesionYDevice`. Ni una línea de la
+lógica actual cambió.
+
+### Por GitHub, desde el navegador (lo más simple)
+
+1. Abrí `src/middleware.ts` en el repo del ERP, en GitHub.
+2. Botón del lápiz, arriba a la derecha (*Edit this file*).
+3. Seleccioná **todo** lo que hay (Ctrl+A) y borralo.
+4. Pegá el contenido completo de `cors-erp-middleware.ts.txt`.
+5. Abajo, en el mensaje del commit, poné algo como
+   `feat(api): CORS para la app movil`.
+6. Elegí **Create a new branch for this commit** y abrí el Pull Request. Así
+   alguien lo mira antes de que entre, y si algo sale mal se revierte de una.
+7. Mergealo cuando esté revisado.
+
+### Por consola, si preferís
+
+```sh
+cd <el repo del ERP>
+git checkout -b cors-app-movil
+# pegar el archivo sobre src/middleware.ts
+npx tsc --noEmit          # que no haya roto tipos
+npm run lint
+git add src/middleware.ts
+git commit -m "feat(api): CORS para la app movil"
+git push -u origin cors-app-movil
+```
+
+### Después del merge: el deploy
+
+Esto no es una variable de entorno, es código: **no alcanza con reiniciar**, hay
+que redeployar en Coolify para que el cambio esté en el servidor. En el servicio
+del ERP, *Deploy*, y esperá que termine.
+
+Para saber si el deploy entró de verdad, el ERP tiene `/api/deploy-info`: ahí
+aparece el commit que está corriendo, y tiene que ser el del merge.
+
+### Y ahí verificás
+
+Corré el primer `curl` de más abajo. Si devuelve las cabeceras, avisame y cambio
+el backend de la app a `http` para probar contra los datos de JM.
+
+Si no las devuelve, no toques nada más y mandame lo que imprimió el `curl`
+completo: ahí se ve si no entró el deploy, si quedó en otra rama, o si hay un
+proxy adelante comiéndose las cabeceras.
+
+---
+
+## El parche, explicado
+
+Si preferís aplicarlo a mano en vez de pegar el archivo entero, va en
+`src/middleware.ts`. Ese archivo ya corre para todas las rutas `/api/*` (su
 `matcher` sólo excluye `api/webhooks`), así que es el único lugar donde hay que
 tocar: no hace falta editar cada endpoint.
 

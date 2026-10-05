@@ -1,0 +1,143 @@
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+import { DEVICE_COOKIE_NAME, isMobileUserAgent } from "@/shared/device/detect";
+
+/**
+ * Origenes que pueden llamar a /api desde un navegador.
+ *
+ * Lista cerrada a proposito. Un `*` aca dejaria que cualquier pagina de
+ * internet le haga pedidos al ERP con el token de quien la este visitando.
+ */
+const ORIGENES_PERMITIDOS = new Set([
+  "https://localhost", // APK Android: Capacitor sirve el paquete desde ahi
+  "capacitor://localhost", // APK iOS
+  "http://localhost:3000", // desarrollo
+  // Agregar aca el dominio de la app web cuando exista.
+]);
+
+/**
+ * Las cabeceras que manda la app movil. Si falta una, el preflight falla y el
+ * pedido real no se manda nunca.
+ *
+ * `idempotency-key` es la que se olvida: es una cabecera propia, no estandar, y
+ * el navegador no la deja pasar salvo que este nombrada aca. Sin ella anda todo
+ * menos registrar ventas, que es justo el endpoint que importa.
+ */
+const CABECERAS_PERMITIDAS = "authorization, content-type, idempotency-key";
+
+function aplicarCors(res: NextResponse, origen: string): void {
+  res.headers.set("Access-Control-Allow-Origin", origen);
+  res.headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.headers.set("Access-Control-Allow-Headers", CABECERAS_PERMITIDAS);
+  res.headers.set("Access-Control-Max-Age", "86400");
+  // La respuesta cambia segun quien pregunte. Sin esto, un proxy o CDN puede
+  // guardar la respuesta hecha para un origen y servirla a otro, y el CORS
+  // empieza a fallar o pasar segun quien entro antes: imposible de reproducir.
+  res.headers.append("Vary", "Origin");
+}
+
+/**
+ * CORS para /api, mas lo que este middleware ya hacia.
+ *
+ * El navegador no deja que una pagina pida datos a otro dominio salvo que ese
+ * dominio diga explicitamente que la deja. La app movil corre en un origen
+ * (`https://localhost` adentro del APK) y pide a otro, asi que sin estas
+ * cabeceras el pedido se descarta antes de salir. En el log del servidor no
+ * aparece nada, porque nunca llego.
+ */
+export async function middleware(request: NextRequest) {
+  const esApi = request.nextUrl.pathname.startsWith("/api/");
+  const origen = request.headers.get("origin");
+  const permitido = esApi && origen && ORIGENES_PERMITIDOS.has(origen) ? origen : null;
+
+  // El preflight: el navegador pregunta antes de mandar el pedido de verdad. No
+  // lleva token ni cookies, asi que pasarlo por el refresh de sesion de Supabase
+  // es una llamada remota al aire. Se contesta y se corta aca.
+  if (esApi && request.method === "OPTIONS") {
+    const res = new NextResponse(null, { status: 204 });
+    if (permitido) aplicarCors(res, permitido);
+    return res;
+  }
+
+  const res = await sesionYDevice(request);
+  if (permitido) aplicarCors(res, permitido);
+  return res;
+}
+
+/**
+ * Middleware combinado: (a) refresca la sesión Supabase en cookies antes de Route
+ * Handlers / RSC; (b) setea la cookie `neura-device` a partir del User-Agent si todavía
+ * no fue seteada. La cookie permite que el server-side render del DeviceRouter decida
+ * mobile vs desktop sin esperar al cliente (evita flash en el primer paint).
+ *
+ * Optimización clave: saltamos el `supabase.auth.getUser()` (que es una llamada remota
+ * al servicio de auth de Supabase, ~100-300ms) para requests que son SOLO prefetches
+ * RSC de Next.js. Estos requests:
+ *   - los dispara `next/link` automáticamente para cada link visible en el viewport,
+ *   - reusan las cookies del browser que ya están vigentes,
+ *   - no necesitan refrescar tokens — la próxima navegación real los refresca.
+ * Sin este skip, una pantalla con 10 links visibles disparaba 10 auth-refresh ocultos.
+ */
+async function sesionYDevice(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request });
+
+  // Seteo de cookie de device: solo si no existe todavía, para no pisar la corrección
+  // que el cliente pueda haber escrito (caso iPad-as-Mac).
+  if (!request.cookies.get(DEVICE_COOKIE_NAME)) {
+    const ua = request.headers.get("user-agent");
+    const device = isMobileUserAgent(ua) ? "mobile" : "desktop";
+    request.cookies.set(DEVICE_COOKIE_NAME, device);
+    supabaseResponse = NextResponse.next({ request });
+    supabaseResponse.cookies.set(DEVICE_COOKIE_NAME, device, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+  }
+
+  // Detectamos PREFETCH (no toda navegación RSC). Estos son disparados automáticamente
+  // por next/link en background para cada link visible. Las cookies ya están vigentes;
+  // no hace falta refrescar el token para una nav que el usuario quizás ni haga.
+  const isPrefetch =
+    request.headers.get("next-router-prefetch") === "1" ||
+    request.headers.get("purpose") === "prefetch";
+
+  if (isPrefetch) {
+    return supabaseResponse;
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    return supabaseResponse;
+  }
+
+  const supabase = createServerClient(url, anonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        supabaseResponse = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          supabaseResponse.cookies.set(name, value, options)
+        );
+      },
+    },
+  });
+
+  await supabase.auth.getUser();
+
+  return supabaseResponse;
+}
+
+/**
+ * Excluir `/api/webhooks/*`: Meta hace GET sin cookies para verificar el webhook;
+ * no debe pasar por refresh de sesión Supabase (y queda listo para proxies estrictos).
+ */
+export const config = {
+  matcher: [
+    "/((?!api/webhooks|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
+};
