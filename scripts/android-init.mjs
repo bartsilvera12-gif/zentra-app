@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, copyFileSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const GS = "android/app/google-services.json";
 // La copia va a un archivo, no a una variable en memoria: si esto se corta a la
@@ -88,10 +88,47 @@ if (existsSync(GS)) {
   console.log("Si debería estar, recuperalo con:  git checkout " + GS);
 }
 
-if (existsSync("android")) {
+/**
+ * Borra `android/`, con los dos motivos por los que en Windows no se puede.
+ *
+ * Node tira `EPERM` a secas, que no dice nada útil. Las causas reales son dos y
+ * las dos tienen arreglo en diez segundos; sin esto uno se queda mirando un
+ * stack de `node:fs` buscando un problema de permisos que no existe.
+ */
+function borrarAndroid() {
+  if (!existsSync("android")) return;
+
+  // Windows no deja borrar la carpeta donde está parada una consola. `INIT_CWD`
+  // es desde dónde se corrió `npm run`, que puede no ser la raíz del proyecto.
+  // Se compara con el separador al final: si no, una carpeta hermana llamada
+  // `android-viejo` contaría como "adentro de android".
+  const dir = resolve("android");
+  const desde = process.env.INIT_CWD ? resolve(process.env.INIT_CWD) : "";
+  if (desde === dir || (desde && desde.startsWith(dir + sep))) {
+    console.error("\nEstás parado adentro de android/, y esa carpeta se borra para regenerarla.");
+    console.error("Windows no deja borrar el directorio donde está una consola.");
+    console.error("Salí de ahí y volvé a correrlo:\n");
+    console.error("  cd ..");
+    console.error("  npm run android:init\n");
+    process.exit(1);
+  }
+
   console.log("Borrando android/ para regenerarla…");
-  rmSync("android", { recursive: true, force: true });
+  try {
+    rmSync("android", { recursive: true, force: true });
+  } catch (e) {
+    if (e?.code !== "EPERM" && e?.code !== "EBUSY") throw e;
+    console.error("\nNo se pudo borrar android/: hay algo que la tiene abierta.");
+    console.error("Casi siempre es una de estas:\n");
+    console.error("  - Android Studio abierto con el proyecto → cerralo.");
+    console.error("  - El demonio de Gradle sigue vivo → cd android && gradlew.bat --stop && cd ..");
+    console.error("  - Una consola parada adentro de android/ → salí con cd ..\n");
+    console.error(`Detalle: ${e.message}`);
+    process.exit(1);
+  }
 }
+
+borrarAndroid();
 
 // El proyecto nativo copia lo que haya en `out`, así que primero hay que compilar.
 // La variable se setea en el proceso, no en la línea de comandos: `VAR=x cmd` no
