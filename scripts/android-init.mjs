@@ -28,6 +28,34 @@ function correr(cmd) {
 }
 
 /**
+ * De qué commit sale este APK.
+ *
+ * En CI la pone el workflow. Compilando a mano no la pone nadie, y entonces la
+ * pantalla de Configuración no muestra ningún build: dos APK distintos se ven
+ * iguales y no hay forma de saber cuál está instalado. Perdimos media hora así,
+ * discutiendo si un arreglo del ERP estaba activo cuando el problema era que el
+ * APK del celular era anterior al cambio de la app.
+ *
+ * Con el árbol sucio se agrega `+`: lo compilado no es ese commit, y decir que
+ * sí es peor que no decir nada.
+ */
+function shaDelBuild() {
+  const yaViene = process.env.NEXT_PUBLIC_BUILD_SHA?.trim();
+  if (yaViene) return yaViene;
+  try {
+    const sha = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+    const sucio = execSync("git status --porcelain", { encoding: "utf8" }).trim() !== "";
+    // 6 + `+` y no 7 + `+`: la pantalla corta a 7 caracteres, y un octavo se
+    // perdería justo la marca que importa.
+    return sucio ? `${sha.slice(0, 6)}+` : sha;
+  } catch {
+    // Sin git —un zip descargado, por ejemplo— se sigue igual: esto identifica
+    // el build, no es un requisito para compilarlo.
+    return "";
+  }
+}
+
+/**
  * Que estén instaladas las dependencias que el código pide.
  *
  * `git pull` trae código nuevo pero no instala nada. Si alguien agregó un
@@ -66,6 +94,15 @@ if (existsSync("android")) {
 }
 
 // El proyecto nativo copia lo que haya en `out`, así que primero hay que compilar.
+// La variable se setea en el proceso, no en la línea de comandos: `VAR=x cmd` no
+// existe en el `cmd` de Windows, y `execSync` hereda este entorno igual en los dos.
+const sha = shaDelBuild();
+if (sha) {
+  process.env.NEXT_PUBLIC_BUILD_SHA = sha;
+  console.log(
+    `\nBuild: ${sha.slice(0, 7)}${sha.endsWith("+") ? " — con cambios sin commitear" : ""}`
+  );
+}
 correr("npm run build");
 correr("npx cap add android");
 
