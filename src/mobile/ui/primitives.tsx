@@ -753,7 +753,12 @@ export function ListHeader({
   titulo: string;
   resumen: string;
   onBack: () => void;
-  accion?: { label: string; onClick: () => void; bg: string; fg: string };
+  /**
+   * `deshabilitado` apaga el botón pero lo deja visible y clickeable: el
+   * `onClick` sigue corriendo para poder explicar por qué no se puede. Un
+   * botón que no responde se lee como una app rota.
+   */
+  accion?: { label: string; onClick: () => void; bg: string; fg: string; deshabilitado?: boolean };
 }) {
   const { t } = useApp();
   return (
@@ -777,6 +782,7 @@ export function ListHeader({
             color: accion.fg,
             padding: "9px 15px",
             cursor: "pointer",
+            opacity: accion.deshabilitado ? 0.45 : 1,
             font: "600 13px/1 var(--font-barlow),Barlow,sans-serif",
             whiteSpace: "nowrap",
           }}

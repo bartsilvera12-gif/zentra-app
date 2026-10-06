@@ -9,11 +9,15 @@ import { Cargando, Falla } from "../ui/Estado";
 import { ivaContenido } from "@/lib/calc";
 import { gs, norm } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
+import { motivoBloqueo } from "@/lib/planes";
 import { StatusBar } from "../layout/StatusBar";
 import { WizardSteps } from "../ui/WizardSteps";
 
 export function VentaScreen() {
-  const { s, t, set, qty, rotarIva } = useApp();
+  const { s, t, set, qty, rotarIva, plan } = useApp();
+  // El crédito es de Max. Si el plan no lo incluye, el motivo se muestra en el
+  // mismo lugar donde ya se explica la regla del cliente identificado.
+  const sinCredito = motivoBloqueo("ventas.credito", plan());
 
   // Lo más delicado de la app: una venta se registra contra estos ids. Con el
   // catálogo de ejemplo, el ERP recibiría productos que no existen.
@@ -579,6 +583,9 @@ export function VentaScreen() {
               </button>
               <button
                 onClick={() => {
+                  // El plan primero: si no lo incluye, el motivo explica por
+                  // qué, y no se confunde con la regla del cliente identificado.
+                  if (sinCredito) return set({ avisoPlan: sinCredito });
                   // Credit requires an identified client, per the ERP's rule.
                   if (!s.vSinNombre) set({ vCredito: true });
                 }}
@@ -594,8 +601,8 @@ export function VentaScreen() {
                   background: s.vCredito ? "#FFF3DC" : t.card,
                   color: t.ink,
                   border: `2px solid ${s.vCredito ? MARCA.avisoInk : t.border}`,
-                  cursor: s.vSinNombre ? "not-allowed" : "pointer",
-                  opacity: s.vSinNombre ? 0.45 : 1,
+                  cursor: s.vSinNombre || sinCredito ? "not-allowed" : "pointer",
+                  opacity: s.vSinNombre || sinCredito ? 0.45 : 1,
                 }}
               >
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: MARCA.avisoInk }} />
@@ -604,7 +611,9 @@ export function VentaScreen() {
             </div>
 
             <div style={{ font: "400 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
-              {s.vSinNombre
+              {sinCredito
+                ? sinCredito
+                : s.vSinNombre
                 ? "El crédito es solo para clientes identificados."
                 : s.vCredito
                   ? "Se cobra después: no entra plata a la caja ahora."

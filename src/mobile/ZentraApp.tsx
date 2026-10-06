@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { conectarAtras } from "@/lib/atras";
 import { useApp } from "@/store/AppContext";
+import { AvisoPlan } from "./ui/AvisoPlan";
 import { PhoneFrame } from "./layout/PhoneFrame";
 import { ClientesScreen } from "./screens/ClientesScreen";
 import { ComprasScreen } from "./screens/ComprasScreen";
@@ -120,6 +121,7 @@ export function ZentraApp() {
 
       <PhoneFrame>
         <CurrentScreen />
+        <AvisoPlan />
       </PhoneFrame>
 
       <div className="zt-maqueta zt-ayuda">

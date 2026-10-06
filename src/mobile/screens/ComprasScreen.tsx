@@ -10,6 +10,7 @@ import { lineasDeCompra, stockDe, totalCompra } from "@/lib/calc";
 import { gs, norm } from "@/lib/format";
 import type { Compra, CompraLinea, Iva } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
+import { motivoBloqueo } from "@/lib/planes";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -30,7 +31,9 @@ import { WizardSteps } from "../ui/WizardSteps";
 const ORO = MARCA.header;
 
 export function ComprasScreen() {
-  const { s, t, set, kQty, kRotarIva } = useApp();
+  const { s, t, set, kQty, kRotarIva, plan } = useApp();
+  // Comprar en dólares es de Max; Emprendedor compra sólo en guaraníes.
+  const sinDolares = motivoBloqueo("compras.dolares", plan());
 
   // Las tres listas salen del ERP. Las compras son lo que se muestra; los
   // proveedores y el catálogo hacen falta para cargar una nueva.
@@ -663,10 +666,13 @@ export function ComprasScreen() {
                         <div style={{ display: "flex", gap: 7 }}>
                           {(["PYG", "USD"] as const).map((m) => {
                             const on = s.kMoneda === m;
+                            // Emprendedor compra sólo en guaraníes. El botón de
+                            // dólares queda a la vista y apagado, con el motivo.
+                            const bloqueado = m === "USD" ? sinDolares : null;
                             return (
                               <button
                                 key={m}
-                                onClick={() => set({ kMoneda: m })}
+                                onClick={() => (bloqueado ? set({ avisoPlan: bloqueado }) : set({ kMoneda: m }))}
                                 style={{
                                   flex: 1,
                                   borderRadius: 11,
@@ -676,6 +682,7 @@ export function ComprasScreen() {
                                   background: on ? "#FBF0D8" : t.card,
                                   color: on ? "#7A5C10" : t.ink2,
                                   border: `1.5px solid ${on ? ORO : t.border}`,
+                                  opacity: bloqueado ? 0.45 : 1,
                                 }}
                               >
                                 {m === "PYG" ? "Guaraníes" : "Dólares"}

@@ -11,6 +11,7 @@ import { margenPct, stockDe } from "@/lib/calc";
 import { gs, norm, num } from "@/lib/format";
 import type { InvProducto, Movimiento, MovTipo } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
+import { cupoProductos, motivoBloqueo } from "@/lib/planes";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -35,7 +36,7 @@ const AZUL = MARCA.header;
 const CIAN_CLARO = MARCA.sobre;
 
 export function InventarioScreen() {
-  const { s, t, set } = useApp();
+  const { s, t, set, plan } = useApp();
 
   // El catálogo sale del ERP.
   const { datos, cargando, error, recargar } = useRemoto(() => repo.inventario.list(), []);
@@ -116,6 +117,20 @@ export function InventarioScreen() {
   const npPrecioNum = Number(s.npPrecio) || 0;
   const npMarkupCalc = npCostoNum > 0 ? (npPrecioNum / npCostoNum - 1) * 100 : 0;
   const npPuede = s.npNombre.trim().length >= 2 && npCostoNum > 0 && npPrecioNum > 0;
+
+  /**
+   * El tope de productos del plan.
+   *
+   * Se cuenta sobre lo que hay cargado, no sobre lo que se ve filtrado: el
+   * límite es de la empresa, no de la búsqueda que alguien tenga escrita.
+   */
+  const ctxAlta = plan({ productos: datos.length });
+  const topeAlta = motivoBloqueo("inventario.alta", ctxAlta);
+  const { tope } = cupoProductos(ctxAlta);
+  const resumenConCupo =
+    tope === null
+      ? `${prods.length} productos · ${num(unidades)} unidades`
+      : `${datos.length} de ${tope} productos · ${num(unidades)} unidades`;
 
   const guardarProducto = () => {
     if (!npPuede) {
@@ -243,12 +258,18 @@ export function InventarioScreen() {
           >
             <ListHeader
               titulo="Inventario"
-              resumen={`${prods.length} productos · ${num(unidades)} unidades`}
+              resumen={resumenConCupo}
               onBack={() => set({ screen: "home" })}
               accion={{
                 label: "+ Nuevo",
+                // El botón queda visible y apagado, con el motivo al tocarlo.
+                // Esconderlo haría que la persona busque el alta y no la
+                // encuentre, sin enterarse de que hay un plan que la trae.
+                deshabilitado: Boolean(topeAlta),
                 onClick: () =>
-                  set({
+                  topeAlta
+                    ? set({ avisoPlan: topeAlta })
+                    : set({
                     iSub: "nuevo",
                     npNombre: "",
                     npSku: "",
@@ -260,7 +281,7 @@ export function InventarioScreen() {
                     npStock: "",
                     npMinimo: "",
                     npError: false,
-                  }),
+                      }),
                 bg: CIAN_CLARO,
                 fg: AZUL,
               }}

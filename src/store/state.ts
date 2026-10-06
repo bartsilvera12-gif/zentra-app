@@ -187,6 +187,14 @@ export interface AppState {
    * el gesto saldría del chat con el visor todavía abierto encima.
    */
   xVisor: { src: string; tipo: "foto" | "video" } | null;
+  /**
+   * El motivo por el que algo no se puede, para mostrarlo arriba de todo.
+   *
+   * Vive en el estado y no en cada pantalla porque lo levantan varias: el
+   * inicio al tocar un módulo bloqueado, inventario al llegar al tope, ventas
+   * al elegir crédito. El texto ya viene escrito desde `motivoBloqueo`.
+   */
+  avisoPlan: string | null;
   xQuery: string;
   /** Lo que dijo el ERP si un mensaje no se pudo enviar. */
   xEnvioError: string;
@@ -383,6 +391,7 @@ export const initialState: AppState = {
   xSeg: 0,
   xSub: "lista",
   xVisor: null,
+  avisoPlan: null,
   xQuery: "",
   xEnvioError: "",
   menuPerfil: false,

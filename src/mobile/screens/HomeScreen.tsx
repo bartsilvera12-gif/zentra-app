@@ -5,6 +5,7 @@ import { EMPRESA, USUARIO } from "@/lib/data";
 import { fechaDeHoy, inicialDe, nombreCorto, rolLegible } from "@/lib/nombre";
 import { usePanel } from "./usePanel";
 import { MARCA, MODULES } from "@/lib/theme";
+import { motivoBloqueo } from "@/lib/planes";
 import type { ModuleKey } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -51,6 +52,14 @@ interface TileProps {
   nota?: string;
   labelSize?: number;
   gap?: number;
+  /**
+   * Por qué el módulo no está disponible en este plan. `null` es disponible.
+   *
+   * La baldosa no se esconde: se apaga y dice el motivo. Esconderla hace que la
+   * persona busque la función, no la encuentre y crea que la app no la tiene —
+   * y de paso nadie se entera de que existe un plan que sí la trae.
+   */
+  bloqueo?: string | null;
 }
 
 /** Cuánto tiene que durar el toque para que la animación se alcance a ver. */
@@ -70,7 +79,7 @@ function velo(hex: string, alfa: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alfa})`;
 }
 
-function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileProps) {
+function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10, bloqueo = null }: TileProps) {
   const { s, set } = useApp();
   const def = MODULES[k];
   const on = s.hover === k;
@@ -92,7 +101,9 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
    *
    * Los eventos de puntero cubren mouse, dedo y lápiz con el mismo código.
    */
+  const bloqueada = Boolean(bloqueo);
   const apretar = () => {
+    if (bloqueada) return;
     apretadoEn.current = Date.now();
     set({ hover: k });
   };
@@ -104,6 +115,9 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
    * gesto, que es igual a no tenerla.
    */
   const tocar = () => {
+    // Tocar una baldosa bloqueada no navega: muestra el motivo. Es la única
+    // forma de enterarse de por qué está apagada en una pantalla sin hover.
+    if (bloqueo) return set({ avisoPlan: bloqueo });
     const falta = MINIMO_VISIBLE - (Date.now() - apretadoEn.current);
     if (falta <= 0) return onClick();
     setTimeout(onClick, falta);
@@ -123,6 +137,7 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
         borderRadius: 14,
         background: def.color,
         color: def.over,
+        opacity: bloqueo ? 0.5 : 1,
         padding: "24px 12px",
         display: "flex",
         flexDirection: "column",
@@ -147,6 +162,21 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
             : { left: "20%", top: "42%", width: 9, height: 9, opacity: 0 }),
         }}
       />
+
+      {bloqueo && (
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 9,
+            right: 10,
+            font: "600 13px/1 var(--font-barlow),Barlow,sans-serif",
+            opacity: 0.85,
+          }}
+        >
+          🔒
+        </span>
+      )}
 
       {/* El adorno del fondo.
 
@@ -191,7 +221,7 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
 }
 
 export function HomeScreen() {
-  const { s, t, set, runDash, cerrarSesion } = useApp();
+  const { s, t, set, runDash, cerrarSesion, plan } = useApp();
   const p = s.dashP;
 
   const roleInk = s.theme === "oscuro" ? MARCA.aviso : MARCA.avisoInk;
@@ -606,6 +636,7 @@ export function HomeScreen() {
           onClick={() => set({ screen: "clientes", cSub: "lista", cSel: null })}
         />
         <Tile
+          bloqueo={motivoBloqueo("compras.modulo", plan())}
           k="compras"
           label="Compras"
           icon={<IconCompras />}
@@ -618,12 +649,14 @@ export function HomeScreen() {
           onClick={() => set({ screen: "inventario", iSub: "lista", iSel: null })}
         />
         <Tile
+          bloqueo={motivoBloqueo("chat.modulo", plan())}
           k="conversaciones"
           label="Conversaciones"
           icon={<IconConversaciones />}
           onClick={() => set({ screen: "conversaciones", xSub: "lista", xSel: null })}
         />
         <Tile
+          bloqueo={motivoBloqueo("proveedores.modulo", plan())}
           k="proveedores"
           label="Proveedores"
           icon={<IconProveedores />}
