@@ -103,6 +103,11 @@ export const MARCA = {
  * siempre sin leer es justo para lo que sirve el color acá. Es la excepción al
  * resto de la app, donde el color significa estado y no decoración.
  *
+ * Proveedores lleva el ámbar y Compras el azul claro: estaban al revés, y el
+ * ámbar se pidió para Proveedores. Es un intercambio y no un color nuevo —
+ * dejarlo en las dos habría dado dos baldosas iguales, que es justo lo que el
+ * color acá tiene que evitar.
+ *
  * `#3D6282` y `#FFD277` no están en la paleta original de cinco: son un tono
  * más claro de `#2A445E` y del ámbar. Hacían falta dos tonos más —seis
  * baldosas, dos tonos cada una— y antes que meter un color nuevo es preferible
@@ -115,10 +120,10 @@ export const MARCA = {
 export const MODULES: Record<ModuleKey, ModuleDef> = {
   venta: { title: "Nueva venta", color: "#2A445E", fill: "#346B6D", over: "#ffffff" },
   clientes: { title: "Clientes", color: "#346B6D", fill: "#2A445E", over: "#ffffff" },
-  compras: { title: "Compras", color: "#F3AA20", fill: "#FFD277", over: "#2A445E" },
+  compras: { title: "Compras", color: "#3D6282", fill: "#2A445E", over: "#ffffff" },
   inventario: { title: "Inventario", color: "#58094F", fill: "#841E62", over: "#ffffff" },
   conversaciones: { title: "Conversaciones", color: "#841E62", fill: "#58094F", over: "#ffffff" },
-  proveedores: { title: "Proveedores", color: "#3D6282", fill: "#2A445E", over: "#ffffff" },
+  proveedores: { title: "Proveedores", color: "#F3AA20", fill: "#FFD277", over: "#2A445E" },
   reportes: { title: "Reportes", color: "#2A445E", fill: "#346B6D", over: "#ffffff" },
 };
 
