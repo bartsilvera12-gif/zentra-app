@@ -74,6 +74,12 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
   const { s, set } = useApp();
   const def = MODULES[k];
   const on = s.hover === k;
+  /**
+   * Si el texto va en blanco, la baldosa es oscura. Sobre esas el velo blanco
+   * se nota poco y hay que subirlo; sobre las claras el velo es oscuro y con
+   * la misma intensidad se ve sucio, no decorativo.
+   */
+  const claro = def.over.toLowerCase() === "#ffffff";
   const apretadoEn = useRef(0);
 
   /**
@@ -129,36 +135,6 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
         overflow: "hidden",
       }}
     >
-      {/* Dos círculos grandes que se salen de la baldosa y quedan recortados por
-          ella: lo que se ve adentro son dos curvas suaves. Es decoración, así
-          que no recibe toques y va debajo del contenido. */}
-      <span
-        aria-hidden
-        style={{
-          position: "absolute",
-          right: "-28%",
-          bottom: "-46%",
-          width: "92%",
-          aspectRatio: "1",
-          borderRadius: "50%",
-          background: velo(def.over, 0.09),
-          pointerEvents: "none",
-        }}
-      />
-      <span
-        aria-hidden
-        style={{
-          position: "absolute",
-          left: "-34%",
-          top: "-38%",
-          width: "78%",
-          aspectRatio: "1",
-          borderRadius: "50%",
-          background: velo(def.over, 0.06),
-          pointerEvents: "none",
-        }}
-      />
-
       {/* The dot grows to fill the tile on hover, revealing the arrow label. */}
       <div
         style={{
@@ -171,6 +147,30 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
             : { left: "20%", top: "42%", width: 9, height: 9, opacity: 0 }),
         }}
       />
+
+      {/* El adorno del fondo.
+
+          Antes eran dos círculos sólidos: donde se cruzaban quedaba un borde
+          duro en forma de lente, justo detrás del texto. Ahora son dos
+          degradados radiales que se apagan antes de llegar al centro, así que
+          no hay ningún borde que mirar.
+
+          Va encima del punto que crece y no debajo: si no, al apretar la
+          baldosa el adorno desaparecía y la tarjeta se veía plana.
+
+          Es decoración: no recibe toques y no tapa el texto. */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          backgroundImage:
+            `radial-gradient(60% 70% at 112% 118%, ${velo(def.over, claro ? 0.16 : 0.1)} 0%, transparent 70%),` +
+            `radial-gradient(52% 60% at -8% -14%, ${velo(def.over, claro ? 0.1 : 0.06)} 0%, transparent 72%)`,
+        }}
+      />
+
       <div style={{ ...BASE, ...(on ? { transform: "translateX(44px)", opacity: 0 } : { transform: "none", opacity: 1 }) }}>
         {/* El ícono va dentro de un disco del mismo velo que el fondo: lo
             despega de la baldosa y le da un punto de apoyo. */}
@@ -179,7 +179,7 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
             width: 46,
             height: 46,
             borderRadius: "50%",
-            background: velo(def.over, 0.14),
+            background: velo(def.over, claro ? 0.16 : 0.1),
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
