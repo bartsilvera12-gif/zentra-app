@@ -10,14 +10,26 @@ export const THEME: Record<ThemeName, ThemeTokens> = {
     dim: "#c3cbd6",
     border: "#e3e7ee",
   },
+  /**
+   * El oscuro sale de la marca, no de un gris neutro.
+   *
+   * Antes era un azul grisáceo (#0b0f1c / #151b2e) que no se parecía a nada del
+   * resto de la app: cambiando de modo parecía otro producto. Estos tonos son
+   * el mismo azul petróleo del encabezado, bajado de luminosidad.
+   *
+   * `card` separa más de `bg` que antes (1.39 contra 1.12): en el chat los
+   * globos recibidos quedaban casi fundidos con el fondo. No se aclara más
+   * porque a partir de ahí `ink3` baja de 4.5:1 y el texto secundario deja de
+   * cumplir contraste.
+   */
   oscuro: {
-    bg: "#0b0f1c",
-    card: "#151b2e",
-    ink: "#eef1f6",
-    ink2: "#a3adbe",
-    ink3: "#7d879a",
-    dim: "#3b4459",
-    border: "#252d42",
+    bg: "#0A1F2A",
+    card: "#143A49",
+    ink: "#EAF2F5",
+    ink2: "#A8C2CC",
+    ink3: "#89A6B2",
+    dim: "#3C5A68",
+    border: "#1D4252",
   },
 };
 
