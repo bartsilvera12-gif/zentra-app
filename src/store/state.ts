@@ -129,7 +129,9 @@ export interface AppState {
   kUltimo: string;
 
   /* Proveedores */
-  vwSub: "lista" | "detalle" | "nuevo";
+  vwSub: "lista" | "detalle" | "nuevo" | "editar";
+  pfGuardando: boolean;
+  pfErrorTexto: string;
   vwQuery: string;
   vwFiltro: string;
   vwSel: string | null;
@@ -208,7 +210,14 @@ export interface AppState {
   xnQuery: string;
 
   /* Inventario */
-  iSub: "lista" | "detalle" | "movs" | "ajuste" | "nuevo";
+  iSub: "lista" | "detalle" | "movs" | "ajuste" | "nuevo" | "editar";
+  /** Precio mayorista y vencimiento: sólo en Max, y por eso opcionales. */
+  npMayorista: string;
+  npVencimiento: string;
+  /** Mientras se guarda contra el backend, para no mandar dos veces. */
+  npGuardando: boolean;
+  /** El error del backend al guardar, para mostrarlo en el formulario. */
+  npErrorTexto: string;
   iQuery: string;
   iFiltro: string;
   iSel: string | null;
@@ -350,6 +359,8 @@ export const initialState: AppState = {
   kUltimo: "COMP-000148",
 
   vwSub: "lista",
+  pfGuardando: false,
+  pfErrorTexto: "",
   vwQuery: "",
   vwFiltro: "Todos",
   vwSel: null,
@@ -403,6 +414,10 @@ export const initialState: AppState = {
   xnQuery: "",
 
   iSub: "lista",
+  npMayorista: "",
+  npVencimiento: "",
+  npGuardando: false,
+  npErrorTexto: "",
   iQuery: "",
   iFiltro: "Todos",
   iSel: null,

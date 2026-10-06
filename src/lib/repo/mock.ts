@@ -175,6 +175,37 @@ export const mockRepo: Repo = {
       extra.proveedores.unshift(nuevo);
       return demora(nuevo);
     },
+    /**
+     * Edita sólo los que se cargaron en esta sesión.
+     *
+     * Los de ejemplo vienen del archivo de datos y son los mismos para todos:
+     * dejarlos editar daría la impresión de que se guardó algo, y al recargar
+     * volvería como estaba. Es más honesto decir que no se puede.
+     */
+    async update(id: string, cambios: Partial<ProveedorInput>) {
+      const i = extra.proveedores.findIndex((p) => p.id === id);
+      if (i < 0) throw new Error("En la demo sólo se pueden editar los proveedores que cargaste.");
+      const p = extra.proveedores[i];
+      extra.proveedores[i] = {
+        ...p,
+        nombre: cambios.nombre ?? p.nombre,
+        doc: cambios.doc ?? p.doc,
+        rubro: cambios.rubro ?? p.rubro,
+        ciudad: cambios.ciudad ?? p.ciudad,
+        contacto: cambios.contacto ?? p.contacto,
+        tel: cambios.tel ?? p.tel,
+        email: cambios.email ?? p.email,
+        entrega: cambios.entregaDias ?? p.entrega,
+        condicion:
+          cambios.credito === undefined
+            ? p.condicion
+            : cambios.credito
+              ? `Crédito ${cambios.credito.plazoDias} días`
+              : "Contado",
+      };
+      return demora(extra.proveedores[i]);
+    },
+
     async deuda(id) {
       const pendientes = extra.compras.concat(COMPRAS).filter((c) => c.estado === "Pendiente");
       return demora(
@@ -242,6 +273,30 @@ export const mockRepo: Repo = {
       }
       return demora(nuevo);
     },
+    /** Igual que proveedores: sólo lo cargado en esta sesión. */
+    async update(id: string, cambios: Partial<ProductoInput>) {
+      const i = extra.productos.findIndex((p) => p.id === id);
+      if (i < 0) throw new Error("En la demo sólo se pueden editar los productos que cargaste.");
+      const p = extra.productos[i];
+      extra.productos[i] = {
+        ...p,
+        nombre: cambios.nombre ?? p.nombre,
+        sku: cambios.sku ? cambios.sku.toUpperCase() : p.sku,
+        barras: cambios.barras ?? p.barras,
+        minimo: cambios.minimo ?? p.minimo,
+        costo: cambios.costo ?? p.costo,
+        precio: cambios.precio ?? p.precio,
+        unidad: cambios.unidad ?? p.unidad,
+        categoria: cambios.categoria ?? p.categoria,
+        deposito: cambios.deposito ?? p.deposito,
+        iva: cambios.iva ?? p.iva,
+        metodo: cambios.metodo ?? p.metodo,
+        precioMayorista: cambios.precioMayorista ?? p.precioMayorista,
+        vencimiento: cambios.vencimiento ?? p.vencimiento,
+      };
+      return demora(extra.productos[i]);
+    },
+
     async movimientos(params) {
       const todos = extra.movimientos.concat(MOVS);
       return demora(

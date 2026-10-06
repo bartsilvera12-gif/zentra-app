@@ -8,6 +8,7 @@ import { totalCompra } from "@/lib/calc";
 import { gs, norm, plural } from "@/lib/format";
 import type { Proveedor } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
+import { motivoBloqueo } from "@/lib/planes";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -32,7 +33,7 @@ const HEADER = MARCA.header;
 const ORO = MARCA.header;
 
 export function ProveedoresScreen() {
-  const { s, t, set, abrirChat } = useApp();
+  const { s, t, set, abrirChat, plan } = useApp();
 
   const { datos, cargando, error, recargar } = useRemoto(() => repo.proveedores.list(), []);
   // Las compras dan la deuda de cada proveedor; si fallan, se muestra el
@@ -94,6 +95,88 @@ export function ProveedoresScreen() {
       pfSet: `COMERCIAL ${base} S.A. · contribuyente activo`,
       pfNombre: s.pfNombre || `Comercial ${base.slice(0, 4)} S.A.`,
     });
+  };
+
+  const editandoProv = s.vwSub === "editar";
+
+  /** Abre la ficha para corregirla, con los campos ya cargados. */
+  const editarProveedor = (p: Proveedor) => {
+    const motivo = motivoBloqueo("proveedores.editar", plan());
+    if (motivo) return set({ avisoPlan: motivo });
+    const plazo = /(\d+)/.exec(p.condicion);
+    set({
+      vwSub: "editar",
+      vwSel: p.id,
+      pfNombre: p.nombre,
+      pfDoc: p.doc.replace(/^RUC\s*/i, "").replace(/^Sin RUC$/i, ""),
+      pfRubro: p.rubro === "Sin rubro" ? "" : p.rubro,
+      pfCiudad: p.ciudad === "Sin ciudad" ? "" : p.ciudad,
+      pfContacto: p.contacto,
+      pfTel: p.tel === "—" ? "" : p.tel,
+      pfEmail: p.email === "—" ? "" : p.email,
+      pfCredito: /cr\u00e9dito/i.test(p.condicion),
+      pfPlazo: plazo ? Number(plazo[1]) : 30,
+      pfEntrega: String(p.entrega || ""),
+      pfSet: null,
+      pfError: false,
+      pfGuardando: false,
+      pfErrorTexto: "",
+    });
+  };
+
+  /**
+   * Guarda la corrección. Los que vienen del backend se corrigen contra el
+   * backend; los cargados en esta sesión viven sólo en pantalla.
+   */
+  const guardarEdicionProv = async () => {
+    const nombre = s.pfNombre.trim();
+    if (nombre.length < 2 || !s.vwSel) {
+      set({ pfError: true });
+      return;
+    }
+    const cambios = {
+      nombre,
+      doc: s.pfDoc.trim(),
+      rubro: s.pfRubro.trim(),
+      ciudad: s.pfCiudad.trim(),
+      contacto: s.pfContacto.trim() || nombre,
+      tel: s.pfTel.trim(),
+      email: s.pfEmail.trim(),
+      credito: s.pfCredito ? { plazoDias: s.pfPlazo } : null,
+      entregaDias: Number(s.pfEntrega) || 1,
+    };
+
+    const local = s.vwExtra.findIndex((p) => p.id === s.vwSel);
+    if (local >= 0) {
+      const copia = s.vwExtra.slice();
+      const p = copia[local];
+      copia[local] = {
+        ...p,
+        nombre,
+        doc: cambios.doc ? "RUC " + cambios.doc : "Sin RUC",
+        condicion: s.pfCredito ? `Crédito ${s.pfPlazo} días` : "Contado",
+        rubro: cambios.rubro || "Sin rubro",
+        ciudad: cambios.ciudad || "Sin ciudad",
+        contacto: cambios.contacto,
+        tel: cambios.tel || "—",
+        email: cambios.email || "—",
+        entrega: cambios.entregaDias,
+      };
+      set({ vwExtra: copia, vwSub: "detalle" });
+      return;
+    }
+
+    set({ pfGuardando: true, pfErrorTexto: "" });
+    try {
+      await repo.proveedores.update(s.vwSel, cambios);
+      set({ vwSub: "detalle", pfGuardando: false });
+      recargar();
+    } catch (e) {
+      set({
+        pfGuardando: false,
+        pfErrorTexto: e instanceof Error ? e.message : "No se pudieron guardar los cambios.",
+      });
+    }
   };
 
   const guardar = () => {
@@ -416,16 +499,20 @@ export function ProveedoresScreen() {
                   set({ screen: "conversaciones", xSub: "nuevo", xnQuery: "" });
                 }}
               />
-              <GhostButton label="Editar ficha" flex={1} onClick={() => set({ vwSub: "lista", vwSel: null })} />
+              <GhostButton label="Editar ficha" flex={1} onClick={() => det && editarProveedor(det)} />
             </div>
           </ScrollBody>
         </>
       )}
 
       {/* ---------- create ---------- */}
-      {s.vwSub === "nuevo" && (
+      {(s.vwSub === "nuevo" || s.vwSub === "editar") && (
         <>
-          <SubHeader titulo="Nuevo proveedor" onBack={() => set({ vwSub: "lista", vwSel: null })} bg={HEADER} />
+          <SubHeader
+            titulo={editandoProv ? "Editar proveedor" : "Nuevo proveedor"}
+            onBack={() => set({ vwSub: editandoProv ? "detalle" : "lista", vwSel: editandoProv ? s.vwSel : null })}
+            bg={HEADER}
+          />
           <ScrollBody padding="14px" gap={12}>
             <Card gap={14}>
               <SectionLabel>Identificación</SectionLabel>
@@ -628,7 +715,8 @@ export function ProveedoresScreen() {
 
           <div style={{ padding: "11px 14px 13px", background: t.card, borderTop: `1px solid ${t.border}` }}>
             <button
-              onClick={guardar}
+              onClick={editandoProv ? guardarEdicionProv : guardar}
+              disabled={s.pfGuardando}
               style={{
                 width: "100%",
                 height: 50,
@@ -640,7 +728,7 @@ export function ProveedoresScreen() {
                 background: s.pfNombre.trim().length >= 2 ? HEADER : "#5C7A85",
               }}
             >
-              Guardar proveedor
+              {s.pfGuardando ? "Guardando…" : editandoProv ? "Guardar cambios" : "Guardar proveedor"}
             </button>
           </div>
         </>

@@ -177,6 +177,90 @@ export function InventarioScreen() {
     set({ iExtra: [nuevo].concat(s.iExtra), iMovExtra: movs, iSub: "detalle", iSel: id });
   };
 
+  /**
+   * Abre la ficha para corregirla, con los campos ya cargados.
+   *
+   * Reusa el mismo formulario del alta: son los mismos datos, y tener dos
+   * formularios para el mismo producto garantiza que uno se quede atrás.
+   */
+  const editando = s.iSub === "editar";
+  const editarBloqueado = Boolean(motivoBloqueo("inventario.editar", plan()));
+  // Los campos que sólo trae Max.
+  const sinMax = Boolean(motivoBloqueo("inventario.mayorista", plan()));
+
+  const editarProducto = (p: InvProducto) => {
+    const motivo = motivoBloqueo("inventario.editar", plan());
+    if (motivo) return set({ avisoPlan: motivo });
+    set({
+      iSub: "editar",
+      iSel: p.id,
+      npNombre: p.nombre,
+      npSku: p.sku,
+      npUnidad: p.unidad,
+      npCategoria: p.categoria === "Sin categoría" ? "" : p.categoria,
+      npCosto: String(p.costo || ""),
+      npPrecio: String(p.precio || ""),
+      npIva: p.iva,
+      // El stock no se edita acá: se mueve con un ajuste, que deja rastro.
+      npStock: "",
+      npMinimo: String(p.minimo || ""),
+      npMayorista: p.precioMayorista ? String(p.precioMayorista) : "",
+      npVencimiento: p.vencimiento ?? "",
+      npError: false,
+      npGuardando: false,
+    });
+  };
+
+  /**
+   * Guarda la corrección.
+   *
+   * Los productos que vienen del backend se corrigen contra el backend. Los que
+   * se cargaron en esta sesión y todavía viven sólo en pantalla se corrigen
+   * ahí: en la demo no hay a dónde mandarlos.
+   */
+  const guardarEdicion = async () => {
+    if (!npPuede || !s.iSel) {
+      set({ npError: true });
+      return;
+    }
+    const cambios = {
+      nombre: s.npNombre.trim(),
+      sku: (s.npSku || npSkuSugerido).toUpperCase(),
+      categoria: s.npCategoria.trim(),
+      costo: npCostoNum,
+      precio: Math.round(npPrecioNum),
+      iva: s.npIva,
+      unidad: s.npUnidad,
+      minimo: Number(s.npMinimo) || 0,
+      precioMayorista: s.npMayorista.trim() ? Number(s.npMayorista) : null,
+      vencimiento: s.npVencimiento.trim() || null,
+    };
+
+    const local = s.iExtra.findIndex((p) => p.id === s.iSel);
+    if (local >= 0) {
+      const copia = s.iExtra.slice();
+      copia[local] = {
+        ...copia[local],
+        ...cambios,
+        categoria: cambios.categoria || "Sin categoría",
+      };
+      set({ iExtra: copia, iSub: "detalle", npGuardando: false });
+      return;
+    }
+
+    set({ npGuardando: true, npErrorTexto: "" });
+    try {
+      await repo.inventario.update(s.iSel, cambios);
+      set({ iSub: "detalle", npGuardando: false });
+      recargar();
+    } catch (e) {
+      set({
+        npGuardando: false,
+        npErrorTexto: e instanceof Error ? e.message : "No se pudieron guardar los cambios.",
+      });
+    }
+  };
+
   const chips = ["Todos", "Bajo mínimo", "Agotados", "Con stock"].map((k) => {
     const on = s.iFiltro === k;
     return {
@@ -505,6 +589,29 @@ export function InventarioScreen() {
             >
               Ajustar stock
             </button>
+
+            {/* Corregir la ficha. Va después de ajustar porque ajustar es lo
+                que se hace todos los días y corregir es la excepción. */}
+            <button
+              onClick={() => det && editarProducto(det)}
+              style={{
+                height: 46,
+                borderRadius: 13,
+                background: t.card,
+                color: editarBloqueado ? t.ink3 : t.ink,
+                border: `1px solid ${t.border}`,
+                font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                cursor: "pointer",
+                flex: "0 0 auto",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+              }}
+            >
+              {editarBloqueado && <span aria-hidden>🔒</span>}
+              Editar ficha
+            </button>
           </ScrollBody>
         </>
       )}
@@ -675,9 +782,13 @@ export function InventarioScreen() {
       )}
 
       {/* ---------- new product ---------- */}
-      {s.iSub === "nuevo" && (
+      {(s.iSub === "nuevo" || s.iSub === "editar") && (
         <>
-          <SubHeader titulo="Nuevo producto" onBack={() => set({ iSub: "lista" })} bg={AZUL} />
+          <SubHeader
+            titulo={editando ? "Editar producto" : "Nuevo producto"}
+            onBack={() => set({ iSub: editando ? "detalle" : "lista" })}
+            bg={AZUL}
+          />
           <ScrollBody padding="14px" gap={12}>
             <Card gap={14}>
               <SectionLabel>Identificación</SectionLabel>
@@ -756,6 +867,31 @@ export function InventarioScreen() {
                   placeholder="12000"
                 />
               </div>
+
+              {/* Mayorista y vencimiento son de Max. Fuera de Max no se
+                  dibujan: a diferencia de un botón que explica por qué está
+                  apagado, un campo vacío que no se puede llenar sólo estorba
+                  el formulario que sí hay que completar. */}
+              {!sinMax && (
+                <div style={{ display: "flex", gap: 10 }}>
+                  <FormField
+                    label="Precio mayorista (₲)"
+                    flex={1}
+                    inputMode="decimal"
+                    value={s.npMayorista}
+                    onChange={(v) => set({ npMayorista: v.replace(/[^0-9.]/g, "") })}
+                    placeholder="Opcional"
+                  />
+                  <FormField
+                    label="Vencimiento"
+                    flex={1}
+                    type="date"
+                    value={s.npVencimiento}
+                    onChange={(v) => set({ npVencimiento: v })}
+                    placeholder="Opcional"
+                  />
+                </div>
+              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
                   Markup sobre el costo
@@ -826,11 +962,21 @@ export function InventarioScreen() {
                 Completá el nombre (2 letras o más), el costo y el precio.
               </Notice>
             )}
+
+            {/* El error del backend va aparte del de validación: uno lo
+                arregla la persona, el otro no, y mezclarlos hace buscar el
+                campo equivocado. */}
+            {s.npErrorTexto && (
+              <Notice bg="#FBE9E7" ink="#8C2F2B" border="#E8B4AE">
+                {s.npErrorTexto}
+              </Notice>
+            )}
           </ScrollBody>
 
           <div style={{ padding: "11px 14px 13px", background: t.card, borderTop: `1px solid ${t.border}` }}>
             <button
-              onClick={guardarProducto}
+              onClick={editando ? guardarEdicion : guardarProducto}
+              disabled={s.npGuardando}
               style={{
                 width: "100%",
                 height: 50,
@@ -838,11 +984,12 @@ export function InventarioScreen() {
                 borderRadius: 13,
                 color: "#fff",
                 font: "600 14.5px/1 var(--font-barlow),Barlow,sans-serif",
-                cursor: "pointer",
+                cursor: s.npGuardando ? "default" : "pointer",
                 background: npPuede ? AZUL : "#5C7A85",
+                opacity: s.npGuardando ? 0.6 : 1,
               }}
             >
-              Guardar producto
+              {s.npGuardando ? "Guardando…" : editando ? "Guardar cambios" : "Guardar producto"}
             </button>
           </div>
         </>

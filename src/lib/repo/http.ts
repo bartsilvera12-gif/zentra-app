@@ -1124,6 +1124,7 @@ export const httpRepo: Repo = {
       return p ? aProveedor(p) : null;
     },
     create: () => pendiente("proveedores.create"),
+    update: () => pendiente("proveedores.update"),
     deuda: () => pendiente("proveedores.deuda"),
     consultarSet: () => pendiente("proveedores.consultarSet"),
   },
@@ -1138,6 +1139,7 @@ export const httpRepo: Repo = {
       return p ? aProducto(p) : null;
     },
     create: () => pendiente("inventario.create"),
+    update: () => pendiente("inventario.update"),
     movimientos: () => pendiente("inventario.movimientos"),
     ajustar: () => pendiente("inventario.ajustar"),
   },

@@ -93,6 +93,18 @@ export interface InvProducto {
   iva: Iva;
   metodo: "CPP" | "FIFO" | "LIFO";
   barras: string;
+  /**
+   * Precio para quien compra por cantidad. Opcional: no todos los negocios
+   * venden al por mayor, y donde no existe no se muestra la columna.
+   */
+  precioMayorista?: number | null;
+  /** Vencimiento del producto, en ISO corto (`2026-12-31`). */
+  vencimiento?: string | null;
+  /**
+   * Cuándo se ajustó el stock por última vez, para el límite de un ajuste por
+   * mes. Lo escribe el backend al ajustar; la app sólo lo lee.
+   */
+  ultimoAjuste?: string | null;
 }
 
 export type MovTipo = "ENTRADA" | "SALIDA" | "AJUSTE";

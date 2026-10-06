@@ -284,6 +284,30 @@ export const proveedoresRepo: ProveedoresRepo = {
     return aProveedor(data as FilaProveedor);
   },
 
+  /** Corrige una ficha. Sólo viaja lo que cambió. */
+  async update(id: string, cambios: Partial<ProveedorInput>) {
+    const fila: Record<string, unknown> = {};
+    if (cambios.nombre !== undefined) fila.nombre = cambios.nombre;
+    if (cambios.doc !== undefined) fila.doc = cambios.doc || null;
+    if (cambios.rubro !== undefined) fila.rubro = cambios.rubro || null;
+    if (cambios.ciudad !== undefined) fila.ciudad = cambios.ciudad || null;
+    if (cambios.contacto !== undefined) fila.contacto = cambios.contacto || null;
+    if (cambios.tel !== undefined) fila.tel = cambios.tel || null;
+    if (cambios.email !== undefined) fila.email = cambios.email || null;
+    if (cambios.entregaDias !== undefined) fila.entrega_dias = cambios.entregaDias || 1;
+    if (cambios.credito !== undefined) fila.credito_plazo_dias = cambios.credito?.plazoDias ?? null;
+
+    const { data, error } = await sb()
+      .from("proveedores")
+      .update(fila)
+      .eq("empresa_id", await empresaId())
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) reventar("guardando los cambios del proveedor", error);
+    return aProveedor(data as FilaProveedor);
+  },
+
   async deuda(id) {
     const { data, error } = await sb()
       .from("compras")
@@ -324,6 +348,11 @@ interface FilaProducto {
   deposito: string | null;
   iva: InvProducto["iva"];
   metodo: InvProducto["metodo"];
+  // Opcionales en la fila: una base que todavía no tiene estas columnas sigue
+  // leyéndose igual, con los campos en null.
+  precio_mayorista?: number | null;
+  vencimiento?: string | null;
+  ultimo_ajuste?: string | null;
 }
 
 function aProducto(f: FilaProducto): InvProducto {
@@ -341,6 +370,9 @@ function aProducto(f: FilaProducto): InvProducto {
     iva: f.iva,
     metodo: f.metodo,
     barras: f.barras || "",
+    precioMayorista: f.precio_mayorista == null ? null : Number(f.precio_mayorista),
+    vencimiento: f.vencimiento || null,
+    ultimoAjuste: f.ultimo_ajuste || null,
   };
 }
 
@@ -411,6 +443,8 @@ export const inventarioRepo: InventarioRepo = {
         deposito: input.deposito || null,
         iva: input.iva,
         metodo: input.metodo,
+        precio_mayorista: input.precioMayorista ?? null,
+        vencimiento: input.vencimiento || null,
       })
       .select()
       .single();
@@ -431,6 +465,41 @@ export const inventarioRepo: InventarioRepo = {
       prod.stock = input.stockInicial;
     }
     return prod;
+  },
+
+  /**
+   * Corrige un producto. Sólo viaja lo que cambió.
+   *
+   * `stock` no está entre los campos editables a propósito: se mueve con
+   * `ajustar`, que deja un movimiento. Editarlo a mano dejaría un inventario
+   * que no se puede explicar.
+   */
+  async update(id: string, cambios: Partial<ProductoInput>) {
+    const emp = await empresaId();
+    const fila: Record<string, unknown> = {};
+    if (cambios.nombre !== undefined) fila.nombre = cambios.nombre;
+    if (cambios.sku !== undefined) fila.sku = cambios.sku;
+    if (cambios.barras !== undefined) fila.barras = cambios.barras || null;
+    if (cambios.minimo !== undefined) fila.minimo = cambios.minimo;
+    if (cambios.costo !== undefined) fila.costo = cambios.costo;
+    if (cambios.precio !== undefined) fila.precio = cambios.precio;
+    if (cambios.unidad !== undefined) fila.unidad = cambios.unidad;
+    if (cambios.categoria !== undefined) fila.categoria = cambios.categoria || null;
+    if (cambios.deposito !== undefined) fila.deposito = cambios.deposito || null;
+    if (cambios.iva !== undefined) fila.iva = cambios.iva;
+    if (cambios.metodo !== undefined) fila.metodo = cambios.metodo;
+    if (cambios.precioMayorista !== undefined) fila.precio_mayorista = cambios.precioMayorista ?? null;
+    if (cambios.vencimiento !== undefined) fila.vencimiento = cambios.vencimiento || null;
+
+    const { data, error } = await sb()
+      .from("productos")
+      .update(fila)
+      .eq("empresa_id", emp)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) reventar("guardando los cambios del producto", error);
+    return aProducto(data as FilaProducto);
   },
 
   async movimientos(params) {

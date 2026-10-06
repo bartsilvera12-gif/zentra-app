@@ -89,6 +89,8 @@ export interface ProveedoresRepo {
   list(params?: { q?: string; estado?: "Activo" | "Inactivo"; conDeuda?: boolean }): Promise<Proveedor[]>;
   get(id: string): Promise<Proveedor | null>;
   create(input: ProveedorInput): Promise<Proveedor>;
+  /** Corrige una ficha ya cargada. Recibe sólo lo que cambió. */
+  update(id: string, cambios: Partial<ProveedorInput>): Promise<Proveedor>;
   /** Saldo pendiente con el proveedor, en guaraníes. */
   deuda(id: string): Promise<number>;
   consultarSet(doc: string): Promise<{ razonSocial: string; activo: boolean } | null>;
@@ -109,6 +111,9 @@ export interface ProductoInput {
   stockInicial: number;
   minimo: number;
   metodo: InvProducto["metodo"];
+  /** Sólo en Max. Opcional para que el alta de los otros planes no cambie. */
+  precioMayorista?: number | null;
+  vencimiento?: string | null;
 }
 
 export interface AjusteInput {
@@ -125,6 +130,17 @@ export interface InventarioRepo {
   }): Promise<InvProducto[]>;
   get(id: string): Promise<InvProducto | null>;
   create(input: ProductoInput): Promise<InvProducto>;
+  /**
+   * Corrige un producto ya cargado.
+   *
+   * Recibe sólo lo que cambió. No es una función de plan sino corrección de
+   * datos: un SKU mal tipeado hoy queda mal para siempre, y eso no es algo que
+   * se venda por separado.
+   *
+   * El stock no se toca acá: se mueve con `ajustar`, que deja rastro. Si se
+   * pudiera editar el número a mano, el inventario dejaría de poder explicarse.
+   */
+  update(id: string, cambios: Partial<ProductoInput>): Promise<InvProducto>;
   movimientos(params?: { prodId?: string; tipo?: MovTipo }): Promise<Movimiento[]>;
   /** Registra el ajuste y devuelve el movimiento creado. */
   ajustar(input: AjusteInput): Promise<Movimiento>;
