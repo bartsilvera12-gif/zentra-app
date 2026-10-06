@@ -11,8 +11,21 @@ import { gs, norm } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
 import { precioPara } from "@/lib/precios";
 import { motivoBloqueo } from "@/lib/planes";
+import { datosEmisor, lineaEmisor } from "@/lib/emisor";
+import { tenantEnUso } from "@/lib/supabase/client";
 import { StatusBar } from "../layout/StatusBar";
 import { WizardSteps } from "../ui/WizardSteps";
+
+/**
+ * El método de pago que entiende el backend.
+ *
+ * Los tres valores de `METODOS` ya son los que espera, pero el estado los
+ * guarda como texto suelto: esto es lo que impide mandar cualquier cosa si
+ * mañana alguien agrega un método a la lista sin avisarle al backend.
+ */
+function metodoErp(v: string | null): "efectivo" | "transferencia" | "cheque" {
+  return v === "transferencia" || v === "cheque" ? v : "efectivo";
+}
 
 export function VentaScreen() {
   const { s, t, set, qty, rotarIva, plan } = useApp();
@@ -69,7 +82,14 @@ export function VentaScreen() {
   const vClienteNombre = cli ? cli.nombre : s.vSinNombre ? "Sin nombre" : "—";
   const vTitulo = s.vPaso === "listo" ? "Venta realizada" : s.vPaso === "factura" ? "Factura" : "Nueva venta";
   const vTotal = gs(total);
-  const vNumero = "VTA-000148";
+  // Quién factura. Sale del tenant y de la sesión; lo que falte, la factura lo
+  // dice. Antes acá estaba escrito el nombre y el RUC de un cliente de ejemplo.
+  const emisor = datosEmisor(tenantEnUso(), s.sesion?.empresa);
+
+  // El número y la fecha son los que devolvió el backend. Mientras no haya
+  // venta no hay número: poner uno sería decirle al vendedor que ya facturó.
+  const vNumero = s.vVenta?.numero ?? "—";
+  const vFecha = s.vVenta?.fecha ?? "—";
 
   const back = () => {
     if (s.vPaso === "factura") return set({ vPaso: "listo" });
@@ -77,9 +97,48 @@ export function VentaScreen() {
     set({ vPaso: PASOS_VENTA[Math.max(0, idxPaso - 1)]!.id as typeof s.vPaso });
   };
 
+  /**
+   * Registra la venta contra el backend.
+   *
+   * Esto antes no existía: el paso de pago pasaba directo a "¡Venta
+   * registrada!" con un número fijo, y la venta no se guardaba en ninguna
+   * parte. El vendedor se iba convencido de haber facturado. `ventas.create`
+   * estaba escrito y nadie lo llamaba.
+   *
+   * El error se muestra y se queda en el paso de pago, con el carrito intacto,
+   * para poder reintentar. Reintentar es seguro: el repo manda una clave de
+   * intento, así que el ERP devuelve la misma venta y no crea otra.
+   */
+  const registrar = async () => {
+    if (!puede || s.vGuardando) return;
+    set({ vGuardando: true, vErrorAlta: "" });
+    try {
+      const venta = await repo.ventas.create({
+        clienteId: cli?.id ?? null,
+        lineas: lineas.map((l) => ({
+          prodId: l.id,
+          cantidad: l.qty,
+          precio: l.precio,
+          iva: l.ivaTipo === "EXENTA" ? "Exenta" : l.ivaTipo,
+        })),
+        pago: s.vCredito
+          ? { tipo: "credito", plazoDias: Number(s.vPlazo) || 0 }
+          : { tipo: "contado", metodo: metodoErp(s.vMetodo) },
+        moneda: s.vMonedaUsd ? "USD" : "PYG",
+      });
+      set({ vVenta: venta, vGuardando: false, vPaso: "listo" });
+    } catch (e) {
+      set({
+        vGuardando: false,
+        vErrorAlta:
+          e instanceof Error ? e.message : "No se pudo registrar la venta. Probá de nuevo.",
+      });
+    }
+  };
+
   const next = () => {
     if (!puede) return;
-    if (s.vPaso === "pago") return set({ vPaso: "listo" });
+    if (s.vPaso === "pago") return void registrar();
     set({ vPaso: PASOS_VENTA[idxPaso + 1]!.id as typeof s.vPaso });
   };
 
@@ -740,6 +799,19 @@ export function VentaScreen() {
         {/* Invoice view */}
         {s.vPaso === "factura" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {emisor.falta && (
+              <div
+                style={{
+                  borderRadius: 12,
+                  background: "#FFF3DC",
+                  padding: "10px 12px",
+                  font: "500 11.5px/1.4 var(--font-barlow),Barlow,sans-serif",
+                  color: "#6B4A00",
+                }}
+              >
+                {emisor.falta}
+              </div>
+            )}
             <div
               style={{
                 borderRadius: 16,
@@ -763,12 +835,10 @@ export function VentaScreen() {
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <span style={{ font: "700 14px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#023047" }}>
-                    Distribuidora JM S.A.
+                    {emisor.nombre}
                   </span>
                   <span style={{ font: "400 11px/1.3 var(--font-barlow),Barlow,sans-serif", color: "#5b6676" }}>
-                    RUC 80012345-0
-                    <br />
-                    Asunción · Paraguay
+                    {lineaEmisor(emisor)}
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
@@ -777,7 +847,7 @@ export function VentaScreen() {
                   </span>
                   <span style={{ font: "700 13px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#023047" }}>{vNumero}</span>
                   <span style={{ font: "400 10.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#5b6676" }}>
-                    25/09/2026 · 11:42
+                    {vFecha}
                   </span>
                 </div>
               </div>
@@ -888,6 +958,7 @@ export function VentaScreen() {
               <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 16, textAlign: "left" }}>
                 {[
                   ["N.° de comprobante", vNumero],
+                  ["Fecha", vFecha],
                   ["Cliente", vClienteNombre],
                   ["Forma de pago", forma],
                 ].map(([k, v]) => (
@@ -936,6 +1007,10 @@ export function VentaScreen() {
                   vMetodo: null,
                   vCredito: false,
                   vQuery: "",
+                  // Sin esto la venta siguiente arrancaría mostrando el número
+                  // de la anterior.
+                  vVenta: null,
+                  vErrorAlta: "",
                 })
               }
               style={{
@@ -1001,19 +1076,39 @@ export function VentaScreen() {
               {s.vCredito ? "Ingresá el plazo en días para la venta a crédito." : "Elegí con qué se cobra la venta."}
             </div>
           )}
+          {s.vErrorAlta && (
+            <div
+              style={{
+                borderRadius: 10,
+                background: "#FBE9E8",
+                padding: "9px 11px",
+                font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif",
+                color: "#7A2220",
+              }}
+            >
+              {s.vErrorAlta} El carrito quedó como estaba: podés volver a confirmar.
+            </div>
+          )}
           <button
             onClick={next}
+            disabled={s.vGuardando}
             style={{
               height: 50,
               border: 0,
               borderRadius: 13,
               color: "#fff",
               font: "600 15px/1 var(--font-barlow),Barlow,sans-serif",
-              cursor: "pointer",
-              background: puede ? "#04617A" : "#5C7A85",
+              cursor: s.vGuardando ? "default" : "pointer",
+              background: s.vGuardando ? "#5C7A85" : puede ? "#04617A" : "#5C7A85",
             }}
           >
-            {s.vPaso === "pago" ? "Confirmar venta" : "Continuar"}
+            {s.vGuardando
+              ? "Registrando…"
+              : s.vPaso === "pago"
+                ? s.vErrorAlta
+                  ? "Reintentar"
+                  : "Confirmar venta"
+                : "Continuar"}
           </button>
         </div>
       )}

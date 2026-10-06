@@ -13,6 +13,7 @@ import type {
   Proveedor,
   RepTab,
   ThemeName,
+  Venta,
 } from "@/lib/types";
 
 export type Screen =
@@ -94,6 +95,16 @@ export interface AppState {
   vCredito: boolean;
   vPlazo: string;
   vMonedaUsd: boolean;
+  /**
+   * La venta que devolvió el backend, con su número y su fecha reales.
+   *
+   * Antes la pantalla de "venta registrada" mostraba un número fijo y la venta
+   * no se registraba en ninguna parte: el vendedor se iba convencido de haber
+   * facturado. Ahora, si esto es `null`, no hay venta.
+   */
+  vVenta: Venta | null;
+  vGuardando: boolean;
+  vErrorAlta: string;
 
   /* Clientes */
   cSub: "lista" | "detalle" | "nuevo";
@@ -330,6 +341,9 @@ export const initialState: AppState = {
   vCredito: false,
   vPlazo: "30",
   vMonedaUsd: false,
+  vVenta: null,
+  vGuardando: false,
+  vErrorAlta: "",
 
   cSub: "lista",
   cQuery: "",

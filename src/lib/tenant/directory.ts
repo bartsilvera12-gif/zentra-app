@@ -51,6 +51,10 @@ export function tenantPublico(): TenantConfig {
     schema: SCHEMA,
     apiUrl: config.apiUrl,
     publico: true,
+    // El tenant público no factura a nombre de nadie: los datos salen de la
+    // empresa que se registra, no de acá.
+    ruc: "",
+    ciudad: "",
     // Quien baja la app de la tienda y no pone código entra en el plan gratis.
     plan: "free",
   };
@@ -73,6 +77,8 @@ function parseRespuesta(codigo: string, json: unknown): TenantConfig {
     // le agrega el /api. Si no viene, se usa la global.
     apiUrl: typeof o.apiUrl === "string" && o.apiUrl.trim() ? urlDeApi(o.apiUrl) : config.apiUrl,
     publico: false,
+    ruc: typeof o.ruc === "string" ? o.ruc.trim() : "",
+    ciudad: typeof o.ciudad === "string" ? o.ciudad.trim() : "",
     // Un plan que no reconocemos se trata como `free`: ante la duda, el que
     // menos deja hacer. Regalar Max por un error de tipeo en el directorio es
     // peor que pedirle al cliente que nos avise que le falta algo.

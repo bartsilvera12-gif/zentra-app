@@ -8,6 +8,8 @@ import { Cargando, Falla } from "../ui/Estado";
 import { detalleVenta, ivaVenta, totalVenta } from "@/lib/calc";
 import { fmtIso, gs, norm, plural } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
+import { datosEmisor, lineaEmisor } from "@/lib/emisor";
+import { tenantEnUso } from "@/lib/supabase/client";
 import { StatusBar } from "../layout/StatusBar";
 import {
   Badge,
@@ -26,6 +28,8 @@ const VIOLETA = MARCA.headerSuave;
 
 export function DetVentasScreen() {
   const { s, t, set, pushMsg, abrirChat } = useApp();
+  // Quién factura: del tenant y la sesión, no escrito a mano acá.
+  const emisor = datosEmisor(tenantEnUso(), s.sesion?.empresa);
 
   const dvq = norm(s.dvQuery.trim());
   // El historial sale del ERP, ya filtrado por el rango que se eligió.
@@ -316,6 +320,19 @@ export function DetVentasScreen() {
           </div>
 
           <ScrollBody padding="14px" gap={12}>
+            {emisor.falta && (
+              <div
+                style={{
+                  borderRadius: 12,
+                  background: "#FFF3DC",
+                  padding: "10px 12px",
+                  font: "500 11.5px/1.4 var(--font-barlow),Barlow,sans-serif",
+                  color: "#6B4A00",
+                }}
+              >
+                {emisor.falta}
+              </div>
+            )}
             <div
               style={{
                 borderRadius: 16,
@@ -338,11 +355,9 @@ export function DetVentasScreen() {
                 }}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ font: "700 14px/1.2 var(--font-barlow),Barlow,sans-serif", color: AZUL }}>Distribuidora JM S.A.</span>
+                  <span style={{ font: "700 14px/1.2 var(--font-barlow),Barlow,sans-serif", color: AZUL }}>{emisor.nombre}</span>
                   <span style={{ font: "400 11px/1.3 var(--font-barlow),Barlow,sans-serif", color: "#5b6676" }}>
-                    RUC 80012345-0
-                    <br />
-                    Asunción · Paraguay
+                    {lineaEmisor(emisor)}
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>

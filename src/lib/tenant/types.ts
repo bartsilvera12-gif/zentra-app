@@ -38,6 +38,15 @@ export interface TenantConfig {
   /** true cuando es la instalación pública, donde el registro está abierto. */
   publico: boolean;
   /**
+   * RUC y ciudad de quien factura, para la cabecera de la factura.
+   *
+   * Vacío cuando el directorio no los trae, y entonces la factura lo dice en
+   * vez de inventarlos. Una factura con el RUC de otro no es un detalle
+   * estético: es un comprobante inválido, y el que la emitió no se enteró.
+   */
+  ruc: string;
+  ciudad: string;
+  /**
    * Plan contratado. Sólo importa cuando la empresa **no** tiene ERP: con ERP
    * propio está todo desbloqueado y este campo se ignora.
    *

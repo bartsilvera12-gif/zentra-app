@@ -627,7 +627,11 @@ export function HomeScreen() {
           labelSize={16}
           gap={8}
           icon={<IconFactura />}
-          onClick={() => set({ screen: "venta", mod: "venta" })}
+          onClick={() =>
+            // El error de un intento anterior no es de esta venta: si queda, el
+            // botón arranca diciendo "Reintentar" sin que haya nada que reintentar.
+            set({ screen: "venta", mod: "venta", vErrorAlta: "" })
+          }
         />
         <Tile
           k="clientes"

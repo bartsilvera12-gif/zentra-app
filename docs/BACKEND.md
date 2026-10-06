@@ -268,11 +268,18 @@ Respuesta `200`:
 {
   "nombre": "Distribuidora JM",
   "supabaseUrl": "https://jm.supabase.ejemplo",
-  "anonKey": "eyJ..."
+  "anonKey": "eyJ...",
+  "ruc": "80012345-0",
+  "ciudad": "Asunción · Paraguay"
 }
 ```
 
 Respuesta `404` si el código no existe.
+
+`ruc` y `ciudad` son opcionales y van en la cabecera de la factura. Sin `ruc`, la
+factura sale rotulada como comprobante interno y dice qué le falta, en vez de
+mostrar un RUC que no es el de esa empresa. Si el campo falta, no pasa nada más
+que eso: ningún otro flujo lo usa.
 
 **Nada de esto es secreto.** La URL y la anon key son los mismos datos que viajan
 dentro de cualquier APK que use Supabase; lo que protege los datos es RLS del lado

@@ -61,7 +61,17 @@ if (resto[0] === "--borrar") {
   // El cuarto dato es opcional: el schema. Hace falta cuando la instalación no
   // tiene nuestras tablas sino vistas sobre las del cliente, que viven en el
   // suyo.
-  const [nombre, url, clave, schema] = resto;
+  // `ruc=` y `ciudad=` van por nombre y no por posición: son opcionales, se
+  // cargan tarde (cuando el cliente los manda) y nadie se va a acordar de que
+  // el sexto argumento era la ciudad.
+  const sueltos = {};
+  const posicionales = resto.filter((a) => {
+    const m = /^(ruc|ciudad)=(.*)$/i.exec(a);
+    if (!m) return true;
+    sueltos[m[1].toLowerCase()] = m[2].trim();
+    return false;
+  });
+  const [nombre, url, clave, schema] = posicionales;
   if (!nombre || !url || !clave) {
     salir('Faltan datos.\n  npm run empresa -- JM "Distribuidora JM" https://xxxx.supabase.co sb_publishable_...');
   }
@@ -83,9 +93,19 @@ if (resto[0] === "--borrar") {
     supabaseUrl: limpia,
     anonKey: clave.trim(),
     ...(schema ? { schema: schema.trim() } : {}),
+    // Para la cabecera de la factura. Sin RUC, la factura sale rotulada como
+    // comprobante interno en vez de mostrar uno que no es de esta empresa.
+    ...(sueltos.ruc ? { ruc: sueltos.ruc } : {}),
+    ...(sueltos.ciudad ? { ciudad: sueltos.ciudad } : {}),
   };
   console.log(`\n${VERDE}${codigo} → ${nombre.trim()}${FIN}`);
   console.log(`  ${GRIS}${limpia}${schema ? `  schema ${schema.trim()}` : ""}${FIN}`);
+  if (!sueltos.ruc) {
+    console.log(
+      `  ${GRIS}Sin RUC: las facturas de esta empresa van a salir como comprobante interno.`
+        + `\n  Cargalo cuando lo tengas:  npm run empresa -- ${codigo} ... ruc=80012345-0 ciudad="Asunción"${FIN}`,
+    );
+  }
 }
 
 // Sin empresas, la línea se va del archivo. Dejar un `{}` no rompe nada, pero
