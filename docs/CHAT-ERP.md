@@ -93,6 +93,16 @@ El admin y los dos supervisores no están en ninguna cola y ven conversaciones
 igual. Los únicos con cola son los agentes. Eso confirma que la cola no es lo
 que decide.
 
+Hay ocho usuarios más con `(sin rol)` y cero colas: esos **no ven
+conversaciones tampoco en el ERP**, así que la app mostrándoles una lista vacía
+está bien. Es el caso que hay que distinguir del de un administrador, y por eso
+el cartel ahora explica la diferencia en vez de decir "pedí que te agreguen a
+una cola".
+
+Una precisión sobre `supervisor`: ve las conversaciones de **los agentes a su
+cargo**, no todas las de la empresa. Sólo `admin` las ve todas. En la app va a
+pasar lo mismo, porque es el ERP el que resuelve el alcance.
+
 ### Para ver el rol de cada uno
 
 Las consultas están en [`consultas-chat.sql`](consultas-chat.sql), ya con los
