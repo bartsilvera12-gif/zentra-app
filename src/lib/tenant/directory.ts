@@ -26,7 +26,13 @@
 import { config, urlDeApi } from "../config";
 import { SCHEMA } from "../supabase/client";
 import { guardarTenant, guardarUltimoCodigo, leerTenantGuardado } from "./storage";
+import { PLANES, type Plan } from "../planes";
 import { TenantError, type TenantConfig } from "./types";
+
+/** El directorio es un JSON de afuera: lo que trae hay que verificarlo. */
+function esPlan(v: unknown): v is Plan {
+  return typeof v === "string" && v in PLANES;
+}
 
 /**
  * Normaliza lo que escribe el usuario: mayúsculas, sin espacios ni guiones.
@@ -45,6 +51,8 @@ export function tenantPublico(): TenantConfig {
     schema: SCHEMA,
     apiUrl: config.apiUrl,
     publico: true,
+    // Quien baja la app de la tienda y no pone código entra en el plan gratis.
+    plan: "free",
   };
 }
 
@@ -65,6 +73,10 @@ function parseRespuesta(codigo: string, json: unknown): TenantConfig {
     // le agrega el /api. Si no viene, se usa la global.
     apiUrl: typeof o.apiUrl === "string" && o.apiUrl.trim() ? urlDeApi(o.apiUrl) : config.apiUrl,
     publico: false,
+    // Un plan que no reconocemos se trata como `free`: ante la duda, el que
+    // menos deja hacer. Regalar Max por un error de tipeo en el directorio es
+    // peor que pedirle al cliente que nos avise que le falta algo.
+    plan: esPlan(o.plan) ? o.plan : "free",
   };
 }
 

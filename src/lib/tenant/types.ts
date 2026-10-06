@@ -1,3 +1,5 @@
+import type { Plan } from "../planes";
+
 /**
  * Un "tenant" es a qué instalación se conecta la app: el Supabase público (registro
  * abierto, para quien baja la app de la tienda) o el de un cliente que ya tiene ERP.
@@ -35,6 +37,15 @@ export interface TenantConfig {
   apiUrl: string;
   /** true cuando es la instalación pública, donde el registro está abierto. */
   publico: boolean;
+  /**
+   * Plan contratado. Sólo importa cuando la empresa **no** tiene ERP: con ERP
+   * propio está todo desbloqueado y este campo se ignora.
+   *
+   * Vive acá, en el directorio, y no en el ERP de cada cliente: así agregar
+   * planes no obliga a tocar el sistema de nadie. Si el directorio no lo trae,
+   * se asume `free`, que es el que menos deja hacer — ante la duda, no regalar.
+   */
+  plan: Plan;
 }
 
 export type TenantErrorKind =

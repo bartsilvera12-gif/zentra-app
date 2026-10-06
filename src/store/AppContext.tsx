@@ -14,7 +14,8 @@ import { IVAS } from "@/lib/data";
 import { desactivarPush, escucharAvisos, pushPreferido } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
 import { escucharTemaDelSistema, leerPreferencia, temaDelSistema } from "@/lib/tema";
-import { repo, usaSupabase } from "@/lib/repo";
+import { repo, usaApiDelErp, usaSupabase } from "@/lib/repo";
+import type { Contexto } from "@/lib/planes";
 import { activarTenant } from "@/lib/supabase/client";
 import { resolverTenant } from "@/lib/tenant/directory";
 import { leerUltimoCodigo } from "@/lib/tenant/storage";
@@ -48,6 +49,8 @@ interface AppApi {
   kRotarIva: (i: number) => void;
   abrirChat: (id: string) => void;
   pushMsg: (id: string, msg: ChatMsg) => void;
+  /** El contexto para `motivoBloqueo`, ya con el plan y si hay ERP. */
+  plan: (extra?: Partial<Contexto>) => Contexto;
   /** Replay the dashboard's grow-in animation. */
   runDash: (dur?: number, keepIndex?: boolean) => void;
   startGrab: () => void;
@@ -278,10 +281,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setS((prev) => ({ ...prev, screen: k === "venta" ? "venta" : "module", mod: k }));
   }, []);
 
+  /**
+   * Lo que hace falta para decidir si algo se puede escribir.
+   *
+   * Se arma acá y no en cada pantalla para que la regla viva en un solo lugar:
+   * con ERP propio no hay plan, y sin ERP manda el del directorio. El tope de
+   * productos lo completa la pantalla de inventario, que es la única que sabe
+   * cuántos hay.
+   */
+  const plan = useCallback(
+    (extra: Partial<Contexto> = {}): Contexto => ({
+      conErp: usaApiDelErp(),
+      plan: s.tenant?.plan ?? "free",
+      ...extra,
+    }),
+    [s.tenant],
+  );
+
   const value = useMemo<AppApi>(
     () => ({
       s,
       t: THEME[s.theme],
+      plan,
       set,
       qty,
       rotarIva,
@@ -296,7 +317,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       go,
       elegirInstalacion,
     }),
-    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, cerrarSesion, startGrab, stopGrab, go, elegirInstalacion],
+    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, cerrarSesion, startGrab, stopGrab, go, elegirInstalacion, plan],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

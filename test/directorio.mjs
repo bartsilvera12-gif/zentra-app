@@ -209,6 +209,18 @@ t("el tenant público usa el schema propio", async () => {
   if (p.schema !== "zentra") throw new Error("esperaba zentra, fue " + p.schema);
 });
 
+t("el plan sale del directorio, y uno desconocido cae en free", async () => {
+  const dir = {
+    CONPLAN: { nombre: "Con plan", supabaseUrl: "https://a", anonKey: "k", plan: "max" },
+    RARO: { nombre: "Raro", supabaseUrl: "https://b", anonKey: "k", plan: "platino" },
+    SINPLAN: { nombre: "Sin plan", supabaseUrl: "https://c", anonKey: "k" },
+  };
+  const { resolverTenant } = await cargar({ NEXT_PUBLIC_DIRECTORIO_JSON: JSON.stringify(dir) });
+  if ((await resolverTenant("CONPLAN")).plan !== "max") throw new Error("no leyó el plan");
+  if ((await resolverTenant("RARO")).plan !== "free") throw new Error("un plan inventado tiene que caer en free");
+  if ((await resolverTenant("SINPLAN")).plan !== "free") throw new Error("sin plan es free");
+});
+
 let malas = 0;
 for (const [nombre, fn] of casos) {
   try { await fn(); console.log("  OK · " + nombre); }
