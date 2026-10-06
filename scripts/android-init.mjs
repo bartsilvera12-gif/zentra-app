@@ -169,6 +169,87 @@ function escribirLocalProperties() {
 escribirLocalProperties();
 
 /**
+ * Qué versión de Java hay en una carpeta, leyendo su archivo `release`.
+ *
+ * Se lee el archivo en vez de ejecutar `java -version` porque el que está en el
+ * PATH puede no ser el de esta carpeta, que es justo el problema que esto
+ * resuelve. `1.8.0_292` es Java 8: el esquema viejo ponía un `1.` adelante.
+ */
+function versionDeJava(dir) {
+  try {
+    const txt = readFileSync(join(dir, "release"), "utf8");
+    const m = /^JAVA_VERSION="?([0-9._]+)/m.exec(txt);
+    if (!m) return 0;
+    const partes = m[1].split(".");
+    const mayor = Number(partes[0]);
+    return mayor === 1 ? Number(partes[1] || 0) : mayor;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Gradle corre con el Java que encuentra, y si ese es un Java 8 el build muere
+ * con "Dependency requires at least JVM runtime version 11" sin decir dónde
+ * cambiarlo. Pasa seguido en Windows, donde suele quedar un Java 8 viejo en el
+ * PATH de hace años.
+ *
+ * Android Studio trae su propio JDK (el `jbr`) justamente para no depender de
+ * eso. Acá se busca y se deja anotado en `android/gradle.properties`, que es de
+ * dónde Gradle lo lee. Como `android/` se regenera en cada corrida, esto se
+ * vuelve a escribir solo; a mano habría que acordarse siempre.
+ */
+function escribirJdk() {
+  const casa = homedir();
+  const candidatos =
+    platform() === "win32"
+      ? [
+          "C:\\Program Files\\Android\\Android Studio\\jbr",
+          join(casa, "AppData", "Local", "Programs", "Android Studio", "jbr"),
+          "C:\\Program Files\\Android\\Android Studio\\jre",
+        ]
+      : platform() === "darwin"
+        ? [
+            "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+            "/Applications/Android Studio.app/Contents/jre/Contents/Home",
+          ]
+        : [
+            "/opt/android-studio/jbr",
+            join(casa, "android-studio", "jbr"),
+          ];
+
+  // El JAVA_HOME de la máquina va último: si sirve, se usa; si es el Java 8
+  // viejo, gana el de Android Studio, que es lo que queremos.
+  const deLaMaquina = process.env.JAVA_HOME?.trim();
+  const lista = deLaMaquina ? [...candidatos, deLaMaquina] : candidatos;
+
+  const jdk = lista.find((d) => existsSync(d) && versionDeJava(d) >= 11);
+  if (!jdk) {
+    if (deLaMaquina && versionDeJava(deLaMaquina) > 0) {
+      console.log(`\nAviso: tu JAVA_HOME es Java ${versionDeJava(deLaMaquina)}, y Gradle necesita 11 o más.`);
+    } else {
+      console.log("\nAviso: no encontré un JDK 11 o superior.");
+    }
+    console.log("Instalá Android Studio (trae el suyo) o apuntá JAVA_HOME a un JDK 17.");
+    return;
+  }
+
+  const ruta = jdk.replace(/\\/g, "\\\\");
+  const archivo = "android/gradle.properties";
+  const previo = existsSync(archivo) ? readFileSync(archivo, "utf8") : "";
+  // Si `cap add` ya dejó la línea, se reemplaza en vez de agregar otra: Gradle
+  // toma la última, pero dos líneas iguales con rutas distintas es una trampa.
+  const limpio = previo.replace(/^org\.gradle\.java\.home=.*$\n?/gm, "");
+  writeFileSync(
+    archivo,
+    `${limpio}${limpio.endsWith("\n") || limpio === "" ? "" : "\n"}org.gradle.java.home=${ruta}\n`,
+  );
+  console.log(`\nJDK para Gradle: ${jdk} (Java ${versionDeJava(jdk)})`);
+}
+
+escribirJdk();
+
+/**
  * Permisos que el proyecto generado no trae.
  *
  * `cap add android` escribe un manifiesto mínimo, así que esto se vuelve a
