@@ -10,28 +10,48 @@ export const THEME: Record<ThemeName, ThemeTokens> = {
     dim: "#c3cbd6",
     border: "#e3e7ee",
   },
-  /**
-   * El oscuro sale de la marca, no de un gris neutro.
-   *
-   * Antes era un azul grisáceo (#0b0f1c / #151b2e) que no se parecía a nada del
-   * resto de la app: cambiando de modo parecía otro producto. Estos tonos son
-   * el mismo azul petróleo del encabezado, bajado de luminosidad.
-   *
-   * `card` separa más de `bg` que antes (1.39 contra 1.12): en el chat los
-   * globos recibidos quedaban casi fundidos con el fondo. No se aclara más
-   * porque a partir de ahí `ink3` baja de 4.5:1 y el texto secundario deja de
-   * cumplir contraste.
-   */
   oscuro: {
-    bg: "#0A1F2A",
-    card: "#143A49",
-    ink: "#EAF2F5",
-    ink2: "#A8C2CC",
-    ink3: "#89A6B2",
-    dim: "#3C5A68",
-    border: "#1D4252",
+    bg: "#0b0f1c",
+    card: "#151b2e",
+    ink: "#eef1f6",
+    ink2: "#a3adbe",
+    ink3: "#7d879a",
+    dim: "#3b4459",
+    border: "#252d42",
   },
 };
+
+/**
+ * Los colores del chat, aparte del tema general.
+ *
+ * El chat es la única pantalla donde el color de fondo quiere decir algo: de
+ * qué lado está cada mensaje. Por eso tiene su propio juego y no sale de
+ * `THEME`, que es superficie neutra para todo lo demás.
+ *
+ *   mio     el globo de lo que uno manda
+ *   suyo    el globo de lo que llega
+ *   borde   el contorno de cada globo
+ *   tinta   el texto adentro del globo propio
+ *   lienzo  el fondo del hilo, detrás de los globos
+ */
+export const CHAT = {
+  claro: {
+    mio: "#D7F0EC",
+    suyo: "#ffffff",
+    bordeMio: "#A9DCD5",
+    bordeSuyo: "#E3E7EE",
+    tintaMia: "#0B3B38",
+    lienzo: "#F1F5F4",
+  },
+  oscuro: {
+    mio: "#12403C",
+    suyo: "#17222E",
+    bordeMio: "#1C5A53",
+    bordeSuyo: "#273344",
+    tintaMia: "#D8F0EB",
+    lienzo: "#0D141D",
+  },
+} as const;
 
 /**
  * Los colores de la marca, en un solo lugar.

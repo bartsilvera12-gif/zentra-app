@@ -172,22 +172,7 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
       />
 
       <div style={{ ...BASE, ...(on ? { transform: "translateX(44px)", opacity: 0 } : { transform: "none", opacity: 1 }) }}>
-        {/* El ícono va dentro de un disco del mismo velo que el fondo: lo
-            despega de la baldosa y le da un punto de apoyo. */}
-        <span
-          style={{
-            width: 46,
-            height: 46,
-            borderRadius: "50%",
-            background: velo(def.over, claro ? 0.16 : 0.1),
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flex: "0 0 auto",
-          }}
-        >
-          {icon}
-        </span>
+        {icon}
         <span style={{ font: `600 ${labelSize}px/1.1 var(--font-barlow),Barlow,sans-serif` }}>{label}</span>
         {nota && <span style={{ font: "400 12px/1 var(--font-barlow),Barlow,sans-serif", opacity: 0.7 }}>{nota}</span>}
       </div>

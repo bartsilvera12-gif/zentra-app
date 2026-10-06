@@ -755,10 +755,53 @@ function esReenviado(raw: Record<string, unknown> | null | undefined): boolean {
  */
 const MARCADOR = /^\s*\[(imagen|image|documento|document|audio|video|sticker|reaction|revoke)\]\s*/i;
 
-function sinMarcador(texto: string | null | undefined): string | null {
+/**
+ * Lo que el ERP deja en `content` y no es texto que alguien escribió.
+ *
+ * Al mandar un adjunto, el ERP guarda en el texto del mensaje la URL del
+ * archivo y un rótulo del tipo "Video enviado". Eso es para su propia
+ * contabilidad: su pantalla lo filtra antes de mostrar. La app no lo hacía, y
+ * entonces un video mandado se veía como una URL cruda en el globo, que en el
+ * WebView además queda subrayada como un enlace.
+ */
+const LINEA_DE_ARCHIVO = /\/storage\/v1\/object\/(public|sign)\//i;
+const ROTULO_DE_ENVIO = /^(imagen|audio|video|documento|sticker)\s+enviad[oa]$/i;
+
+/**
+ * `esMedia` decide si una línea que es sólo una URL se descarta.
+ *
+ * En un mensaje con adjunto, esa línea es el archivo y no un pie de foto. Pero
+ * en un mensaje de texto puede ser el mensaje entero —alguien pasa un enlace de
+ * Google Meet y nada más— y descartarla haría desaparecer el mensaje.
+ */
+function sinMarcador(texto: string | null | undefined, esMedia = false): string | null {
   if (!texto) return null;
-  const limpio = texto.replace(MARCADOR, "").trim();
+  let lineas = texto
+    .replace(MARCADOR, "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    // Una URL del almacenamiento del ERP nunca es algo que alguien escribió.
+    .filter((l) => !LINEA_DE_ARCHIVO.test(l))
+    .filter((l) => !ROTULO_DE_ENVIO.test(l));
+  if (esMedia) lineas = lineas.filter((l) => !/^https?:\/\/\S+$/i.test(l));
+  const limpio = lineas.join("\n").trim();
   return limpio || null;
+}
+
+/**
+ * La URL que quedó escrita en el texto del mensaje.
+ *
+ * Es el último recurso para encontrar el archivo: cuando el ERP no rehosteó y
+ * el sobre de WhatsApp tampoco trae el enlace, lo que mandamos nosotros sí
+ * dejó la URL acá.
+ */
+function urlEnElTexto(texto: string | null | undefined): string | null {
+  if (!texto) return null;
+  for (const linea of texto.split(/\r?\n/).map((l) => l.trim())) {
+    if (/^https?:\/\/\S+$/i.test(linea)) return linea;
+  }
+  return null;
 }
 
 /**
@@ -893,11 +936,12 @@ function aMensaje(m: MensajeErp): ChatMsg {
     ...(esReenviado(m.raw_payload) ? { reenviado: true } : {}),
   };
 
+  const esMedia = /image|video|audio|voice|document|sticker/.test(tipo);
   const adj = adjuntoDelErp(m.raw_payload);
   // La copia del ERP primero; si la tarea que la hace todavía no corrió, el
   // enlace original, que al menos muestra algo mientras tanto.
-  const url = adj.url || urlOriginal(m.raw_payload);
-  const epigrafe = adj.epigrafe || sinMarcador(m.content);
+  const url = adj.url || urlOriginal(m.raw_payload) || (esMedia ? urlEnElTexto(m.content) : null);
+  const epigrafe = adj.epigrafe || sinMarcador(m.content, esMedia);
 
   // Una reacción es un emoji sobre otro mensaje, no un mensaje.
   if (tipo.includes("reaction")) {

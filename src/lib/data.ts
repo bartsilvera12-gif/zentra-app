@@ -214,7 +214,6 @@ export const ADJUNTOS: Adjunto[] = [
 
 export const EMOJIS = ["😀", "😅", "😂", "🙂", "😉", "😍", "🤝", "👍", "👌", "🙏", "💪", "🔥", "✅", "❌", "⏰", "📦", "🚚", "🧾", "💰", "📈", "🍺", "🥤", "💧", "🧊"];
 export const STICKERS = ["🧾", "📦", "🚚", "🫡", "🤙", "🎉", "😎", "🙌", "💵", "⏳"];
-export const GIFS = ["⚡", "🎬", "✨", "🌀", "🎯", "🛎️"];
 
 
 export const INV: InvProducto[] = [

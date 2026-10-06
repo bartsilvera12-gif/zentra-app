@@ -166,7 +166,16 @@ export interface AppState {
 
   /* Conversaciones */
   xPanel: "none" | "adj" | "stick";
-  xPanelTab: "Emojis" | "Stickers" | "GIF";
+  xPanelTab: "Emojis" | "Stickers";
+  /**
+   * El mensaje que se está citando para responder, resumido en una línea.
+   *
+   * Es sólo lo que se muestra arriba del campo de escritura: el ERP no tiene
+   * endpoint para responder a un mensaje puntual, así que la cita viaja como
+   * texto adelante de la respuesta. Es lo mismo que hace alguien a mano cuando
+   * escribe "sobre lo del contrato:".
+   */
+  xCita: string | null;
   xGrab: boolean;
   xSeg: number;
   xSub: "lista" | "chat" | "nuevo";
@@ -369,6 +378,7 @@ export const initialState: AppState = {
 
   xPanel: "none",
   xPanelTab: "Emojis",
+  xCita: null,
   xGrab: false,
   xSeg: 0,
   xSub: "lista",

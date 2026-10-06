@@ -37,6 +37,10 @@ export function decidirAtras(s: AppState): Parche | "fondo" {
   // visor queda encima de la lista.
   if (s.xVisor) return { xVisor: null };
 
+  // Citar un mensaje para responder es lo último que se abrió después del
+  // visor: "atrás" lo cancela antes de salir del chat.
+  if (s.xCita) return { xCita: null };
+
   if (s.menuPerfil) return { menuPerfil: false };
 
   // Cada módulo con subpantallas vuelve a su lista antes de salir del módulo.

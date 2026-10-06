@@ -76,6 +76,18 @@ t("la foto gana al menú de perfil: es lo que está más arriba", () => {
   if (r === "fondo" || r.xVisor !== null) throw new Error("no cerró el visor primero");
 });
 
+t("con un mensaje citado, atrás cancela la cita y no sale del chat", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", xSub: "chat", xCita: "Hola" }));
+  if (r === "fondo") throw new Error("se salió de la app");
+  if (r.xCita !== null) throw new Error("no canceló la cita");
+  if (r.xSub !== undefined) throw new Error("además salió del chat");
+});
+
+t("la foto abierta gana a la cita: está más arriba", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", xCita: "Hola", xVisor: { src: "u", tipo: "foto" } }));
+  if (r === "fondo" || r.xVisor !== null) throw new Error("no cerró el visor primero");
+});
+
 let malas = 0;
 for (const [nombre, fn] of casos) {
   try { await fn(); console.log("  OK · " + nombre); }

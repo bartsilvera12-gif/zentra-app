@@ -1,7 +1,8 @@
 "use client";
 
-import { MARCA } from "@/lib/theme";
-import { ADJUNTOS, CHATS, EMOJIS, GIFS, STICKERS } from "@/lib/data";
+import { CHAT, MARCA } from "@/lib/theme";
+import { ADJUNTOS, CHATS, EMOJIS, STICKERS } from "@/lib/data";
+import { alternarFavorito, guardarFavoritos, leerFavoritos, ordenarPorFavoritos } from "@/lib/favoritos";
 import {
   IconActualizar,
   IconAudio,
@@ -200,12 +201,15 @@ function NotaDeVoz({
   mio,
   t,
   oscuro,
+  tinta,
 }: {
   url?: string;
   etiqueta?: string;
   mio: boolean;
   t: ThemeTokens;
   oscuro: boolean;
+  /** El color del texto del globo propio, que lo decide el chat y no el tema. */
+  tinta: string;
 }) {
   const ref = useRef<HTMLAudioElement | null>(null);
   const [sonando, setSonando] = useState(false);
@@ -304,7 +308,7 @@ function NotaDeVoz({
           />
         ))}
       </span>
-      <span style={{ font: "500 11px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3, flex: "0 0 auto" }}>
+      <span style={{ font: "500 11px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? tinta : t.ink3, flex: "0 0 auto" }}>
         {tiempo}
       </span>
     </div>
@@ -322,6 +326,23 @@ const ICONO_ADJUNTO: Record<string, React.ReactNode> = {
 
 export function ConversacionesScreen() {
   const { s, t, set, abrirChat, pushMsg, startGrab, stopGrab } = useApp();
+  // El chat tiene su propio juego de colores: acá el fondo del globo dice de
+  // qué lado está el mensaje, así que no sale del tema general.
+  const ch = s.theme === "oscuro" ? CHAT.oscuro : CHAT.claro;
+
+  /**
+   * Los favoritos de la bandeja de emojis y stickers.
+   *
+   * Se leen una sola vez al abrir la pantalla: están en el teléfono, no en la
+   * red, y releerlos en cada dibujo no agrega nada.
+   */
+  const [favoritos, setFavoritos] = useState<string[]>([]);
+  useEffect(() => setFavoritos(leerFavoritos()), []);
+  const marcar = (emoji: string) => {
+    const nueva = alternarFavorito(favoritos, emoji);
+    setFavoritos(nueva);
+    guardarFavoritos(nueva);
+  };
 
   // Las conversaciones salen del ERP: son los chats de WhatsApp asignados a
   // este asesor. Sin ERP quedan las de ejemplo, para poder ver la pantalla.
@@ -416,6 +437,9 @@ export function ConversacionesScreen() {
    * verse el viaje. Va en un efecto porque los mensajes llegan después del
    * primer dibujo, cuando la respuesta del ERP vuelve.
    */
+  // Un nodo por globo, para moverlo con el dedo sin volver a dibujar la lista
+  // entera en cada cuadro del gesto.
+  const cajas = useRef<(HTMLDivElement | null)[]>([]);
   const hilo = useRef<HTMLDivElement | null>(null);
   const final = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -447,18 +471,35 @@ export function ConversacionesScreen() {
     };
   });
 
-  const panelLista =
-    s.xPanelTab === "Emojis" ? EMOJIS : s.xPanelTab === "Stickers" ? STICKERS : GIFS;
+  // Los favoritos primero: es para lo que sirve marcarlos.
+  const panelLista = ordenarPorFavoritos(s.xPanelTab === "Emojis" ? EMOJIS : STICKERS, favoritos);
 
   const enviarTexto = () => {
-    const texto = s.xTexto.trim();
-    if (!texto || !det) return;
+    const escrito = s.xTexto.trim();
+    if (!escrito || !det) return;
+
+    /**
+     * La cita va adelante del mensaje, entre comillas.
+     *
+     * El ERP no tiene forma de responder a un mensaje puntual —no hay endpoint
+     * ni campo para eso—, así que la cita viaja como texto. Es lo mismo que
+     * escribe alguien a mano cuando empieza con "sobre lo del contrato:", y del
+     * otro lado, en WhatsApp, se lee igual de bien.
+     *
+     * Se recorta a 120: citar tres párrafos enteros arriba de una respuesta de
+     * dos palabras es ruido.
+     */
+    const cita = s.xCita?.trim();
+    const texto = cita
+      ? `> ${cita.length > 120 ? cita.slice(0, 119) + "\u2026" : cita}\n${escrito}`
+      : escrito;
 
     // Se muestra enseguida y se manda en paralelo: en la calle la señal va y
     // viene, y esperar la respuesta del servidor para ver lo que uno escribió
     // hace sentir que la app se colgó.
     const hora = new Date().toTimeString().slice(0, 5);
     pushMsg(det.id, { de: "yo", texto, hora, tick: conErp ? "…" : "✓" });
+    set({ xCita: null });
     if (!conErp) return;
 
     repo.chats
@@ -558,6 +599,18 @@ export function ConversacionesScreen() {
   const topBg = s.xSub === "lista" ? t.card : VIOLETA;
 
   /** One message bubble. Handles text, order cards, stickers, voice notes and files. */
+  /** Una línea que describe el mensaje citado, sea texto o adjunto. */
+  const resumen = (m: ChatMsg): string => {
+    if (m.texto?.trim()) return m.texto.trim();
+    if (m.epigrafe?.trim()) return m.epigrafe.trim();
+    if (m.imagen) return "\u{1F4F7} Foto";
+    if (m.video) return "\u{1F3AC} Video";
+    if (m.audioUrl || m.audio !== undefined) return "\u{1F3A4} Nota de voz";
+    if (m.archivo) return `\u{1F4CE} ${m.archivo.nombre}`;
+    if (m.sticker) return "Sticker";
+    return "Mensaje";
+  };
+
   const burbuja = (m: ChatMsg, i: number) => {
     const mio = m.de === "yo";
     const esSticker = !!m.sticker;
@@ -602,14 +655,63 @@ export function ConversacionesScreen() {
       );
     }
 
+    /**
+     * Deslizar el globo hacia adentro lo cita para responder.
+     *
+     * Es el gesto que ya existe en cualquier app de mensajes, así que nadie
+     * tiene que aprenderlo. Arrastra sólo hasta 64px y vuelve solo al soltar:
+     * el globo no se va a ninguna parte, lo que hace el gesto es elegirlo.
+     *
+     * Se exige un movimiento más horizontal que vertical antes de tomar el
+     * gesto; si no, al bajar por el hilo los globos se irían de costado.
+     */
+    const inicio = { x: 0, y: 0, tomado: false };
+    const mover = (dx: number) => {
+      const caja = cajas.current[i];
+      if (caja) caja.style.transform = `translateX(${dx}px)`;
+    };
+
     return (
-      <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: mio ? "flex-end" : "flex-start" }}>
+      <div
+        key={i}
+        style={{ display: "flex", flexDirection: "column", alignItems: mio ? "flex-end" : "flex-start" }}
+        onTouchStart={(e) => {
+          inicio.x = e.touches[0].clientX;
+          inicio.y = e.touches[0].clientY;
+          inicio.tomado = false;
+        }}
+        onTouchMove={(e) => {
+          const dx = e.touches[0].clientX - inicio.x;
+          const dy = e.touches[0].clientY - inicio.y;
+          if (!inicio.tomado) {
+            if (Math.abs(dy) > Math.abs(dx)) return; // está bajando por el hilo
+            if (Math.abs(dx) < 8) return;
+            inicio.tomado = true;
+          }
+          // Hacia adentro: los míos se arrastran a la izquierda, los suyos a la derecha.
+          const haciaAdentro = mio ? Math.min(dx, 0) : Math.max(dx, 0);
+          mover(Math.max(Math.min(haciaAdentro, 64), -64));
+        }}
+        onTouchEnd={() => {
+          const caja = cajas.current[i];
+          const dx = caja ? Number((/-?\d+(\.\d+)?/.exec(caja.style.transform) ?? ["0"])[0]) : 0;
+          if (caja) {
+            caja.style.transition = "transform .18s ease-out";
+            caja.style.transform = "translateX(0)";
+            setTimeout(() => (caja.style.transition = ""), 200);
+          }
+          if (Math.abs(dx) >= 44) set({ xCita: resumen(m) });
+        }}
+      >
         <div
+          ref={(el) => {
+            cajas.current[i] = el;
+          }}
           style={{
             maxWidth: "82%",
             borderRadius: mio ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-            background: desnudo ? "transparent" : mio ? MARCA.suave : t.card,
-            border: `1px solid ${desnudo ? "transparent" : mio ? "#C3DCE6" : t.border}`,
+            background: desnudo ? "transparent" : mio ? ch.mio : ch.suyo,
+            border: `1px solid ${desnudo ? "transparent" : mio ? ch.bordeMio : ch.bordeSuyo}`,
             padding: desnudo ? 0 : "10px 12px",
             display: "flex",
             flexDirection: "column",
@@ -626,7 +728,7 @@ export function ConversacionesScreen() {
                 gap: 4,
                 font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif",
                 fontStyle: "italic",
-                color: mio ? "#4A7284" : t.ink3,
+                color: mio ? ch.tintaMia : t.ink3,
               }}
             >
               <span aria-hidden style={{ fontStyle: "normal" }}>↪</span> Reenviado
@@ -649,15 +751,15 @@ export function ConversacionesScreen() {
                   font: "600 9.5px/1 var(--font-barlow),Barlow,sans-serif",
                   letterSpacing: ".12em",
                   textTransform: "uppercase",
-                  color: mio ? VIOLETA_INK : t.ink2,
+                  color: mio ? ch.tintaMia : t.ink2,
                 }}
               >
                 {m.pedido.tag}
               </span>
-              <span style={{ font: "700 15px/1.1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
+              <span style={{ font: "700 15px/1.1 var(--font-barlow),Barlow,sans-serif", color: mio ? ch.tintaMia : t.ink }}>
                 {gs(m.pedido.total)}
               </span>
-              <span style={{ font: "400 11px/1.3 var(--font-barlow),Barlow,sans-serif", color: mio ? VIOLETA_INK : t.ink2 }}>
+              <span style={{ font: "400 11px/1.3 var(--font-barlow),Barlow,sans-serif", color: mio ? ch.tintaMia : t.ink2 }}>
                 {m.pedido.detalle}
               </span>
             </div>
@@ -728,7 +830,7 @@ export function ConversacionesScreen() {
           )}
 
           {m.epigrafe && (
-            <span style={{ font: "400 15px/1.4 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
+            <span style={{ font: "400 15px/1.4 var(--font-barlow),Barlow,sans-serif", color: mio ? ch.tintaMia : t.ink }}>
               {m.epigrafe}
             </span>
           )}
@@ -740,6 +842,7 @@ export function ConversacionesScreen() {
               mio={mio}
               t={t}
               oscuro={s.theme === "oscuro"}
+              tinta={ch.tintaMia}
             />
           )}
 
@@ -780,7 +883,7 @@ export function ConversacionesScreen() {
                     <span
                       style={{
                         font: "600 13.5px/1.25 var(--font-barlow),Barlow,sans-serif",
-                        color: mio ? "#17384A" : t.ink,
+                        color: mio ? ch.tintaMia : t.ink,
                         // Un nombre largo no puede empujar el globo fuera de la
                         // pantalla: se corta con puntos suspensivos.
                         overflow: "hidden",
@@ -790,7 +893,7 @@ export function ConversacionesScreen() {
                     >
                       {m.archivo.nombre}
                     </span>
-                    <span style={{ font: "400 11.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
+                    <span style={{ font: "400 11.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? ch.tintaMia : t.ink3 }}>
                       {m.archivo.peso}
                     </span>
                   </span>
@@ -802,7 +905,7 @@ export function ConversacionesScreen() {
             <span
               style={{
                 font: "400 15px/1.45 var(--font-barlow),Barlow,sans-serif",
-                color: mio ? "#17384A" : t.ink,
+                color: mio ? ch.tintaMia : t.ink,
                 // Un link o una palabra sin espacios no tiene que desbordar.
                 overflowWrap: "anywhere",
               }}
@@ -813,7 +916,7 @@ export function ConversacionesScreen() {
 
           {!desnudo && (
             <span style={{ display: "flex", alignItems: "center", gap: 4, alignSelf: "flex-end" }}>
-              <span style={{ font: "400 11px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
+              <span style={{ font: "400 11px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? ch.tintaMia : t.ink3 }}>
                 {m.hora}
               </span>
               {mio && (
@@ -1209,6 +1312,9 @@ export function ConversacionesScreen() {
               display: "flex",
               flexDirection: "column",
               gap: 9,
+              // El lienzo del hilo también es del chat: con el fondo general
+              // los globos propios quedaban flotando sin apoyo.
+              background: ch.lienzo,
             }}
           >
             <div style={{ textAlign: "center", font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>Hoy</div>
@@ -1305,7 +1411,7 @@ export function ConversacionesScreen() {
               }}
             >
               <div style={{ display: "flex", gap: 7 }}>
-                {(["Emojis", "Stickers", "GIF"] as const).map((k) => {
+                {(["Emojis", "Stickers"] as const).map((k) => {
                   const on = s.xPanelTab === k;
                   return (
                     <button
@@ -1337,6 +1443,7 @@ export function ConversacionesScreen() {
               >
                 {panelLista.map((g, i) => {
                   const esEmoji = s.xPanelTab === "Emojis";
+                  const esFavorito = favoritos.includes(g);
                   return (
                     <button
                       key={`${g}-${i}`}
@@ -1361,18 +1468,42 @@ export function ConversacionesScreen() {
                         }
                         pushMsg(det.id, { de: "yo", hora: "11:42", tick: "✓", texto: "", sticker: g });
                       }}
+                      // Mantener apretado lo marca como favorito. Es el gesto
+                      // que ya se usa para esto en cualquier teclado, y no roba
+                      // el toque corto, que es mandar.
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        marcar(g);
+                      }}
+                      title={esFavorito ? "Mantené apretado para quitar de favoritos" : "Mantené apretado para marcar como favorito"}
                       style={{
+                        position: "relative",
                         width: esEmoji ? 40 : 58,
                         height: esEmoji ? 40 : 58,
                         borderRadius: 12,
                         cursor: "pointer",
                         fontSize: esEmoji ? 22 : 30,
                         lineHeight: 1,
-                        background: esEmoji ? "transparent" : t.bg,
-                        border: `1px solid ${esEmoji ? "transparent" : t.border}`,
+                        background: esFavorito ? MARCA.suave : esEmoji ? "transparent" : t.bg,
+                        border: `1px solid ${esFavorito ? MARCA.acento : esEmoji ? "transparent" : t.border}`,
                       }}
                     >
                       {g}
+                      {esFavorito && (
+                        <span
+                          aria-hidden
+                          style={{
+                            position: "absolute",
+                            top: 1,
+                            right: 3,
+                            fontSize: 9,
+                            lineHeight: 1,
+                            color: MARCA.acento,
+                          }}
+                        >
+                          ★
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -1394,6 +1525,63 @@ export function ConversacionesScreen() {
               }}
             >
               {s.xEnvioError}
+            </div>
+          )}
+
+          {/* El mensaje que se está citando. Deslizar un globo hacia adentro lo
+              trae acá; la X lo saca. */}
+          {s.xCita && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "9px 14px",
+                background: ch.lienzo,
+                borderTop: `1px solid ${t.border}`,
+              }}
+            >
+              <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: MARCA.acento, flex: "0 0 auto" }} />
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
+                <span
+                  style={{
+                    font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
+                    letterSpacing: ".1em",
+                    textTransform: "uppercase",
+                    color: MARCA.acento,
+                  }}
+                >
+                  Respondiendo a
+                </span>
+                <span
+                  style={{
+                    font: "400 13px/1.3 var(--font-barlow),Barlow,sans-serif",
+                    color: t.ink2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {s.xCita}
+                </span>
+              </span>
+              <button
+                onClick={() => set({ xCita: null })}
+                aria-label="No responder a ese mensaje"
+                style={{
+                  width: 28,
+                  height: 28,
+                  flex: "0 0 auto",
+                  border: 0,
+                  borderRadius: "50%",
+                  background: "transparent",
+                  color: t.ink3,
+                  cursor: "pointer",
+                  font: "600 15px/1 var(--font-barlow),Barlow,sans-serif",
+                }}
+              >
+                ✕
+              </button>
             </div>
           )}
 
