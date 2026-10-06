@@ -999,7 +999,36 @@ export const httpRepo: Repo = {
   },
 
   chats: {
+    /**
+     * Las conversaciones que esta persona puede ver.
+     *
+     * Hay dos endpoints y no dan lo mismo:
+     *
+     *   /chat/mobile-inbox            aplica el mismo criterio que el ERP de
+     *                                 escritorio: un administrador ve todas,
+     *                                 un asesor las suyas y las sin asignar
+     *                                 de su cola.
+     *   /mobile/asesor/conversations  sólo las asignadas al asesor.
+     *
+     * Se prueba el primero. Un administrador en la app veía "no atendés
+     * conversaciones" mientras en el ERP las tenía todas delante, porque el
+     * segundo filtra por cola y un administrador no está en ninguna.
+     *
+     * El primero puede fallar con 401 en algunos ERP: no le pasa el pedido a
+     * su propia función de autenticación, así que no llega a leer el token y
+     * busca una cookie que en el APK no existe. Está anotado en
+     * docs/API-ERP.md. Por eso el segundo queda de respaldo.
+     */
     async list() {
+      try {
+        const r = await request<unknown>("/chat/mobile-inbox");
+        return comoLista<ConversacionErp>(r, "conversations", "/chat/mobile-inbox").map(aChat);
+      } catch (e) {
+        // Un error de datos no se tapa con el respaldo: si el endpoint
+        // contestó pero con otra forma, el problema es ese y hay que verlo.
+        if (e instanceof ApiError && e.status !== 401 && e.status !== 403 && e.status !== 404) throw e;
+      }
+
       const r = await request<ConversacionesErp>("/mobile/asesor/conversations");
       // `is_agent: false` no es "no tenés conversaciones": es que este usuario
       // no está en ninguna cola de atención. Son cosas distintas y la pantalla
@@ -1009,6 +1038,27 @@ export const httpRepo: Repo = {
     },
 
     async get(id) {
+      // Igual que arriba: este endpoint respeta el rol, el otro exige que la
+      // conversación esté asignada a quien pregunta.
+      try {
+        const r = await request<unknown>("/chat/messages", { query: { conversation_id: id } });
+        const msgs = comoLista<MensajeErp>(r, "messages", "/chat/messages");
+        return {
+          id,
+          // Este endpoint devuelve los mensajes y no el contacto; el nombre ya
+          // lo trajo el listado.
+          nombre: "",
+          tipo: "Cliente" as const,
+          refId: null,
+          enLinea: false,
+          hora: "",
+          noLeidos: 0,
+          msgs: msgs.map(aMensaje),
+        };
+      } catch (e) {
+        if (e instanceof ApiError && e.status !== 401 && e.status !== 403 && e.status !== 404) throw e;
+      }
+
       const r = await request<DetalleConversacionErp>(
         `/mobile/asesor/conversations/${encodeURIComponent(id)}`,
       );

@@ -130,6 +130,38 @@ ninguna cola de atención. Son cosas distintas y la app las dice distinto —
 mostrar una lista vacía dejaría a alguien esperando un mensaje que nunca le iba
 a llegar.
 
+### El ajuste de una línea que falta en el ERP
+
+`GET /api/chat/mobile-inbox` es el endpoint correcto para la app: aplica **el
+mismo criterio que el ERP de escritorio** — un administrador ve todas las
+conversaciones, un asesor las suyas y las sin asignar de su cola.
+
+Pero hoy **no se puede usar desde el APK**, por esto:
+
+```ts
+// src/app/api/chat/mobile-inbox/route.ts, línea 22
+ctx = await requireEmpresaTenantServiceRole();
+```
+
+Esa función resuelve al usuario por el token `Authorization: Bearer` **si le
+pasan el pedido**. Sin el argumento busca una cookie, y en el APK no hay
+cookies: contesta 401.
+
+El arreglo es pasarle el pedido:
+
+```ts
+ctx = await requireEmpresaTenantServiceRole(request);
+```
+
+Nada más. `/api/chat/messages` ya lo hace bien (`getTenantSupabaseFromAuth(request)`)
+y por eso los mensajes de una conversación sí se pueden leer.
+
+**Mientras tanto la app no se rompe**: si ese endpoint contesta 401, cae en
+`/api/mobile/asesor/conversations`, que sólo trae las conversaciones asignadas
+al asesor. Por eso una administradora veía "no hay conversaciones para vos" en
+la app mientras en el ERP las tenía todas delante: no está en ninguna cola, y
+ese endpoint filtra por cola.
+
 ### Fotos, audios y documentos
 
 Van por `/send-media`, que recibe **`multipart/form-data`** con `file` y un

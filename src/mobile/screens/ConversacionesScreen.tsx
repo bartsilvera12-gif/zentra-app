@@ -350,11 +350,19 @@ export function ConversacionesScreen() {
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ textAlign: "center" }}>
             <div style={{ font: "600 14px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
-              No atendés conversaciones
+              No hay conversaciones para vos
             </div>
             <div style={{ font: "400 13px/1.5 var(--font-barlow),Barlow,sans-serif", color: t.ink2, paddingTop: 8 }}>
-              Tu usuario no está asignado a ninguna cola de atención. Pedile a
-              quien administra el ERP que te agregue a una.
+              Tu usuario no está en ninguna cola de atención, así que no tiene
+              conversaciones asignadas.
+            </div>
+            {/* Decía "pedile a quien administra que te agregue", y quien veía
+                esto solía ser justamente la administradora: en el ERP las
+                tenía todas delante. Decir por qué difieren evita esa vuelta. */}
+            <div style={{ font: "400 12px/1.5 var(--font-barlow),Barlow,sans-serif", color: t.ink3, paddingTop: 10 }}>
+              Si en el ERP sí las ves, es porque ahí un administrador ve todas
+              las colas. Para verlas también acá hace falta un ajuste en el
+              ERP — está anotado en docs/API-ERP.md.
             </div>
           </div>
         </div>

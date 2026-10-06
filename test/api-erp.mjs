@@ -17,6 +17,8 @@ function t(nombre, fn) { casos.push([nombre, fn]); }
 const recibido = [];
 /** Lo pone en true la prueba que simula un usuario fuera de toda cola. */
 let fueraDeCola = false;
+/** Lo pone en true la prueba que simula el ERP sin el arreglo de una línea. */
+let inboxCaido = false;
 const ventasPorClave = new Map();
 
 const server = createServer((req, res) => {
@@ -135,6 +137,29 @@ const server = createServer((req, res) => {
         estado: "pendiente", fecha: "2026-10-01T00:00:00Z",
         numero_comprobante: "001-001-0000045", nro_timbrado: "12345678",
       }] });
+    }
+    // El endpoint que respeta el rol. En los ERP de hoy contesta 401 desde el
+    // APK porque no le pasa el pedido a su propia autenticación.
+    if (ruta === "/chat/mobile-inbox") {
+      if (inboxCaido) return json(401, { success: false, error: "No autenticado" });
+      return ok({ conversations: [
+        { id: "c1", status: "open", last_message_at: "2026-10-05T14:03:00Z",
+          last_message_preview: "Buenas, tenes stock?", unread_count: 2,
+          contact_nombre: "Lucia Benitez", contact_telefono: "0981 555 123" },
+        { id: "c2", status: "open", last_message_at: "2026-10-05T15:00:00Z",
+          last_message_preview: "Gracias!", unread_count: 0,
+          contact_nombre: "Edgar Maldonado", contact_telefono: "0973 549 547" },
+      ] });
+    }
+    if (ruta === "/chat/messages") {
+      if (inboxCaido) return json(401, { success: false, error: "No autenticado" });
+      if (u.searchParams.get("conversation_id") === "con-foto") {
+        return ok([{ id: "m1", from_me: false, content: "", message_type: "image", created_at: "2026-10-05T14:03:00Z" }]);
+      }
+      return ok([
+        { id: "m1", from_me: false, content: "Buenas, tenes stock?", message_type: "text", created_at: "2026-10-05T14:03:00Z" },
+        { id: "m2", from_me: true, content: "Si, te paso precios", message_type: "text", created_at: "2026-10-05T14:05:00Z", whatsapp_delivery_status: "read" },
+      ]);
     }
     // Las conversaciones usan su propio sobre: { ok, ... }
     if (ruta === "/mobile/asesor/conversations") {
@@ -393,22 +418,45 @@ t("sin estado en el listado, se deriva del tipo y no queda todo pendiente", asyn
   if (vs[0].lineas.length !== 1) throw new Error("no leyó las líneas");
 });
 
-t("las conversaciones salen del sobre { ok, conversations }", async () => {
+t("un administrador ve todas: se usa el endpoint que respeta el rol", async () => {
   const cs = await httpRepo.chats.list();
-  if (cs.length !== 1) throw new Error("conversaciones: " + cs.length);
+  // El de asesor devuelve una sola; el que respeta el rol, las dos.
+  if (cs.length !== 2) throw new Error("conversaciones: " + cs.length);
   if (cs[0].nombre !== "Lucia Benitez") throw new Error("nombre: " + cs[0].nombre);
   if (cs[0].noLeidos !== 2) throw new Error("no leidos: " + cs[0].noLeidos);
 });
 
+t("si ese endpoint no autentica, cae en el de asesor en vez de romperse", async () => {
+  // Es lo que pasa hoy en los ERP sin el arreglo de una linea.
+  inboxCaido = true;
+  try {
+    const cs = await httpRepo.chats.list();
+    if (cs.length !== 1) throw new Error("no cayo en el respaldo: " + cs.length);
+    const d = await httpRepo.chats.get("c1");
+    if (d.msgs.length !== 2) throw new Error("mensajes: " + d.msgs.length);
+  } finally {
+    inboxCaido = false;
+  }
+});
+
 t("sin contacto cargado, la conversacion se nombra por el telefono", async () => {
-  const d = await httpRepo.chats.get("sin-nombre");
-  if (d.nombre !== "0981 555 123") throw new Error("nombre: " + d.nombre);
+  // El nombre sale del listado: el endpoint de mensajes no trae el contacto.
+  inboxCaido = true;
+  try {
+    const d = await httpRepo.chats.get("sin-nombre");
+    if (d.nombre !== "0981 555 123") throw new Error("nombre: " + d.nombre);
+  } finally {
+    inboxCaido = false;
+  }
 });
 
 t("quien no esta en ninguna cola no ve una lista vacia, ve por que", async () => {
   // "No tenes conversaciones" y "no atendes chats" son cosas distintas: con la
   // primera alguien se queda esperando un mensaje que nunca le iba a llegar.
   const { SinCola } = await import("../src/lib/repo/http.ts");
+  // Hace falta que los dos caminos digan lo suyo: el que respeta el rol sin
+  // autenticar, y el de asesor avisando que no hay cola.
+  inboxCaido = true;
   fueraDeCola = true;
   try {
     let err = null;
@@ -416,13 +464,15 @@ t("quien no esta en ninguna cola no ve una lista vacia, ve por que", async () =>
     if (!(err instanceof SinCola)) throw new Error("no avisó que está fuera de cola: " + err);
   } finally {
     fueraDeCola = false;
+    inboxCaido = false;
   }
-  // Y con cola, la lista sale normal.
-  if ((await httpRepo.chats.list()).length !== 1) throw new Error("con cola tenía que listar");
+  // Y con el endpoint que respeta el rol, la lista sale completa.
+  if ((await httpRepo.chats.list()).length !== 2) throw new Error("tenía que listar las dos");
 });
 
 t("al abrir una conversacion llegan sus mensajes, con el tick del propio", async () => {
   const d = await httpRepo.chats.get("c1");
+  void d;
   if (!d) throw new Error("no trajo la conversacion");
   // El listado sólo trae la vista previa: sin esto se veria un solo globo.
   if (d.msgs.length !== 2) throw new Error("mensajes: " + d.msgs.length);
