@@ -56,6 +56,20 @@ interface TileProps {
 /** Cuánto tiene que durar el toque para que la animación se alcance a ver. */
 const MINIMO_VISIBLE = 190;
 
+/**
+ * El mismo color del texto, pero translúcido.
+ *
+ * Sirve para el adorno del fondo de cada baldosa: así se aclara sobre las
+ * oscuras y se oscurece sobre las claras, sin tener que elegir un color
+ * aparte para cada una. `over` ya resuelve esa pregunta.
+ */
+function velo(hex: string, alfa: number): string {
+  const h = hex.replace("#", "");
+  const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${alfa})`;
+}
+
 function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileProps) {
   const { s, set } = useApp();
   const def = MODULES[k];
@@ -115,6 +129,36 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
         overflow: "hidden",
       }}
     >
+      {/* Dos círculos grandes que se salen de la baldosa y quedan recortados por
+          ella: lo que se ve adentro son dos curvas suaves. Es decoración, así
+          que no recibe toques y va debajo del contenido. */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: "-28%",
+          bottom: "-46%",
+          width: "92%",
+          aspectRatio: "1",
+          borderRadius: "50%",
+          background: velo(def.over, 0.09),
+          pointerEvents: "none",
+        }}
+      />
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: "-34%",
+          top: "-38%",
+          width: "78%",
+          aspectRatio: "1",
+          borderRadius: "50%",
+          background: velo(def.over, 0.06),
+          pointerEvents: "none",
+        }}
+      />
+
       {/* The dot grows to fill the tile on hover, revealing the arrow label. */}
       <div
         style={{
@@ -128,7 +172,22 @@ function Tile({ k, label, icon, onClick, nota, labelSize = 15, gap = 10 }: TileP
         }}
       />
       <div style={{ ...BASE, ...(on ? { transform: "translateX(44px)", opacity: 0 } : { transform: "none", opacity: 1 }) }}>
-        {icon}
+        {/* El ícono va dentro de un disco del mismo velo que el fondo: lo
+            despega de la baldosa y le da un punto de apoyo. */}
+        <span
+          style={{
+            width: 46,
+            height: 46,
+            borderRadius: "50%",
+            background: velo(def.over, 0.14),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "0 0 auto",
+          }}
+        >
+          {icon}
+        </span>
         <span style={{ font: `600 ${labelSize}px/1.1 var(--font-barlow),Barlow,sans-serif` }}>{label}</span>
         {nota && <span style={{ font: "400 12px/1 var(--font-barlow),Barlow,sans-serif", opacity: 0.7 }}>{nota}</span>}
       </div>
