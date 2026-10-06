@@ -266,9 +266,6 @@ export interface AppState {
   /* Configuración */
   auto: boolean;
   push: boolean;
-  stock: boolean;
-  resumen: boolean;
-  sonido: boolean;
   /** Mientras se pide el permiso y el token al sistema. */
   pushOcupado: boolean;
   /** Por qué no se pudieron activar los avisos. Vacío = sin problema. */
@@ -464,9 +461,6 @@ export const initialState: AppState = {
   // Arranca apagado: activarlo pide permiso al sistema, y el sistema sólo
   // pregunta una vez. Mostrarlo encendido sin haber pedido nada sería mentir.
   push: false,
-  stock: true,
-  resumen: false,
-  sonido: true,
   pushOcupado: false,
   pushAviso: "",
 

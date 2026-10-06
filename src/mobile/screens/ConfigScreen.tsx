@@ -34,16 +34,6 @@ export function ConfigScreen() {
   const { s, t, set, cerrarSesion } = useApp();
 
   /** A labelled switch row. */
-  const row = (titulo: string, detalle: string, on: boolean, key: keyof typeof s) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-      <div>
-        <div style={{ font: "600 14.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{titulo}</div>
-        <div style={{ font: "400 12px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>{detalle}</div>
-      </div>
-      <Toggle on={on} onToggle={() => set({ [key]: !on } as Partial<typeof s>)} label={titulo} />
-    </div>
-  );
-
   const claro = s.theme === "claro";
 
   /**
@@ -230,8 +220,12 @@ export function ConfigScreen() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
               <div style={{ font: "600 14.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>Avisos push</div>
+              {/* Decía "Ventas, cobros y entregas", que daba a entender que
+                  había categorías y que los mensajes no entraban. No hay
+                  filtro: el interruptor anota este teléfono y punto, y qué
+                  avisos manda lo decide el ERP de la empresa. */}
               <div style={{ font: "400 12px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
-                {s.pushOcupado ? "Pidiendo permiso…" : "Ventas, cobros y entregas"}
+                {s.pushOcupado ? "Pidiendo permiso…" : "Mensajes nuevos y avisos del sistema"}
               </div>
             </div>
             <Toggle on={s.push} onToggle={cambiarPush} label="Avisos push" />
@@ -241,9 +235,14 @@ export function ConfigScreen() {
               {s.pushAviso}
             </Notice>
           ) : null}
-          {row("Stock bajo", "Alertar bajo el mínimo", s.stock, "stock")}
-          {row("Resumen diario", "Todos los días a las 19:00", s.resumen, "resumen")}
-          {row("Sonido y vibración", "Al recibir un aviso", s.sonido, "sonido")}
+          {/* "Stock bajo" y "Resumen diario" estaban acá y no hacían nada:
+              prendían un estado que ninguna parte del código leía. Un
+              interruptor que promete un aviso que nunca llega es peor que no
+              tenerlo, porque alguien se queda esperando. Vuelven cuando el
+              aviso exista de verdad. */}
+          {/* "Sonido y vibración" también se va: no lo leía nadie, y además no
+              es nuestro para controlar — el sonido de una notificación lo
+              maneja Android por canal, desde los ajustes del teléfono. */}
         </Card>
 
         <Card gap={14}>
