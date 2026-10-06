@@ -801,7 +801,9 @@ function aMensaje(m: MensajeErp): ChatMsg {
   }
 
   if (tipo.includes("audio") || tipo.includes("voice")) {
-    if (adj.url) return { ...base, archivo: { tag: "AUD", nombre: adj.nombre || "Nota de voz", peso: "Audio", url: adj.url } };
+    // Con el archivo va el reproductor. La duración no viene en la respuesta:
+    // la pone la pantalla cuando el audio termina de cargar.
+    if (adj.url) return { ...base, audio: "", audioUrl: adj.url };
     return { ...base, texto: epigrafe || "🎤 Audio" };
   }
 

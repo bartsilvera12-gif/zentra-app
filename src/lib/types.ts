@@ -174,6 +174,8 @@ export interface ChatMsg {
   sticker?: string;
   /** Duration label, e.g. "0:07". Present only on voice notes. */
   audio?: string;
+  /** El archivo de la nota de voz. Sin esto la onda se dibuja pero no suena. */
+  audioUrl?: string;
   /** Foto recibida o enviada: URL servida por el ERP. */
   imagen?: string;
   /** Texto que vino junto a la foto o el documento. */

@@ -201,7 +201,8 @@ export const CHATS: Chat[] = [
  * tipografía (≡ ◉ ▣ ♪ ◈ ☻ ⛁ ₲) sobre ocho fondos distintos, cada uno con su
  * peso y su centrado: ninguno parecía del mismo juego.
  *
- * "Pedido" se sacó: armaba un pedido de ejemplo con cifras inventadas.
+ * "Pedido" y "Contacto" se sacaron: el primero armaba un pedido de ejemplo
+ * con cifras inventadas, y el segundo no estaba implementado.
  */
 export const ADJUNTOS: Adjunto[] = [
   { key: "documento", label: "Documento", tag: "PDF", nombre: "Lista de precios.pdf", peso: "PDF · 248 KB" },
@@ -209,7 +210,6 @@ export const ADJUNTOS: Adjunto[] = [
   { key: "galeria", label: "Galería", tag: "JPG", nombre: "Comprobante.jpg", peso: "Imagen · 860 KB" },
   { key: "audioarch", label: "Audio", tag: "MP3", nombre: "Nota de voz.mp3", peso: "Audio · 420 KB" },
   { key: "ubicacion", label: "Ubicación", tag: "MAP", nombre: "Depósito central", peso: "Asunción · Py" },
-  { key: "contacto", label: "Contacto", tag: "VCF", nombre: "Ulises Gómez.vcf", peso: "Contacto · 2 KB" },
 ];
 
 export const EMOJIS = ["😀", "😅", "😂", "🙂", "😉", "😍", "🤝", "👍", "👌", "🙏", "💪", "🔥", "✅", "❌", "⏰", "📦", "🚚", "🧾", "💰", "📈", "🍺", "🥤", "💧", "🧊"];

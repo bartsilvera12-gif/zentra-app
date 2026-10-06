@@ -6,12 +6,13 @@ import { VERSION } from "@/lib/data";
 import { pushPreferido, reanudarPush } from "@/lib/push";
 import { registrar, repo, usaSupabase } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
+import { MARCA } from "@/lib/theme";
 import { StatusBar } from "../layout/StatusBar";
 import { Field } from "../ui/primitives";
 import { RegistroScreen } from "./RegistroScreen";
 
 export function LoginScreen() {
-  const { s, set, elegirInstalacion } = useApp();
+  const { s, set, t, elegirInstalacion } = useApp();
 
   /*
    * La animación del logo se dispara cuando hay algo que mirar, no al montar.
@@ -187,7 +188,9 @@ export function LoginScreen() {
 
       <div
         style={{
-          background: "#f3f5f8",
+          // Del tema, no fijo en claro: los campos ya venían del tema, así que
+          // en oscuro quedaban campos oscuros sobre un panel claro.
+          background: s.theme === "oscuro" ? t.bg : "#f3f5f8",
           borderRadius: "26px 26px 0 0",
           padding: "26px 24px 22px",
           display: "flex",
@@ -195,7 +198,7 @@ export function LoginScreen() {
           gap: 14,
         }}
       >
-        <div style={{ font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#023047" }}>Iniciar sesión</div>
+        <div style={{ font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif", color: s.theme === "oscuro" ? t.ink : "#023047" }}>Iniciar sesión</div>
 
         <Field
           label="Usuario"
@@ -247,7 +250,7 @@ export function LoginScreen() {
                 font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
                 letterSpacing: ".12em",
                 textTransform: "uppercase",
-                color: "#65707f",
+                color: t.ink2,
               }}
             >
               Código de empresa
@@ -282,18 +285,20 @@ export function LoginScreen() {
               spellCheck={false}
               style={{
                 height: 46,
-                border: "1px solid #d6dbe3",
+                border: `1px solid ${s.theme === "oscuro" ? t.border : "#d6dbe3"}`,
                 borderRadius: 12,
-                background: "#fff",
+                // Era "#fff" fijo: en oscuro quedaba un campo blanco al lado de
+                // dos oscuros, que es lo que más saltaba a la vista.
+                background: t.card,
                 padding: "0 14px",
                 fontSize: 15,
-                color: "#141a2e",
+                color: t.ink,
                 outline: "none",
                 letterSpacing: ".06em",
               }}
             />
             {waSoporte && (
-              <span style={{ font: "400 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#65707f" }}>
+              <span style={{ font: "400 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
                 ¿No tenés tu código?{" "}
                 {/* target/rel para que en el WebView del APK lo tome WhatsApp y no
                     se abra dentro de la propia app. */}
@@ -334,7 +339,9 @@ export function LoginScreen() {
             height: 52,
             border: 0,
             borderRadius: 14,
-            background: ocupado ? "#5C7A85" : "#023047",
+            // En oscuro el azul de marca queda casi al ras del fondo: se usa
+            // el tono claro de la misma paleta para que el botón se vea.
+            background: ocupado ? "#5C7A85" : s.theme === "oscuro" ? MARCA.headerSuave : "#023047",
             color: "#fff",
             font: "600 16px/1 var(--font-barlow),Barlow,sans-serif",
             letterSpacing: ".04em",
@@ -359,7 +366,7 @@ export function LoginScreen() {
           >
             ¿Olvidé mi contraseña?
           </button>
-          <span style={{ font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: "#65707f" }}>{VERSION}</span>
+          <span style={{ font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>{VERSION}</span>
         </div>
 
         {/* Crear cuenta sólo tiene sentido en la instalación pública: en la de un

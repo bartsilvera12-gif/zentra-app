@@ -5,7 +5,6 @@ import { ADJUNTOS, CHATS, EMOJIS, GIFS, STICKERS } from "@/lib/data";
 import {
   IconAudio,
   IconCamara,
-  IconContacto,
   IconDocumento,
   IconGaleria,
   IconUbicacion,
@@ -15,9 +14,9 @@ import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Grabador } from "@/lib/grabador";
-import type { ChatMsg } from "@/lib/types";
+import type { ChatMsg, ThemeTokens } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
@@ -26,6 +25,135 @@ import { Badge, ChipRow, EmptyState, ScrollBody, SearchInput } from "../ui/primi
 const VIOLETA = MARCA.header;
 const VIOLETA_INK = MARCA.headerSuave;
 
+/**
+ * Una nota de voz que se puede escuchar.
+ *
+ * Antes era un dibujo: una onda fija y un `▶` que no hacía nada, porque el
+ * archivo nunca llegaba a la pantalla. Ahora la onda es la barra de progreso y
+ * se puede tocar para moverse dentro del audio.
+ *
+ * `etiqueta` es la duración de las notas que graba uno mismo, que ya se conoce
+ * antes de mandarlas. Para las que llegan del ERP no viene en la respuesta: se
+ * lee del archivo cuando el navegador la sabe, y mientras tanto no se muestra
+ * nada en vez de un `0:00` que miente.
+ */
+function NotaDeVoz({
+  url,
+  etiqueta,
+  mio,
+  t,
+  oscuro,
+}: {
+  url?: string;
+  etiqueta?: string;
+  mio: boolean;
+  t: ThemeTokens;
+  oscuro: boolean;
+}) {
+  const ref = useRef<HTMLAudioElement | null>(null);
+  const [sonando, setSonando] = useState(false);
+  const [pos, setPos] = useState(0);
+  const [dur, setDur] = useState(0);
+
+  // Un webm sin índice puede declarar duración `Infinity` hasta que termina de
+  // leerse. Mostrar eso es peor que no mostrar nada.
+  const duracionUtil = Number.isFinite(dur) && dur > 0 ? dur : 0;
+  const avance = duracionUtil > 0 ? Math.min(pos / duracionUtil, 1) : 0;
+  const barras = ondaArr(14);
+
+  const alternar = () => {
+    const a = ref.current;
+    if (!a) return;
+    if (a.paused) {
+      void a.play().catch(() => setSonando(false));
+    } else {
+      a.pause();
+    }
+  };
+
+  const tiempo = duracionUtil > 0 ? fmtSeg(Math.round(sonando || pos > 0 ? pos : duracionUtil)) : etiqueta || "";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 170 }}>
+      {url && (
+        <audio
+          ref={ref}
+          src={url}
+          preload="metadata"
+          onLoadedMetadata={(e) => setDur(e.currentTarget.duration)}
+          onDurationChange={(e) => setDur(e.currentTarget.duration)}
+          onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)}
+          onPlay={() => setSonando(true)}
+          onPause={() => setSonando(false)}
+          onEnded={() => {
+            setSonando(false);
+            setPos(0);
+          }}
+        />
+      )}
+      <button
+        onClick={alternar}
+        disabled={!url}
+        aria-label={sonando ? "Pausar" : "Escuchar"}
+        style={{
+          width: 30,
+          height: 30,
+          flex: "0 0 auto",
+          border: 0,
+          borderRadius: "50%",
+          background: mio ? VIOLETA_INK : "#6E97A8",
+          color: "#fff",
+          cursor: url ? "pointer" : "default",
+          font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
+        }}
+      >
+        {sonando ? "❚❚" : "▶"}
+      </button>
+      <span
+        onClick={(e) => {
+          const a = ref.current;
+          if (!a || duracionUtil <= 0) return;
+          const caja = e.currentTarget.getBoundingClientRect();
+          a.currentTime = duracionUtil * Math.min(Math.max((e.clientX - caja.left) / caja.width, 0), 1);
+        }}
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 2,
+          flex: 1,
+          height: 20,
+          cursor: url && duracionUtil > 0 ? "pointer" : "default",
+        }}
+      >
+        {barras.map((h, j) => (
+          <span
+            key={j}
+            style={{
+              flex: 1,
+              height: h,
+              borderRadius: 1,
+              // Lo ya escuchado queda marcado; el resto, apagado.
+              background:
+                j / barras.length < avance
+                  ? mio
+                    ? "#17384A"
+                    : MARCA.acento
+                  : mio
+                    ? "#6E97A8"
+                    : oscuro
+                      ? "#3E5A6B"
+                      : "#AFD0DE",
+            }}
+          />
+        ))}
+      </span>
+      <span style={{ font: "500 11px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3, flex: "0 0 auto" }}>
+        {tiempo}
+      </span>
+    </div>
+  );
+}
+
 /** El dibujo de cada adjunto, por `key`. Los datos ya no traen el ícono. */
 const ICONO_ADJUNTO: Record<string, React.ReactNode> = {
   documento: <IconDocumento />,
@@ -33,7 +161,6 @@ const ICONO_ADJUNTO: Record<string, React.ReactNode> = {
   galeria: <IconGaleria />,
   audioarch: <IconAudio />,
   ubicacion: <IconUbicacion />,
-  contacto: <IconContacto />,
 };
 
 export function ConversacionesScreen() {
@@ -317,41 +444,14 @@ export function ConversacionesScreen() {
             </span>
           )}
 
-          {m.audio && (
-            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 150 }}>
-              <span
-                style={{
-                  width: 28,
-                  height: 28,
-                  flex: "0 0 auto",
-                  borderRadius: "50%",
-                  background: mio ? VIOLETA_INK : "#6E97A8",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
-                }}
-              >
-                ▶
-              </span>
-              <span style={{ display: "flex", alignItems: "flex-end", gap: 2, flex: 1, height: 20 }}>
-                {ondaArr(14).map((h, j) => (
-                  <span
-                    key={j}
-                    style={{
-                      flex: 1,
-                      height: h,
-                      borderRadius: 1,
-                      background: mio ? "#6E97A8" : s.theme === "oscuro" ? "#3E5A6B" : "#AFD0DE",
-                    }}
-                  />
-                ))}
-              </span>
-              <span style={{ font: "500 10.5px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
-                {m.audio}
-              </span>
-            </div>
+          {(m.audio || m.audioUrl) && (
+            <NotaDeVoz
+              url={m.audioUrl}
+              etiqueta={m.audio}
+              mio={mio}
+              t={t}
+              oscuro={s.theme === "oscuro"}
+            />
           )}
 
           {m.archivo &&
@@ -1128,14 +1228,17 @@ export function ConversacionesScreen() {
                       border: 0,
                       borderRadius: 12,
                       cursor: "pointer",
-                      fontSize: 16,
-                      lineHeight: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                       background: MARCA.headerSuave,
                       color: "#fff",
                     }}
                     aria-label="Grabar nota de voz"
                   >
-                    ♪
+                    {/* Un micrófono, no una nota musical: lo que hace el botón
+                        es grabar la voz, no reproducir música. */}
+                    <IconAudio size={21} />
                   </button>
                 )}
               </>
