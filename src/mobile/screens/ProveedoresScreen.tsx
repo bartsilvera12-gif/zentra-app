@@ -9,6 +9,7 @@ import { gs, norm, plural } from "@/lib/format";
 import type { Proveedor } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { motivoBloqueo } from "@/lib/planes";
+import { nombreValido, nuevoProveedor } from "@/lib/proveedor";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -180,27 +181,26 @@ export function ProveedoresScreen() {
   };
 
   const guardar = () => {
-    const nombre = s.pfNombre.trim();
-    if (nombre.length < 2) {
+    if (!nombreValido(s.pfNombre)) {
       set({ pfError: true });
       return;
     }
-    const id = "pvn" + (s.vwExtra.length + 1);
-    const nuevo: Proveedor = {
-      id,
-      nombre,
-      doc: s.pfDoc.trim() ? "RUC " + s.pfDoc.trim() : "Sin RUC",
-      condicion: s.pfCredito ? `Crédito ${s.pfPlazo} días` : "Contado",
-      rubro: s.pfRubro.trim() || "Sin rubro",
-      ciudad: s.pfCiudad.trim() || "Sin ciudad",
-      contacto: s.pfContacto.trim() || nombre,
-      tel: s.pfTel.trim() || "—",
-      email: s.pfEmail.trim() || "—",
-      estado: "Activo",
-      entrega: Number(s.pfEntrega) || 1,
-      chatId: null,
-    };
-    set({ vwExtra: [nuevo].concat(s.vwExtra), vwSub: "detalle", vwSel: id });
+    const nuevo = nuevoProveedor(
+      {
+        nombre: s.pfNombre,
+        doc: s.pfDoc,
+        rubro: s.pfRubro,
+        ciudad: s.pfCiudad,
+        contacto: s.pfContacto,
+        tel: s.pfTel,
+        email: s.pfEmail,
+        credito: s.pfCredito,
+        plazo: s.pfPlazo,
+        entrega: s.pfEntrega,
+      },
+      s.vwExtra,
+    );
+    set({ vwExtra: [nuevo].concat(s.vwExtra), vwSub: "detalle", vwSel: nuevo.id });
   };
 
   const topBg = s.vwSub === "lista" ? t.card : HEADER;

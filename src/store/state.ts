@@ -126,6 +126,12 @@ export interface AppState {
   kTimbrado: string;
   kAdjunto: boolean;
   kMargen: number;
+  /**
+   * El paso de proveedor con el formulario de alta abierto, en vez de la lista.
+   * No es una pantalla aparte a propósito: salir de la compra para cargar un
+   * proveedor y volver a empezar es justo lo que hacía perder la compra.
+   */
+  kProvNuevo: boolean;
   kUltimo: string;
 
   /* Proveedores */
@@ -354,6 +360,7 @@ export const initialState: AppState = {
   kTimbrado: "",
   kAdjunto: false,
   kMargen: 30,
+  kProvNuevo: false,
   kUltimo: "COMP-000148",
 
   vwSub: "lista",

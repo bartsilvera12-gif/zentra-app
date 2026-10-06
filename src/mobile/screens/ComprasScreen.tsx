@@ -11,6 +11,7 @@ import { gs, norm } from "@/lib/format";
 import type { Compra, CompraLinea, Iva } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { motivoBloqueo } from "@/lib/planes";
+import { nombreValido, nuevoProveedor } from "@/lib/proveedor";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -34,6 +35,8 @@ export function ComprasScreen() {
   const { s, t, set, kQty, kRotarIva, plan } = useApp();
   // Comprar en dólares es de Max; Emprendedor compra sólo en guaraníes.
   const sinDolares = motivoBloqueo("compras.dolares", plan());
+  // Cargar un proveedor en el momento es de Max. Con ERP propio, también.
+  const sinAltaProv = motivoBloqueo("compras.nuevoProveedor", plan());
 
   // Las tres listas salen del ERP. Las compras son lo que se muestra; los
   // proveedores y el catálogo hacen falta para cargar una nueva.
@@ -118,6 +121,7 @@ export function ComprasScreen() {
       kTimbrado: "",
       kAdjunto: false,
       kMargen: 30,
+      kProvNuevo: false,
     });
 
   const agregarLinea = () => {
@@ -133,7 +137,64 @@ export function ComprasScreen() {
     set({ kLineas: s.kLineas.concat([linea]), kProd: null, kCant: "", kCosto: "", kQProd: "" });
   };
 
+  /**
+   * Abre el alta sin salir de la compra.
+   *
+   * Antes, si el proveedor no estaba cargado, había que abandonar la compra,
+   * ir a Proveedores, cargarlo y empezar la compra de nuevo. Con una factura
+   * en la mano eso se hace una vez y la segunda se carga la compra con el
+   * proveedor equivocado.
+   */
+  const abrirAltaProv = () => {
+    if (sinAltaProv) return set({ avisoPlan: sinAltaProv });
+    set({
+      kProvNuevo: true,
+      pfNombre: s.kQProv.trim(),
+      pfDoc: "",
+      pfRubro: "",
+      pfCiudad: "",
+      pfContacto: "",
+      pfTel: "",
+      pfEmail: "",
+      pfCredito: false,
+      pfPlazo: 30,
+      pfEntrega: "",
+      pfError: false,
+    });
+  };
+
+  /**
+   * Lo guarda y lo deja elegido, que es lo único que se quería.
+   *
+   * Pide sólo el nombre. Lo demás —RUC, rubro, ciudad— se completa después en
+   * la ficha: pedirlo todo acá sería frenar la compra para llenar un
+   * formulario, y el que está cargando una factura no lo tiene a mano.
+   */
+  const guardarAltaProv = () => {
+    if (!nombreValido(s.pfNombre)) return set({ pfError: true });
+    const p = nuevoProveedor(
+      {
+        nombre: s.pfNombre,
+        doc: s.pfDoc,
+        contacto: s.pfContacto,
+        tel: s.pfTel,
+        credito: s.pfCredito,
+        plazo: s.pfPlazo,
+      },
+      s.vwExtra,
+    );
+    set({
+      vwExtra: [p].concat(s.vwExtra),
+      kProv: p.id,
+      kPago: s.pfCredito ? "Crédito" : "Contado",
+      kProvNuevo: false,
+      kQProv: "",
+    });
+  };
+
   const back = () => {
+    // Atrás con el alta abierta cierra el alta, no la compra.
+    if (s.kProvNuevo) return set({ kProvNuevo: false, pfError: false });
     if (s.kPaso === "proveedor" || s.kPaso === "listo") return set({ kSub: "lista" });
     set({ kPaso: PASOS_COMPRA[Math.max(0, kIdx - 1)]!.id as typeof s.kPaso });
   };
@@ -411,7 +472,96 @@ export function ComprasScreen() {
 
           <ScrollBody padding="14px" gap={12}>
             {/* Step 1 — supplier */}
-            {s.kPaso === "proveedor" && (
+            {s.kPaso === "proveedor" && s.kProvNuevo && (
+              <>
+                <Card gap={11}>
+                  <SectionLabel>Proveedor nuevo</SectionLabel>
+                  <FormField
+                    label="Nombre o razón social"
+                    value={s.pfNombre}
+                    onChange={(v) => set({ pfNombre: v, pfError: false })}
+                    placeholder="Distribuidora del Este S.A."
+                    required
+                  />
+                  <div style={{ display: "flex", gap: 9 }}>
+                    <FormField
+                      label="RUC"
+                      value={s.pfDoc}
+                      onChange={(v) => set({ pfDoc: v })}
+                      placeholder="80012345-6"
+                      inputMode="text"
+                      flex={1}
+                    />
+                    <FormField
+                      label="Teléfono"
+                      value={s.pfTel}
+                      onChange={(v) => set({ pfTel: v })}
+                      placeholder="0981 000 000"
+                      inputMode="tel"
+                      flex={1}
+                    />
+                  </div>
+                  <FormField
+                    label="Contacto"
+                    value={s.pfContacto}
+                    onChange={(v) => set({ pfContacto: v })}
+                    placeholder="Quién atiende"
+                  />
+                  <ChipRow
+                    chips={[false, true].map((cred) => ({
+                      label: cred ? `Crédito ${s.pfPlazo} días` : "Contado",
+                      bg: s.pfCredito === cred ? ORO : t.card,
+                      fg: s.pfCredito === cred ? "#ffffff" : t.ink2,
+                      border: s.pfCredito === cred ? ORO : t.border,
+                      pick: () => set({ pfCredito: cred }),
+                    }))}
+                  />
+                  {s.pfError && (
+                    <span style={{ font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#B0322F" }}>
+                      Poné el nombre del proveedor para poder guardarlo.
+                    </span>
+                  )}
+                  <span style={{ font: "400 11.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                    Con el nombre alcanza para seguir con la compra. El resto de la ficha se completa
+                    después en Proveedores.
+                  </span>
+                </Card>
+                <div style={{ display: "flex", gap: 9 }}>
+                  <button
+                    onClick={() => set({ kProvNuevo: false, pfError: false })}
+                    style={{
+                      flex: 1,
+                      height: 46,
+                      borderRadius: 12,
+                      cursor: "pointer",
+                      background: t.card,
+                      border: `1px solid ${t.border}`,
+                      color: t.ink2,
+                      font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={guardarAltaProv}
+                    style={{
+                      flex: 1.4,
+                      height: 46,
+                      border: 0,
+                      borderRadius: 12,
+                      cursor: "pointer",
+                      background: ORO,
+                      color: "#fff",
+                      font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                    }}
+                  >
+                    Guardar y usar
+                  </button>
+                </div>
+              </>
+            )}
+
+            {s.kPaso === "proveedor" && !s.kProvNuevo && (
               <>
                 <SearchInput
                   value={s.kQProv}
@@ -465,8 +615,29 @@ export function ComprasScreen() {
                   </button>
                 ))}
                 {provFiltrados.length === 0 && (
-                  <EmptyState titulo="Sin proveedores" detalle="Probá con otro término de búsqueda." />
+                  <EmptyState
+                    titulo="Sin proveedores"
+                    detalle={
+                      s.kQProv.trim()
+                        ? "No hay ninguno con ese nombre. Cargalo acá mismo."
+                        : "Todavía no hay proveedores cargados."
+                    }
+                  />
                 )}
+                <button
+                  onClick={abrirAltaProv}
+                  style={{
+                    height: 46,
+                    borderRadius: 12,
+                    cursor: "pointer",
+                    background: t.card,
+                    border: `1px dashed ${sinAltaProv ? t.border : ORO}`,
+                    color: sinAltaProv ? t.ink2 : ORO,
+                    font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                  }}
+                >
+                  + Cargar proveedor nuevo
+                </button>
               </>
             )}
 
@@ -1005,7 +1176,7 @@ export function ComprasScreen() {
             )}
           </ScrollBody>
 
-          {s.kPaso !== "listo" && (
+          {s.kPaso !== "listo" && !s.kProvNuevo && (
             <div
               style={{
                 padding: "11px 14px 13px",
@@ -1024,7 +1195,7 @@ export function ComprasScreen() {
                   <span style={{ font: "700 14px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{gs(totalNuevo)}</span>
                 </div>
               )}
-              {!puede && s.kPaso !== "proveedor" && (
+              {!puede && s.kPaso !== "proveedor" && !s.kProvNuevo && (
                 <div
                   style={{
                     borderRadius: 10,
