@@ -3,6 +3,7 @@
  * every figure, label and colour on screen matches the mock. Replace these with
  * real API calls when the backend lands; the screens only read them through the store.
  */
+import { config } from "./config";
 import type {
   Adjunto,
   Chat,
@@ -287,4 +288,5 @@ export const SOPORTE = [
 export const HOY_ISO = "2026-09-30";
 export const EMPRESA = "Distribuidora JM";
 export const USUARIO = { nombre: "Ulises Gómez", rol: "VENDEDOR", inicial: "U" };
-export const VERSION = "v 2.4.1";
+/** Una sola fuente: el número vive en `config`, acá sólo se le pone el prefijo. */
+export const VERSION = `v ${config.version}`;

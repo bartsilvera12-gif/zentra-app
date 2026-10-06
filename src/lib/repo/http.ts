@@ -1126,8 +1126,41 @@ export const httpRepo: Repo = {
     resumen: () => pendiente("reportes.resumen"),
   },
 
+  /**
+   * El token del teléfono, para que el ERP pueda mandar avisos.
+   *
+   * Esto faltaba y por eso los avisos nunca sonaron: la app pedía permiso, se
+   * registraba en Firebase y obtenía el token, y acá se perdía. El ERP tenía
+   * todo lo demás —la tabla, el envío por `firebase-admin`— pero ningún
+   * teléfono anotado al que mandarle.
+   *
+   * El nombre de los campos es el del ERP (`fcm_token`, no `token`): este
+   * archivo habla el idioma de la API, y el resto de la app el suyo.
+   */
   dispositivos: {
-    registrar: () => pendiente("dispositivos.registrar"),
-    baja: () => pendiente("dispositivos.baja"),
+    async registrar(input) {
+      await request("/cc/agent/device-token", {
+        method: "POST",
+        body: JSON.stringify({
+          fcm_token: input.token,
+          platform: input.plataforma,
+          // Para saber desde qué build llegó un token cuando algo no suene.
+          // El ERP lo recorta a 40, pero mandarlo ya corto evita depender de eso.
+          app_version: `${config.version}${config.build ? ` (${config.build})` : ""}`.slice(0, 40),
+        }),
+      });
+    },
+
+    /**
+     * Dar de baja no es opcional: si el token queda activo, el ERP le sigue
+     * mandando los avisos de esta empresa a un teléfono que cerró sesión. En
+     * uno compartido, eso es que la próxima persona lea lo que no le toca.
+     */
+    async baja(token) {
+      await request("/cc/agent/device-token/deactivate", {
+        method: "POST",
+        body: JSON.stringify({ fcm_token: token }),
+      });
+    },
   },
 };

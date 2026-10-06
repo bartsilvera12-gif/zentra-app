@@ -79,6 +79,13 @@ export const config = {
    * arreglado en el build siguiente.
    */
   build: (process.env.NEXT_PUBLIC_BUILD_SHA || "").slice(0, 7),
+
+  /**
+   * La versión que se muestra al usuario. Va acá y no en `data.ts`, que son los
+   * datos de ejemplo: el cliente del ERP la manda al registrar el teléfono para
+   * las notificaciones, y no tiene por qué importar nada del prototipo para eso.
+   */
+  version: "2.4.1",
 } as const;
 
 /**
