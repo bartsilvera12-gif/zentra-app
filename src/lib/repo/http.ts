@@ -1157,6 +1157,7 @@ export const httpRepo: Repo = {
           stock: inv.stock,
           iva: inv.iva,
           sku: inv.sku,
+          precioMayorista: inv.precioMayorista ?? null,
         };
       });
     },

@@ -651,6 +651,11 @@ export function Stepper({ pasos }: { pasos: PasoSpec[] }) {
  * page background rather than the card. Distinct from `Field`, which the auth
  * screens use at 46px.
  */
+/**
+ * `lista` conecta el campo a un `<datalist>`: sugiere lo que ya existe sin
+ * impedir escribir algo nuevo. Es lo que hace que una categoría se reutilice
+ * en vez de que cada uno escriba su variante.
+ */
 export function FormField({
   label,
   value,
@@ -660,6 +665,7 @@ export function FormField({
   inputMode,
   required = false,
   flex,
+  lista,
 }: {
   label: string;
   value: string;
@@ -669,6 +675,7 @@ export function FormField({
   inputMode?: "numeric" | "decimal" | "text" | "email" | "tel";
   required?: boolean;
   flex?: number;
+  lista?: string;
 }) {
   const { t } = useApp();
   return (
@@ -683,6 +690,7 @@ export function FormField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        list={lista}
         style={{
           height: 44,
           borderRadius: 11,

@@ -9,6 +9,7 @@ import { Cargando, Falla } from "../ui/Estado";
 import { ivaContenido } from "@/lib/calc";
 import { gs, norm } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
+import { precioPara } from "@/lib/precios";
 import { motivoBloqueo } from "@/lib/planes";
 import { StatusBar } from "../layout/StatusBar";
 import { WizardSteps } from "../ui/WizardSteps";
@@ -32,8 +33,10 @@ export function VentaScreen() {
     const q = s.vCart[pr.id]!;
     const ivaTipo = s.vIva[pr.id] || "10%";
     const rate = ivaTipo === "10%" ? 0.1 : ivaTipo === "5%" ? 0.05 : 0;
-    const tot = q * pr.precio;
-    return { id: pr.id, nombre: pr.nombre, qty: q, precio: pr.precio, total: tot, ivaTipo, iva: ivaContenido(tot, rate) };
+    // El precio sale de la lista del cliente, no del producto a secas.
+    const precio = precioPara(pr, cli);
+    const tot = q * precio;
+    return { id: pr.id, nombre: pr.nombre, qty: q, precio, total: tot, ivaTipo, iva: ivaContenido(tot, rate) };
   });
   const renglones = lineas.length;
   const total = lineas.reduce((a, l) => a + l.total, 0);
@@ -369,7 +372,18 @@ export function VentaScreen() {
                   <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                     <span style={{ font: "600 13.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{p.nombre}</span>
                     <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>Stock: {p.stock} un.</span>
-                    <span style={{ font: "700 13.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#04617A" }}>{gs(p.precio)}</span>
+                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                      <span style={{ font: "700 13.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#04617A" }}>
+                        {gs(precioPara(p, cli))}
+                      </span>
+                      {/* Cuando se cobra el mayorista conviene que se vea: si
+                          no, parece que el precio está mal cargado. */}
+                      {precioPara(p, cli) !== p.precio && (
+                        <span style={{ font: "600 9.5px/1 var(--font-barlow),Barlow,sans-serif", color: MARCA.acento, letterSpacing: ".06em" }}>
+                          MAYORISTA
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 7, flex: "0 0 auto" }}>
                     <button

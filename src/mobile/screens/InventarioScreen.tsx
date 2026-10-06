@@ -161,7 +161,7 @@ export function InventarioScreen() {
       deposito: "",
       iva: s.npIva,
       metodo: "CPP",
-      barras: "",
+      barras: s.npBarras.trim(),
     };
     // Opening stock is recorded as an ENTRADA so the ledger stays complete.
     const movs =
@@ -192,6 +192,17 @@ export function InventarioScreen() {
   const editarBloqueado = Boolean(motivoBloqueo("inventario.editar", plan()));
   // Los campos que sólo trae Max.
   const sinMax = Boolean(motivoBloqueo("inventario.mayorista", plan()));
+  const sinBarras = Boolean(motivoBloqueo("inventario.barras", plan()));
+  const sinMinimo = Boolean(motivoBloqueo("inventario.minimo", plan()));
+  const sinCategoria = Boolean(motivoBloqueo("inventario.categoria", plan()));
+
+  /**
+   * Las categorías que ya existen, para poder elegirlas en vez de escribirlas.
+   *
+   * Salen del propio inventario y no de una tabla aparte: no hace falta un
+   * catálogo para evitar que alguien escriba "bebidas" cuando ya hay "Bebidas".
+   */
+  const categorias = [...new Set(prods.map((p) => p.categoria).filter((c) => c && c !== "Sin categoría"))].sort();
 
   const editarProducto = (p: InvProducto) => {
     const motivo = motivoBloqueo("inventario.editar", plan());
@@ -209,6 +220,7 @@ export function InventarioScreen() {
       // El stock no se edita acá: se mueve con un ajuste, que deja rastro.
       npStock: "",
       npMinimo: String(p.minimo || ""),
+      npBarras: p.barras ?? "",
       npMayorista: p.precioMayorista ? String(p.precioMayorista) : "",
       npVencimiento: p.vencimiento ?? "",
       npError: false,
@@ -237,6 +249,7 @@ export function InventarioScreen() {
       iva: s.npIva,
       unidad: s.npUnidad,
       minimo: Number(s.npMinimo) || 0,
+      barras: s.npBarras.trim(),
       precioMayorista: s.npMayorista.trim() ? Number(s.npMayorista) : null,
       vencimiento: s.npVencimiento.trim() || null,
     };
@@ -369,6 +382,9 @@ export function InventarioScreen() {
                     npIva: "10%",
                     npStock: "",
                     npMinimo: "",
+                    npBarras: "",
+                    npMayorista: "",
+                    npVencimiento: "",
                     npError: false,
                       }),
                 bg: CIAN_CLARO,
@@ -813,12 +829,36 @@ export function InventarioScreen() {
               <div style={{ font: "400 11px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
                 Si dejás el SKU vacío se usa <strong style={{ fontWeight: 600 }}>{npSkuSugerido}</strong>.
               </div>
+              {!sinBarras && (
+                <FormField
+                  label="Código de barras"
+                  inputMode="numeric"
+                  value={s.npBarras}
+                  onChange={(v) => set({ npBarras: v.replace(/[^0-9]/g, "") })}
+                  placeholder="Opcional"
+                />
+              )}
+              {/* La categoría se elige de las que ya existen, y se puede
+                  escribir una nueva. Antes era texto libre a secas: cada
+                  persona escribía "Bebidas", "bebidas" y "Bebida", y la
+                  categoría dejaba de servir para agrupar. */}
               <FormField
                 label="Categoría"
                 value={s.npCategoria}
                 onChange={(v) => set({ npCategoria: v })}
                 placeholder="Bebidas"
+                lista="zt-categorias"
               />
+              <datalist id="zt-categorias">
+                {categorias.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              {sinCategoria && (
+                <div style={{ font: "400 11px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                  Crear una categoría nueva es de los planes pagos. Podés elegir una de las que ya hay.
+                </div>
+              )}
             </Card>
 
             <Card gap={12}>
@@ -951,14 +991,16 @@ export function InventarioScreen() {
                   onChange={(v) => set({ npStock: v.replace(/[^0-9.]/g, "") })}
                   placeholder="0"
                 />
-                <FormField
-                  label="Stock mínimo"
-                  flex={1}
-                  inputMode="decimal"
-                  value={s.npMinimo}
-                  onChange={(v) => set({ npMinimo: v.replace(/[^0-9.]/g, "") })}
-                  placeholder="12"
-                />
+                {!sinMinimo && (
+                  <FormField
+                    label="Stock mínimo"
+                    flex={1}
+                    inputMode="decimal"
+                    value={s.npMinimo}
+                    onChange={(v) => set({ npMinimo: v.replace(/[^0-9.]/g, "") })}
+                    placeholder="12"
+                  />
+                )}
               </div>
             </Card>
 

@@ -584,7 +584,14 @@ export const ventasRepo: VentasRepo = {
   async productos(params) {
     const prods = await inventarioRepo.list({ q: params?.q, filtro: "Todos" });
     return prods.map(
-      (p): Producto => ({ id: p.id, nombre: p.nombre, sku: p.sku, stock: p.stock, precio: p.precio }),
+      (p): Producto => ({
+        id: p.id,
+        nombre: p.nombre,
+        sku: p.sku,
+        stock: p.stock,
+        precio: p.precio,
+        precioMayorista: p.precioMayorista ?? null,
+      }),
     );
   },
 

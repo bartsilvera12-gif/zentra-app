@@ -57,6 +57,8 @@ export interface Producto {
   sku: string;
   stock: number;
   precio: number;
+  /** Precio por cantidad, si el producto lo tiene. */
+  precioMayorista?: number | null;
 }
 
 export interface VentaLinea {

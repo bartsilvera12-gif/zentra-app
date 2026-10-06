@@ -212,6 +212,7 @@ export interface AppState {
   /* Inventario */
   iSub: "lista" | "detalle" | "movs" | "ajuste" | "nuevo" | "editar";
   /** Precio mayorista y vencimiento: sólo en Max, y por eso opcionales. */
+  npBarras: string;
   npMayorista: string;
   npVencimiento: string;
   /** Mientras se guarda contra el backend, para no mandar dos veces. */
@@ -411,6 +412,7 @@ export const initialState: AppState = {
   xnQuery: "",
 
   iSub: "lista",
+  npBarras: "",
   npMayorista: "",
   npVencimiento: "",
   npGuardando: false,
