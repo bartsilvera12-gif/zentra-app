@@ -298,6 +298,12 @@ escribirJdk();
  * la app de cámara del sistema, que tiene su propio permiso. Declararlo acá
  * haría que Android se lo pida a nuestra app sin necesidad, y un permiso de
  * cámara que no se usa es una pregunta de más en la tienda.
+ *
+ * `POST_NOTIFICATIONS` tampoco está acá, y sí hace falta en Android 13+: lo
+ * declara el propio `@capacitor/local-notifications` en su manifiesto y el
+ * merge de Gradle lo trae al de la app. Repetirlo sería ruido. Si algún día se
+ * saca ese plugin, hay que agregarlo a mano o los avisos dejan de salir sin
+ * ningún error visible.
  */
 /**
  * Borra los íconos que trae la plantilla de Capacitor.

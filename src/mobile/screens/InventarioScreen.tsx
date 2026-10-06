@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 
 import { MARCA } from "@/lib/theme";
 import { MOTIVOS, MOVS, PESABLES, UNIDADES } from "@/lib/data";
@@ -12,6 +13,7 @@ import { gs, norm, num } from "@/lib/format";
 import type { InvProducto, Movimiento, MovTipo } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { cupoProductos, motivoBloqueo } from "@/lib/planes";
+import { avisarStockBajo } from "@/lib/avisos";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -194,6 +196,8 @@ export function InventarioScreen() {
   const sinMax = Boolean(motivoBloqueo("inventario.mayorista", plan()));
   const sinBarras = Boolean(motivoBloqueo("inventario.barras", plan()));
   const sinMinimo = Boolean(motivoBloqueo("inventario.minimo", plan()));
+  // El aviso va con el mismo permiso que el campo: sin mínimo no hay qué avisar.
+  const sinAvisoMinimo = sinMinimo;
   const sinCategoria = Boolean(motivoBloqueo("inventario.categoria", plan()));
 
   /**
@@ -203,6 +207,20 @@ export function InventarioScreen() {
    * catálogo para evitar que alguien escriba "bebidas" cuando ya hay "Bebidas".
    */
   const categorias = [...new Set(prods.map((p) => p.categoria).filter((c) => c && c !== "Sin categoría"))].sort();
+
+  /**
+   * Avisa cuando un producto cae bajo el mínimo.
+   *
+   * Corre al terminar de cargar el inventario, que es cuando hay datos frescos.
+   * Sólo avisa por lo que es novedad: si no, cada vez que se abre la pantalla
+   * saldría el mismo aviso y a la tercera nadie lo mira.
+   */
+  useEffect(() => {
+    if (cargando || error || sinAvisoMinimo) return;
+    void avisarStockBajo(prods);
+    // `prods` cambia de identidad en cada dibujo; lo que importa es el contenido.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargando, error, sinAvisoMinimo, prods.map((p) => `${p.id}:${p.stock}`).join()]);
 
   const editarProducto = (p: InvProducto) => {
     const motivo = motivoBloqueo("inventario.editar", plan());
