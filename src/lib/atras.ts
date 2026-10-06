@@ -6,9 +6,10 @@
  * gesto más usado que existe, así que la app se sentía rota.
  *
  * Lo que hace ahora, en orden:
- *   1. Si hay una subpantalla abierta (un detalle, un formulario), la cierra.
- *   2. Si no, vuelve al inicio.
- *   3. Desde el inicio, manda la app al fondo en vez de cerrarla, que es lo
+ *   1. Si hay una foto abierta a pantalla completa, la cierra.
+ *   2. Si hay una subpantalla abierta (un detalle, un formulario), la cierra.
+ *   3. Si no, vuelve al inicio.
+ *   4. Desde el inicio, manda la app al fondo en vez de cerrarla, que es lo
  *      que hace cualquier app de Android: volver a abrirla la encuentra donde
  *      estaba.
  *
@@ -31,6 +32,11 @@ export function decidirAtras(s: AppState): Parche | "fondo" {
   // Lo primero que cierra "atrás" es lo último que se abrió. Si el menú de la
   // cuenta está abierto y en cambio te saca de la pantalla, el gesto se siente
   // impredecible.
+  // El visor de fotos tapa toda la pantalla: es lo último que se abrió y lo
+  // primero que tiene que cerrar "atrás". Si no, el gesto sale del chat y el
+  // visor queda encima de la lista.
+  if (s.xVisor) return { xVisor: null };
+
   if (s.menuPerfil) return { menuPerfil: false };
 
   // Cada módulo con subpantallas vuelve a su lista antes de salir del módulo.

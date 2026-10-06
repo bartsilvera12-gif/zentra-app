@@ -170,6 +170,14 @@ export interface AppState {
   xGrab: boolean;
   xSeg: number;
   xSub: "lista" | "chat" | "nuevo";
+  /**
+   * La foto o el video abiertos a pantalla completa, si hay alguno.
+   *
+   * Vive acá y no adentro de la pantalla para que el botón "atrás" de Android
+   * lo pueda cerrar: `decidirAtras` sólo ve el estado, y si esto fuera local
+   * el gesto saldría del chat con el visor todavía abierto encima.
+   */
+  xVisor: { src: string; tipo: "foto" | "video" } | null;
   xQuery: string;
   /** Lo que dijo el ERP si un mensaje no se pudo enviar. */
   xEnvioError: string;
@@ -364,6 +372,7 @@ export const initialState: AppState = {
   xGrab: false,
   xSeg: 0,
   xSub: "lista",
+  xVisor: null,
   xQuery: "",
   xEnvioError: "",
   menuPerfil: false,

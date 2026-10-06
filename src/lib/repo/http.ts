@@ -695,6 +695,69 @@ function adjuntoDelErp(raw: Record<string, unknown> | null | undefined): {
   };
 }
 
+/** Las tres formas en que los proveedores anidan el mensaje dentro del sobre. */
+function raicesDelSobre(raw: Record<string, unknown> | null | undefined): Record<string, unknown>[] {
+  if (!raw) return [];
+  const salida: Record<string, unknown>[] = [];
+  for (const r of [raw.whatsappInboundMessage, raw.whatsappMessage, raw]) {
+    if (r && typeof r === "object" && !Array.isArray(r)) salida.push(r as Record<string, unknown>);
+  }
+  return salida;
+}
+
+/**
+ * El enlace original de WhatsApp, cuando el ERP todavía no rehosteó el archivo.
+ *
+ * `erp.public_url` es la copia buena, pero la pone una tarea que corre después:
+ * los mensajes recién llegados no la tienen, y sin esto se veían como un
+ * "[imagen]" de texto. Este enlace puede caducar, así que es el segundo intento
+ * y no el primero.
+ */
+function urlOriginal(raw: Record<string, unknown> | null | undefined): string | null {
+  for (const r of raicesDelSobre(raw)) {
+    for (const clave of ["image", "video", "audio", "document", "sticker"]) {
+      const media = r[clave];
+      if (!media || typeof media !== "object" || Array.isArray(media)) continue;
+      const link = (media as { link?: unknown }).link;
+      if (typeof link === "string" && /^https?:\/\//i.test(link.trim())) return link.trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Si el mensaje es un reenvío.
+ *
+ * WhatsApp lo marca en `context.forwarded`. No cambia el contenido, pero sí lo
+ * que significa: "me lo mandaron a mí" no es lo mismo que "esto lo escribí yo".
+ */
+function esReenviado(raw: Record<string, unknown> | null | undefined): boolean {
+  for (const r of raicesDelSobre(raw)) {
+    if (r.forwarded === true) return true;
+    const ctx = r.context;
+    if (ctx && typeof ctx === "object" && !Array.isArray(ctx)) {
+      const c = ctx as { forwarded?: unknown; frequently_forwarded?: unknown };
+      if (c.forwarded === true || c.frequently_forwarded === true) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * El ERP guarda un marcador en `content` cuando el mensaje es un adjunto:
+ * "[imagen]", "[documento] contrato.pdf", "[audio]", "[video]", "[sticker]".
+ *
+ * Eso es para la vista previa de la lista, no para el globo. Mostrarlo tal cual
+ * es lo que hacía que un chat con fotos se leyera como una lista de corchetes.
+ */
+const MARCADOR = /^\s*\[(imagen|image|documento|document|audio|video|sticker|reaction|revoke)\]\s*/i;
+
+function sinMarcador(texto: string | null | undefined): string | null {
+  if (!texto) return null;
+  const limpio = texto.replace(MARCADOR, "").trim();
+  return limpio || null;
+}
+
 /**
  * El emoji de una reacción.
  *
@@ -703,11 +766,8 @@ function adjuntoDelErp(raw: Record<string, unknown> | null | undefined): {
  * primera que tenga algo.
  */
 function emojiDeReaccion(raw: Record<string, unknown> | null | undefined): string | null {
-  if (!raw) return null;
-  const raices = [raw.whatsappInboundMessage, raw.whatsappMessage, raw];
-  for (const r of raices) {
-    if (!r || typeof r !== "object" || Array.isArray(r)) continue;
-    const reaccion = (r as Record<string, unknown>).reaction;
+  for (const r of raicesDelSobre(raw)) {
+    const reaccion = r.reaction;
     if (!reaccion || typeof reaccion !== "object" || Array.isArray(reaccion)) continue;
     const e = (reaccion as { emoji?: unknown }).emoji;
     if (typeof e === "string" && e.trim()) return e.trim();
@@ -773,57 +833,66 @@ function extensionDe(nombre: string): string {
 
 function aMensaje(m: MensajeErp): ChatMsg {
   const tipo = (m.message_type || "text").toLowerCase();
-  const base = { de: (m.from_me ? "yo" : "ellos") as "yo" | "ellos", hora: horaCorta(m.created_at) };
+  const base = {
+    de: (m.from_me ? "yo" : "ellos") as "yo" | "ellos",
+    hora: horaCorta(m.created_at),
+    ...(esReenviado(m.raw_payload) ? { reenviado: true } : {}),
+  };
 
   const adj = adjuntoDelErp(m.raw_payload);
-  const epigrafe = adj.epigrafe || (m.content?.trim() ? m.content.trim() : null);
+  // La copia del ERP primero; si la tarea que la hace todavía no corrió, el
+  // enlace original, que al menos muestra algo mientras tanto.
+  const url = adj.url || urlOriginal(m.raw_payload);
+  const epigrafe = adj.epigrafe || sinMarcador(m.content);
 
-  // Una reacción es un emoji sobre otro mensaje, no un mensaje. Si no se
-  // reconoce el emoji no se inventa un globo: se descarta, que es como se ve
-  // en WhatsApp cuando se quita la reacción.
+  // Una reacción es un emoji sobre otro mensaje, no un mensaje.
   if (tipo.includes("reaction")) {
-    const emoji = emojiDeReaccion(m.raw_payload) || (m.content || "").trim();
-    return { ...base, reaccion: emoji || "👍" };
+    const emoji = emojiDeReaccion(m.raw_payload) || sinMarcador(m.content) || "";
+    return { ...base, reaccion: emoji.trim() || "\u{1F44D}" };
   }
 
   if (tipo.includes("sticker")) {
-    // El sticker del ERP es una imagen de verdad; el de la app es un emoji. Se
-    // manda como imagen y la pantalla lo dibuja sin globo.
-    if (adj.url) return { ...base, imagen: adj.url, sticker: " " };
-    return { ...base, sticker: (m.content || "🙂").trim() };
+    // El sticker del ERP es una imagen; el de la app, un emoji. Sin imagen no se
+    // dibuja el "[sticker]" a 46px, que es lo que pasaba: un corchete gigante.
+    if (url) return { ...base, imagen: url, sticker: " " };
+    const suelto = sinMarcador(m.content);
+    return { ...base, sticker: suelto && suelto.length <= 4 ? suelto : "\u{1F642}" };
   }
 
   if (tipo.includes("image")) {
-    if (adj.url) return { ...base, imagen: adj.url, ...(epigrafe ? { epigrafe } : {}) };
-    // Sin la copia del ERP no hay nada que dibujar: se dice qué era en vez de
-    // dejar un globo vacío o una imagen rota.
-    return { ...base, texto: epigrafe || "📷 Foto" };
+    if (url) return { ...base, imagen: url, ...(epigrafe ? { epigrafe } : {}) };
+    return { ...base, texto: epigrafe || "\u{1F4F7} Foto" };
+  }
+
+  if (tipo.includes("video")) {
+    if (url) return { ...base, video: url, ...(epigrafe ? { epigrafe } : {}) };
+    return { ...base, texto: epigrafe || "\u{1F3AC} Video" };
   }
 
   if (tipo.includes("audio") || tipo.includes("voice")) {
     // Con el archivo va el reproductor. La duración no viene en la respuesta:
     // la pone la pantalla cuando el audio termina de cargar.
-    if (adj.url) return { ...base, audio: "", audioUrl: adj.url };
-    return { ...base, texto: epigrafe || "🎤 Audio" };
+    if (url) return { ...base, audio: "", audioUrl: url };
+    return { ...base, texto: epigrafe || "\u{1F3A4} Audio" };
   }
 
   if (tipo.includes("document")) {
     const nombre = adj.nombre || epigrafe || "Documento";
-    if (adj.url) {
+    if (url) {
       return {
         ...base,
-        archivo: { tag: extensionDe(nombre), nombre, peso: "Documento", url: adj.url },
+        archivo: { tag: extensionDe(nombre), nombre, peso: "Documento", url },
         ...(adj.epigrafe && adj.epigrafe !== nombre ? { epigrafe: adj.epigrafe } : {}),
       };
     }
-    return { ...base, texto: `📎 ${nombre}` };
+    return { ...base, texto: `\u{1F4CE} ${nombre}` };
   }
 
   return {
     ...base,
-    texto: m.content || "",
+    texto: sinMarcador(m.content) || "",
     ...(m.from_me
-      ? { tick: /read/i.test(m.whatsapp_delivery_status || "") ? "✓✓" : "✓" }
+      ? { tick: /read/i.test(m.whatsapp_delivery_status || "") ? "\u2713\u2713" : "\u2713" }
       : {}),
   };
 }

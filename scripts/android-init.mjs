@@ -384,6 +384,45 @@ if (existsSync(COPIA)) {
   console.log(`\nConfiguración de Firebase devuelta a ${GS}`);
 }
 
+/**
+ * Que lo que va a entrar al APK sea lo que se acaba de compilar.
+ *
+ * Capacitor copia `out/` a los assets del proyecto nativo. Si esa copia no pasó
+ * —porque `cap add` fallo, o porque alguien corrió Gradle sobre una carpeta
+ * `android/` vieja sin pasar por acá— el APK compila igual, sin un solo error,
+ * con el código de la vez anterior. Es la falla mas cara de todas: todo
+ * "funciona" y uno busca el problema en el lugar equivocado.
+ *
+ * El sha del build es la prueba: tiene que estar adentro de los assets.
+ */
+function verificarAssets() {
+  const dir = join("android", "app", "src", "main", "assets", "public");
+  if (!existsSync(dir)) {
+    console.log("\nERROR: Capacitor no dejó los assets web en el proyecto nativo.");
+    console.log(`Falta ${dir}. El APK saldría vacío o con lo de la corrida anterior.`);
+    process.exit(1);
+  }
+  if (!sha) return; // sin git no hay con qué comparar; el resto ya se verificó
+
+  const corto = sha.slice(0, 7);
+  const salida = execSync(
+    platform() === "win32"
+      ? `findstr /s /m /c:"${corto}" "${dir}\\*.js"`
+      : `grep -rl "${corto}" "${dir}" || true`,
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+  ).trim();
+
+  if (!salida) {
+    console.log(`\nERROR: los assets del proyecto nativo no tienen el build ${corto}.`);
+    console.log("Quedó una copia vieja: el APK tendría el código de antes.");
+    console.log("Borrá android/ y volvé a correr este script.");
+    process.exit(1);
+  }
+  console.log(`\nOK: los assets del APK son el build ${corto}.`);
+}
+
+verificarAssets();
+
 console.log(`
 Listo. Ahora:
 

@@ -59,6 +59,23 @@ t("cada módulo con subpantalla vuelve a su propia lista", () => {
   }
 });
 
+t("con una foto abierta, atrás cierra la foto y no sale del chat", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", xSub: "chat", xVisor: { src: "https://x/y.jpg", tipo: "foto" } }));
+  if (r === "fondo") throw new Error("se salió de la app");
+  if (r.xVisor !== null) throw new Error("no cerró el visor");
+  if (r.xSub !== undefined) throw new Error("además salió del chat");
+});
+
+t("sin foto abierta, atrás sí vuelve a la lista de conversaciones", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", xSub: "chat", xVisor: null }));
+  if (r === "fondo" || r.xSub !== "lista") throw new Error("no volvió a la lista");
+});
+
+t("la foto gana al menú de perfil: es lo que está más arriba", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", menuPerfil: true, xVisor: { src: "u", tipo: "foto" } }));
+  if (r === "fondo" || r.xVisor !== null) throw new Error("no cerró el visor primero");
+});
+
 let malas = 0;
 for (const [nombre, fn] of casos) {
   try { await fn(); console.log("  OK · " + nombre); }

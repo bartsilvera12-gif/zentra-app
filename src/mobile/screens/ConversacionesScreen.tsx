@@ -14,7 +14,7 @@ import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Grabador } from "@/lib/grabador";
 import type { ChatMsg, ThemeTokens } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
@@ -24,6 +24,161 @@ import { Badge, ChipRow, EmptyState, ScrollBody, SearchInput } from "../ui/primi
 
 const VIOLETA = MARCA.header;
 const VIOLETA_INK = MARCA.headerSuave;
+
+/**
+ * El visor de fotos y videos, a pantalla completa y adentro de la app.
+ *
+ * Antes la foto era un enlace: tocarla sacaba a la persona de la app y la
+ * dejaba en el navegador, con la barra de direcciones y el botón de atrás del
+ * sistema como única vuelta.
+ *
+ * El zoom es a mano y no con la lupa del navegador porque adentro del APK no
+ * hay barra ni gesto de página: `touch-action: none` apaga el zoom del WebView
+ * y los dos dedos los maneja esto. Se arrastra sólo con zoom aplicado; sin
+ * zoom, arrastrar no hace nada y el toque cierra, que es lo que uno espera.
+ */
+function Visor({ src, tipo, onCerrar }: { src: string; tipo: "foto" | "video"; onCerrar: () => void }) {
+  const [escala, setEscala] = useState(1);
+  const [desp, setDesp] = useState({ x: 0, y: 0 });
+  // Entre eventos no se puede guardar en estado: llegan muchos por segundo y
+  // cada `set` llegaría tarde. Van en refs, que se leen al instante.
+  const pellizco = useRef<{ dist: number; escala: number } | null>(null);
+  const arrastre = useRef<{ x: number; y: number; dx: number; dy: number } | null>(null);
+  const movido = useRef(false);
+
+  const distancia = (t: React.TouchList) =>
+    Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+  const reset = () => {
+    setEscala(1);
+    setDesp({ x: 0, y: 0 });
+  };
+
+  return (
+    <div
+      onClick={() => {
+        // Un toque cierra; el final de un arrastre o un pellizco, no.
+        if (!movido.current) onCerrar();
+        movido.current = false;
+      }}
+      onTouchStart={(e) => {
+        if (e.touches.length === 2) {
+          pellizco.current = { dist: distancia(e.touches), escala };
+          movido.current = true;
+        } else if (e.touches.length === 1 && escala > 1) {
+          arrastre.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: desp.x, dy: desp.y };
+        }
+      }}
+      onTouchMove={(e) => {
+        if (e.touches.length === 2 && pellizco.current) {
+          const f = distancia(e.touches) / (pellizco.current.dist || 1);
+          setEscala(Math.min(Math.max(pellizco.current.escala * f, 1), 5));
+          movido.current = true;
+        } else if (e.touches.length === 1 && arrastre.current) {
+          const a = arrastre.current;
+          setDesp({ x: a.dx + (e.touches[0].clientX - a.x), y: a.dy + (e.touches[0].clientY - a.y) });
+          movido.current = true;
+        }
+      }}
+      onTouchEnd={(e) => {
+        if (e.touches.length === 0) {
+          pellizco.current = null;
+          arrastre.current = null;
+          // Al volver a 1 se recentra: si no, la foto queda corrida y parece rota.
+          if (escala <= 1) setDesp({ x: 0, y: 0 });
+        }
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        background: "#000",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        touchAction: "none",
+      }}
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onCerrar();
+        }}
+        aria-label="Cerrar"
+        style={{
+          position: "absolute",
+          top: "calc(12px + env(safe-area-inset-top, 0px))",
+          right: 12,
+          width: 38,
+          height: 38,
+          borderRadius: "50%",
+          border: 0,
+          background: "rgba(255,255,255,.16)",
+          color: "#fff",
+          font: "600 18px/1 var(--font-barlow),Barlow,sans-serif",
+          cursor: "pointer",
+          zIndex: 1,
+        }}
+      >
+        ✕
+      </button>
+
+      {escala > 1 && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            reset();
+          }}
+          style={{
+            position: "absolute",
+            bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+            left: "50%",
+            transform: "translateX(-50%)",
+            border: 0,
+            borderRadius: 999,
+            padding: "8px 16px",
+            background: "rgba(255,255,255,.16)",
+            color: "#fff",
+            font: "500 13px/1 var(--font-barlow),Barlow,sans-serif",
+            cursor: "pointer",
+            zIndex: 1,
+          }}
+        >
+          Ajustar
+        </button>
+      )}
+
+      {tipo === "video" ? (
+        <video
+          src={src}
+          controls
+          autoPlay
+          playsInline
+          onClick={(e) => e.stopPropagation()}
+          style={{ maxWidth: "100%", maxHeight: "100%" }}
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt="Foto"
+          onDoubleClick={() => (escala > 1 ? reset() : setEscala(2.5))}
+          style={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            transform: `translate(${desp.x}px, ${desp.y}px) scale(${escala})`,
+            transformOrigin: "center",
+            // Sin transición mientras se pellizca: con ella el gesto se siente pegajoso.
+            transition: pellizco.current || arrastre.current ? "none" : "transform .18s ease-out",
+            userSelect: "none",
+          }}
+          draggable={false}
+        />
+      )}
+    </div>
+  );
+}
 
 /**
  * Una nota de voz que se puede escuchar.
@@ -204,6 +359,23 @@ export function ConversacionesScreen() {
       ? msgsDe(det, s.xEnviados)
       : [];
 
+  /**
+   * Abrir un chat deja la vista abajo, en lo último.
+   *
+   * Antes abría arriba del todo: con 245 mensajes sin leer había que arrastrar
+   * un rato hasta llegar a lo que acababan de escribirte.
+   *
+   * `auto` y no `smooth` a propósito: al abrir tiene que estar abajo ya, no
+   * verse el viaje. Va en un efecto porque los mensajes llegan después del
+   * primer dibujo, cuando la respuesta del ERP vuelve.
+   */
+  const hilo = useRef<HTMLDivElement | null>(null);
+  const final = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (s.xSub !== "chat") return;
+    final.current?.scrollIntoView({ block: "end" });
+  }, [s.xSub, s.xSel, detMsgs.length]);
+
   const contactos = CHATS_VIVOS.map((c) => ({
     nombre: c.nombre,
     tipo: c.tipo,
@@ -341,19 +513,33 @@ export function ConversacionesScreen() {
     const esSticker = !!m.sticker;
     // Una foto sola va sin globo: el marco alrededor de una imagen no agrega
     // nada y le roba ancho, que en un celular es lo que falta.
-    const soloFoto = !!m.imagen && !m.texto && !m.archivo && !m.audio && !m.pedido;
+    const soloFoto = !!(m.imagen || m.video) && !m.texto && !m.archivo && !m.audio && !m.pedido;
     const desnudo = esSticker || soloFoto;
 
     // La reacción no es un mensaje: es un emoji suelto, chico, del lado de
     // quien reaccionó. Antes se veía un globo que decía "[reaction]".
     if (m.reaccion) {
       return (
-        <div key={i} style={{ display: "flex", justifyContent: mio ? "flex-end" : "flex-start", marginTop: -4 }}>
+        // El `gap` de la lista deja 9px entre globos; una reacción tiene que
+        // quedar pegada al mensaje de arriba, no flotando a media altura.
+        // `marginTop: -11` se come ese hueco y suma un poco de solape, que es
+        // como se ve en WhatsApp.
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            justifyContent: mio ? "flex-end" : "flex-start",
+            marginTop: -11,
+            // Un poco adentro del borde: la reacción cuelga del globo, no de la pantalla.
+            paddingRight: mio ? 10 : 0,
+            paddingLeft: mio ? 0 : 10,
+          }}
+        >
           <span
             style={{
-              fontSize: 20,
+              fontSize: 15,
               lineHeight: 1,
-              padding: "3px 7px",
+              padding: "4px 7px",
               borderRadius: 999,
               background: t.card,
               border: `1px solid ${t.border}`,
@@ -380,6 +566,23 @@ export function ConversacionesScreen() {
             gap: 6,
           }}
         >
+          {m.reenviado && (
+            // Dice de dónde viene el mensaje. En oscuro con `t.ink3`, que sale
+            // del tema: un gris fijo acá era de los que casi no se leían.
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif",
+                fontStyle: "italic",
+                color: mio ? "#4A7284" : t.ink3,
+              }}
+            >
+              <span aria-hidden style={{ fontStyle: "normal" }}>↪</span> Reenviado
+            </span>
+          )}
+
           {m.pedido && (
             <div
               style={{
@@ -415,7 +618,11 @@ export function ConversacionesScreen() {
           {m.imagen && (
             // Tocarla la abre en grande, que es lo que uno intenta hacer. El
             // `alt` dice qué es: si el enlace cae, queda un texto y no un ícono roto.
-            <a href={m.imagen} target="_blank" rel="noreferrer" style={{ display: "block", lineHeight: 0 }}>
+            <button
+              onClick={() => set({ xVisor: { src: m.imagen as string, tipo: "foto" } })}
+              style={{ display: "block", lineHeight: 0, border: 0, padding: 0, background: "none", cursor: "pointer" }}
+              aria-label="Ver la foto"
+            >
               {/* `next/image` no sirve acá: la app se exporta estática y corre
                   adentro del APK, donde no hay servidor que optimice. Además la
                   foto vive en el dominio del ERP de cada cliente, que no se
@@ -435,7 +642,39 @@ export function ConversacionesScreen() {
                   background: t.bg,
                 }}
               />
-            </a>
+            </button>
+          )}
+
+          {m.video && (
+            // La miniatura es el primer cuadro: `preload="metadata"` lo trae sin
+            // bajar el video entero, que en datos móviles importa.
+            <button
+              onClick={() => set({ xVisor: { src: m.video as string, tipo: "video" } })}
+              style={{ position: "relative", display: "block", lineHeight: 0, border: 0, padding: 0, background: "none", cursor: "pointer" }}
+              aria-label="Ver el video"
+            >
+              <video
+                src={m.video}
+                preload="metadata"
+                muted
+                playsInline
+                style={{ display: "block", width: "100%", maxWidth: 260, maxHeight: 320, borderRadius: 10, background: "#000" }}
+              />
+              <span
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  font: "600 26px/1 var(--font-barlow),Barlow,sans-serif",
+                  textShadow: "0 1px 6px rgba(0,0,0,.6)",
+                }}
+              >
+                ▶
+              </span>
+            </button>
           )}
 
           {m.epigrafe && (
@@ -857,6 +1096,7 @@ export function ConversacionesScreen() {
           </div>
 
           <div
+            ref={hilo}
             style={{
               flex: 1,
               minHeight: 0,
@@ -869,6 +1109,9 @@ export function ConversacionesScreen() {
           >
             <div style={{ textAlign: "center", font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>Hoy</div>
             {detMsgs.map(burbuja)}
+            {/* El ancla del final. Se baja hasta acá al abrir y al llegar algo
+                nuevo: un chat se lee desde lo último, no desde el principio. */}
+            <div ref={final} />
           </div>
 
           {/* Attachment tray */}
@@ -1329,6 +1572,8 @@ export function ConversacionesScreen() {
       )}
 
       {s.xSub === "lista" && <BottomNav />}
+
+      {s.xVisor && <Visor src={s.xVisor.src} tipo={s.xVisor.tipo} onCerrar={() => set({ xVisor: null })} />}
     </div>
   );
 }

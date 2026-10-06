@@ -178,6 +178,13 @@ export interface ChatMsg {
   audioUrl?: string;
   /** Foto recibida o enviada: URL servida por el ERP. */
   imagen?: string;
+  /** Video, misma idea que `imagen`. */
+  video?: string;
+  /**
+   * El mensaje llegó reenviado de otra conversación. No cambia el contenido,
+   * pero sí lo que significa: "me lo mandaron" no es "esto lo escribí yo".
+   */
+  reenviado?: boolean;
   /** Texto que vino junto a la foto o el documento. */
   epigrafe?: string;
   /**
