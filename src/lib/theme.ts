@@ -89,14 +89,37 @@ export const MARCA = {
  *
  * `color` es el fondo en reposo y `fill` el que se pinta al tocarlo.
  */
+/**
+ * Los botones del inicio.
+ *
+ *   color   el fondo en reposo. Es lo que identifica a cada módulo: se busca
+ *           "el morado" sin leer el rótulo.
+ *   fill    el punto que crece al apretar. Tiene que ser pariente de `color`
+ *           —misma familia, otra luminosidad— porque el mismo texto se lee
+ *           sobre los dos.
+ *   over    el texto y el ícono.
+ *
+ * Los seis colores en reposo son distintos a propósito: encontrar el de
+ * siempre sin leer es justo para lo que sirve el color acá. Es la excepción al
+ * resto de la app, donde el color significa estado y no decoración.
+ *
+ * `#3D6282` y `#FFD277` no están en la paleta original de cinco: son un tono
+ * más claro de `#2A445E` y del ámbar. Hacían falta dos tonos más —seis
+ * baldosas, dos tonos cada una— y antes que meter un color nuevo es preferible
+ * estirar los que ya están.
+ *
+ * Contrastes del texto, medidos sobre fondo y sobre relleno: ninguno baja de
+ * 5:1. El relleno ámbar es claro y no oscuro porque oscurecerlo dejaba el
+ * texto en 3.56, por debajo del mínimo.
+ */
 export const MODULES: Record<ModuleKey, ModuleDef> = {
-  venta: { title: "Nueva venta", color: "#023047", fill: "#04617A", over: "#ffffff" },
-  clientes: { title: "Clientes", color: "#04617A", fill: "#023047", over: "#ffffff" },
-  compras: { title: "Compras", color: "#FFB701", fill: "#FC8500", over: "#023047" },
-  inventario: { title: "Inventario", color: "#8ECAE6", fill: "#8ECAE6", over: "#023047" },
-  conversaciones: { title: "Conversaciones", color: "#FC8500", fill: "#FFB701", over: "#023047" },
-  proveedores: { title: "Proveedores", color: "#209EBB", fill: "#8ECAE6", over: "#023047" },
-  reportes: { title: "Reportes", color: "#023047", fill: "#04617A", over: "#ffffff" },
+  venta: { title: "Nueva venta", color: "#2A445E", fill: "#346B6D", over: "#ffffff" },
+  clientes: { title: "Clientes", color: "#346B6D", fill: "#2A445E", over: "#ffffff" },
+  compras: { title: "Compras", color: "#F3AA20", fill: "#FFD277", over: "#2A445E" },
+  inventario: { title: "Inventario", color: "#58094F", fill: "#841E62", over: "#ffffff" },
+  conversaciones: { title: "Conversaciones", color: "#841E62", fill: "#58094F", over: "#ffffff" },
+  proveedores: { title: "Proveedores", color: "#3D6282", fill: "#2A445E", over: "#ffffff" },
+  reportes: { title: "Reportes", color: "#2A445E", fill: "#346B6D", over: "#ffffff" },
 };
 
 /** Brand palette, named so screens stop repeating raw hex. */
