@@ -79,20 +79,25 @@ vacía.
 Esa diferencia es todo el problema. No es que falten permisos: es que el
 endpoint que la app podía usar hace una pregunta distinta.
 
+### Verificado contra la base
+
+En Neura Sistemas, al 6 de octubre de 2026:
+
+| Rol | Cuántos | Colas |
+|---|---|---|
+| `admin` | 1 | **0** |
+| `supervisor` | 2 | **0** |
+| `agente` | 6 | 1 |
+
+El admin y los dos supervisores no están en ninguna cola y ven conversaciones
+igual. Los únicos con cola son los agentes. Eso confirma que la cola no es lo
+que decide.
+
 ### Para ver el rol de cada uno
 
-```sql
-select u.nombre,
-       r.role                      as rol_omnicanal,
-       count(a.id)                 as colas
-  from <schema>.usuarios u
-  left join <schema>.chat_empresa_operator_roles r
-         on r.usuario_id = u.id and r.empresa_id = u.empresa_id
-  left join <schema>.chat_agents a
-         on a.usuario_id = u.id and a.empresa_id = u.empresa_id
- group by u.nombre, r.role
- order by u.nombre;
-```
+Las consultas están en [`consultas-chat.sql`](consultas-chat.sql), ya con los
+nombres de schema escritos: el catálogo de usuarios es `zentra` y las tablas de
+chat viven en el schema de cada empresa (`neura`, `distribuidorajmerp`, …).
 
 Quien tenga `rol_omnicanal = admin` ve todo en el ERP aunque `colas` sea 0. Y
 hoy, en la app, no ve nada — hasta el arreglo de arriba.
