@@ -92,6 +92,11 @@ export function InventarioScreen() {
 
   const guardarAjuste = () => {
     if (!ajPuede || !ajProd) return;
+    // El plan limita cuántas veces al mes se ajusta el mismo producto. Se
+    // consulta con la fecha del último ajuste de ESE producto, no de
+    // cualquiera: el límite es por producto, que es como se vendió.
+    const motivo = motivoBloqueo("inventario.ajuste", plan({ ultimoAjuste: ajProd.ultimoAjuste }));
+    if (motivo) return set({ avisoPlan: motivo });
     const signo = s.ajTipo === "SALIDA" ? -1 : 1;
     const delta = { ...s.iDelta };
     delta[ajProd.id] = (delta[ajProd.id] || 0) + signo * ajCantNum;

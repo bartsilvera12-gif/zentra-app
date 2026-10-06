@@ -8,6 +8,7 @@ import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
 import type { RepTab } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
+import { motivoBloqueo } from "@/lib/planes";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import { Card, ScrollBody, SectionLabel } from "../ui/primitives";
@@ -16,7 +17,7 @@ const AZUL = MARCA.header;
 const VIOLETA = MARCA.headerSuave;
 
 export function ReportesScreen() {
-  const { s, t, set } = useApp();
+  const { s, t, set, plan } = useApp();
   // Los tres reportes salen del ERP. Se pide sólo lo que la solapa necesita:
   // abrir Reportes no tiene por qué traer el inventario entero.
   const { datos: ventas, cargando: cV, error: eV, recargar: rV } = useRemoto(
@@ -171,10 +172,19 @@ export function ReportesScreen() {
           {([["ventas", "Ventas"], ["inventario", "Inventario"], ["compras", "Compras"]] as [RepTab, string][]).map(
             ([k, label]) => {
               const on = s.rTab === k;
+              // Los dashboards de inventario y compras no están en todos los
+              // planes. La solapa queda a la vista con candado: esconderla
+              // haría parecer que el reporte no existe.
+              const bloqueo =
+                k === "inventario"
+                  ? motivoBloqueo("dashboard.inventario", plan())
+                  : k === "compras"
+                    ? motivoBloqueo("dashboard.compras", plan())
+                    : null;
               return (
                 <button
                   key={k}
-                  onClick={() => set({ rTab: k })}
+                  onClick={() => (bloqueo ? set({ avisoPlan: bloqueo }) : set({ rTab: k }))}
                   style={{
                     flex: 1,
                     border: 0,
@@ -184,9 +194,10 @@ export function ReportesScreen() {
                     font: "600 12.5px/1 var(--font-barlow),Barlow,sans-serif",
                     background: on ? MARCA.sobre : "transparent",
                     color: on ? AZUL : "rgba(255,255,255,.8)",
+                    opacity: bloqueo ? 0.55 : 1,
                   }}
                 >
-                  {label}
+                  {bloqueo ? `🔒 ${label}` : label}
                 </button>
               );
             },
