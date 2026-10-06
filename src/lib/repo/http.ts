@@ -664,6 +664,55 @@ interface MensajeErp {
   message_type?: string | null;
   created_at?: string | null;
   whatsapp_delivery_status?: string | null;
+  /**
+   * El sobre crudo de WhatsApp. Acá adentro está lo único que importa para
+   * mostrar una foto o un documento: `erp.public_url`, que es la copia que el
+   * ERP ya rehosteó. Los enlaces originales de Meta caducan y algunos piden
+   * cabeceras de API, así que no sirven para poner en un `<img>`.
+   */
+  raw_payload?: Record<string, unknown> | null;
+}
+
+/** Lo que el ERP dejó en `raw_payload.erp` al rehostear el adjunto. */
+function adjuntoDelErp(raw: Record<string, unknown> | null | undefined): {
+  url: string | null;
+  nombre: string | null;
+  epigrafe: string | null;
+} {
+  const vacio = { url: null, nombre: null, epigrafe: null };
+  const erp = raw?.erp;
+  if (!erp || typeof erp !== "object" || Array.isArray(erp)) return vacio;
+  const o = erp as { public_url?: unknown; filename?: unknown; caption?: unknown };
+  const texto = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  const url = texto(o.public_url);
+  return {
+    // Sólo http(s): lo que viene de afuera termina en un `<img src>` o en un
+    // enlace, y ahí un `javascript:` no es un adjunto roto sino un agujero.
+    url: url && /^https?:\/\//i.test(url) ? url : null,
+    nombre: texto(o.filename),
+    epigrafe: texto(o.caption),
+  };
+}
+
+/**
+ * El emoji de una reacción.
+ *
+ * Viaja en el sobre de WhatsApp, que según el proveedor anida el mensaje un
+ * nivel más adentro. Se miran las tres formas conocidas y se corta en la
+ * primera que tenga algo.
+ */
+function emojiDeReaccion(raw: Record<string, unknown> | null | undefined): string | null {
+  if (!raw) return null;
+  const raices = [raw.whatsappInboundMessage, raw.whatsappMessage, raw];
+  for (const r of raices) {
+    if (!r || typeof r !== "object" || Array.isArray(r)) continue;
+    const reaccion = (r as Record<string, unknown>).reaction;
+    if (!reaccion || typeof reaccion !== "object" || Array.isArray(reaccion)) continue;
+    const e = (reaccion as { emoji?: unknown }).emoji;
+    if (typeof e === "string" && e.trim()) return e.trim();
+  }
+  return null;
 }
 
 interface DetalleConversacionErp {
@@ -714,15 +763,59 @@ function aChat(c: ConversacionErp): Chat {
   };
 }
 
+/** `Contrato_ERP.pdf` → `PDF`. Es lo que va en el cuadradito de la tarjeta. */
+function extensionDe(nombre: string): string {
+  const punto = nombre.lastIndexOf(".");
+  if (punto < 0 || punto === nombre.length - 1) return "DOC";
+  const ext = nombre.slice(punto + 1).toUpperCase();
+  return ext.length <= 4 ? ext : "DOC";
+}
+
 function aMensaje(m: MensajeErp): ChatMsg {
   const tipo = (m.message_type || "text").toLowerCase();
   const base = { de: (m.from_me ? "yo" : "ellos") as "yo" | "ellos", hora: horaCorta(m.created_at) };
 
-  // Una foto o un audio sin su contenido se mostraría como un globo vacío: se
-  // dice qué era, aunque no se pueda abrir desde acá todavía.
-  if (tipo.includes("image")) return { ...base, texto: m.content || "📷 Foto" };
-  if (tipo.includes("audio") || tipo.includes("voice")) return { ...base, texto: m.content || "🎤 Audio" };
-  if (tipo.includes("document")) return { ...base, texto: m.content || "📎 Documento" };
+  const adj = adjuntoDelErp(m.raw_payload);
+  const epigrafe = adj.epigrafe || (m.content?.trim() ? m.content.trim() : null);
+
+  // Una reacción es un emoji sobre otro mensaje, no un mensaje. Si no se
+  // reconoce el emoji no se inventa un globo: se descarta, que es como se ve
+  // en WhatsApp cuando se quita la reacción.
+  if (tipo.includes("reaction")) {
+    const emoji = emojiDeReaccion(m.raw_payload) || (m.content || "").trim();
+    return { ...base, reaccion: emoji || "👍" };
+  }
+
+  if (tipo.includes("sticker")) {
+    // El sticker del ERP es una imagen de verdad; el de la app es un emoji. Se
+    // manda como imagen y la pantalla lo dibuja sin globo.
+    if (adj.url) return { ...base, imagen: adj.url, sticker: " " };
+    return { ...base, sticker: (m.content || "🙂").trim() };
+  }
+
+  if (tipo.includes("image")) {
+    if (adj.url) return { ...base, imagen: adj.url, ...(epigrafe ? { epigrafe } : {}) };
+    // Sin la copia del ERP no hay nada que dibujar: se dice qué era en vez de
+    // dejar un globo vacío o una imagen rota.
+    return { ...base, texto: epigrafe || "📷 Foto" };
+  }
+
+  if (tipo.includes("audio") || tipo.includes("voice")) {
+    if (adj.url) return { ...base, archivo: { tag: "AUD", nombre: adj.nombre || "Nota de voz", peso: "Audio", url: adj.url } };
+    return { ...base, texto: epigrafe || "🎤 Audio" };
+  }
+
+  if (tipo.includes("document")) {
+    const nombre = adj.nombre || epigrafe || "Documento";
+    if (adj.url) {
+      return {
+        ...base,
+        archivo: { tag: extensionDe(nombre), nombre, peso: "Documento", url: adj.url },
+        ...(adj.epigrafe && adj.epigrafe !== nombre ? { epigrafe: adj.epigrafe } : {}),
+      };
+    }
+    return { ...base, texto: `📎 ${nombre}` };
+  }
 
   return {
     ...base,

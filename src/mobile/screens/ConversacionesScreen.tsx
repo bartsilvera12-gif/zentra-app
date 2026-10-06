@@ -1,7 +1,15 @@
 "use client";
 
 import { MARCA } from "@/lib/theme";
-import { ADJUNTOS, CHATS, EMOJIS, GIFS, PLANTILLAS, STICKERS } from "@/lib/data";
+import { ADJUNTOS, CHATS, EMOJIS, GIFS, STICKERS } from "@/lib/data";
+import {
+  IconAudio,
+  IconCamara,
+  IconContacto,
+  IconDocumento,
+  IconGaleria,
+  IconUbicacion,
+} from "../ui/Icons";
 import { repo, SinCola, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
@@ -17,6 +25,16 @@ import { Badge, ChipRow, EmptyState, ScrollBody, SearchInput } from "../ui/primi
 
 const VIOLETA = MARCA.header;
 const VIOLETA_INK = MARCA.headerSuave;
+
+/** El dibujo de cada adjunto, por `key`. Los datos ya no traen el ícono. */
+const ICONO_ADJUNTO: Record<string, React.ReactNode> = {
+  documento: <IconDocumento />,
+  camara: <IconCamara />,
+  galeria: <IconGaleria />,
+  audioarch: <IconAudio />,
+  ubicacion: <IconUbicacion />,
+  contacto: <IconContacto />,
+};
 
 export function ConversacionesScreen() {
   const { s, t, set, abrirChat, pushMsg, startGrab, stopGrab } = useApp();
@@ -194,15 +212,42 @@ export function ConversacionesScreen() {
   const burbuja = (m: ChatMsg, i: number) => {
     const mio = m.de === "yo";
     const esSticker = !!m.sticker;
+    // Una foto sola va sin globo: el marco alrededor de una imagen no agrega
+    // nada y le roba ancho, que en un celular es lo que falta.
+    const soloFoto = !!m.imagen && !m.texto && !m.archivo && !m.audio && !m.pedido;
+    const desnudo = esSticker || soloFoto;
+
+    // La reacción no es un mensaje: es un emoji suelto, chico, del lado de
+    // quien reaccionó. Antes se veía un globo que decía "[reaction]".
+    if (m.reaccion) {
+      return (
+        <div key={i} style={{ display: "flex", justifyContent: mio ? "flex-end" : "flex-start", marginTop: -4 }}>
+          <span
+            style={{
+              fontSize: 20,
+              lineHeight: 1,
+              padding: "3px 7px",
+              borderRadius: 999,
+              background: t.card,
+              border: `1px solid ${t.border}`,
+            }}
+            title={`Reaccionó ${m.reaccion}`}
+          >
+            {m.reaccion}
+          </span>
+        </div>
+      );
+    }
+
     return (
       <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: mio ? "flex-end" : "flex-start" }}>
         <div
           style={{
             maxWidth: "82%",
             borderRadius: mio ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-            background: esSticker ? "transparent" : mio ? MARCA.suave : t.card,
-            border: `1px solid ${esSticker ? "transparent" : mio ? "#C3DCE6" : t.border}`,
-            padding: esSticker ? 0 : "9px 11px",
+            background: desnudo ? "transparent" : mio ? MARCA.suave : t.card,
+            border: `1px solid ${desnudo ? "transparent" : mio ? "#C3DCE6" : t.border}`,
+            padding: desnudo ? 0 : "10px 12px",
             display: "flex",
             flexDirection: "column",
             gap: 6,
@@ -238,7 +283,39 @@ export function ConversacionesScreen() {
             </div>
           )}
 
-          {esSticker && <span style={{ fontSize: 46, lineHeight: 1 }}>{m.sticker}</span>}
+          {esSticker && !m.imagen && <span style={{ fontSize: 46, lineHeight: 1 }}>{m.sticker}</span>}
+
+          {m.imagen && (
+            // Tocarla la abre en grande, que es lo que uno intenta hacer. El
+            // `alt` dice qué es: si el enlace cae, queda un texto y no un ícono roto.
+            <a href={m.imagen} target="_blank" rel="noreferrer" style={{ display: "block", lineHeight: 0 }}>
+              {/* `next/image` no sirve acá: la app se exporta estática y corre
+                  adentro del APK, donde no hay servidor que optimice. Además la
+                  foto vive en el dominio del ERP de cada cliente, que no se
+                  puede declarar de antemano. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={m.imagen}
+                alt={m.epigrafe || (esSticker ? "Sticker" : "Foto")}
+                loading="lazy"
+                style={{
+                  display: "block",
+                  width: esSticker ? 128 : "100%",
+                  maxWidth: esSticker ? 128 : 260,
+                  maxHeight: 320,
+                  objectFit: "cover",
+                  borderRadius: esSticker ? 0 : 10,
+                  background: t.bg,
+                }}
+              />
+            </a>
+          )}
+
+          {m.epigrafe && (
+            <span style={{ font: "400 15px/1.4 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
+              {m.epigrafe}
+            </span>
+          )}
 
           {m.audio && (
             <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 150 }}>
@@ -277,50 +354,83 @@ export function ConversacionesScreen() {
             </div>
           )}
 
-          {m.archivo && (
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <span
-                style={{
-                  width: 32,
-                  height: 32,
-                  flex: "0 0 auto",
-                  borderRadius: 9,
-                  background: mio ? VIOLETA_INK : "#04617A",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  font: "600 9px/1 var(--font-barlow),Barlow,sans-serif",
-                }}
-              >
-                {m.archivo.tag || "DOC"}
-              </span>
-              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                <span style={{ font: "600 12px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
-                  {m.archivo.nombre}
-                </span>
-                <span style={{ font: "400 10.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
-                  {m.archivo.peso}
-                </span>
-              </span>
-            </div>
-          )}
+          {m.archivo &&
+            (() => {
+              // Con URL es un enlace de verdad: se toca y el teléfono lo abre
+              // con la app que corresponda. Sin URL queda la misma tarjeta pero
+              // muerta, que es honesto: se ve que llegó algo y que no se puede abrir.
+              const Caja = m.archivo.url ? "a" : "div";
+              return (
+                <Caja
+                  {...(m.archivo.url ? { href: m.archivo.url, target: "_blank", rel: "noreferrer" } : {})}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    textDecoration: "none",
+                    minWidth: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 36,
+                      height: 36,
+                      flex: "0 0 auto",
+                      borderRadius: 9,
+                      background: mio ? VIOLETA_INK : "#04617A",
+                      color: "#fff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      font: "600 10px/1 var(--font-barlow),Barlow,sans-serif",
+                    }}
+                  >
+                    {m.archivo.tag || "DOC"}
+                  </span>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span
+                      style={{
+                        font: "600 13.5px/1.25 var(--font-barlow),Barlow,sans-serif",
+                        color: mio ? "#17384A" : t.ink,
+                        // Un nombre largo no puede empujar el globo fuera de la
+                        // pantalla: se corta con puntos suspensivos.
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {m.archivo.nombre}
+                    </span>
+                    <span style={{ font: "400 11.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
+                      {m.archivo.peso}
+                    </span>
+                  </span>
+                </Caja>
+              );
+            })()}
 
           {!!m.texto && m.texto.length > 0 && (
-            <span style={{ font: "400 13px/1.4 var(--font-barlow),Barlow,sans-serif", color: mio ? "#17384A" : t.ink }}>
+            <span
+              style={{
+                font: "400 15px/1.45 var(--font-barlow),Barlow,sans-serif",
+                color: mio ? "#17384A" : t.ink,
+                // Un link o una palabra sin espacios no tiene que desbordar.
+                overflowWrap: "anywhere",
+              }}
+            >
               {m.texto}
             </span>
           )}
 
-          {!esSticker && (
+          {!desnudo && (
             <span style={{ display: "flex", alignItems: "center", gap: 4, alignSelf: "flex-end" }}>
-              <span style={{ font: "400 9.5px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
+              <span style={{ font: "400 11px/1 var(--font-barlow),Barlow,sans-serif", color: mio ? "#4A7284" : t.ink3 }}>
                 {m.hora}
               </span>
               {mio && (
                 <span
                   style={{
-                    font: "600 9.5px/1 var(--font-barlow),Barlow,sans-serif",
+                    font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
                     color: m.tick === "✓✓" ? VIOLETA_INK : "#6E97A8",
                   }}
                 >
@@ -505,7 +615,7 @@ export function ConversacionesScreen() {
                     <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <span
                         style={{
-                          font: "600 14px/1.2 var(--font-barlow),Barlow,sans-serif",
+                          font: "600 15.5px/1.2 var(--font-barlow),Barlow,sans-serif",
                           color: t.ink,
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -523,7 +633,7 @@ export function ConversacionesScreen() {
                     </span>
                     <span
                       style={{
-                        font: nl > 0 ? "600 12px/1.3 var(--font-barlow),Barlow,sans-serif" : "400 12px/1.3 var(--font-barlow),Barlow,sans-serif",
+                        font: nl > 0 ? "600 13px/1.3 var(--font-barlow),Barlow,sans-serif" : "400 13px/1.3 var(--font-barlow),Barlow,sans-serif",
                         color: nl > 0 ? t.ink : t.ink2,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -543,7 +653,7 @@ export function ConversacionesScreen() {
                       gap: 5,
                     }}
                   >
-                    <span style={{ font: "400 10.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>{c.hora}</span>
+                    <span style={{ font: "400 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>{c.hora}</span>
                     {nl > 0 && (
                       <span
                         style={{
@@ -612,7 +722,7 @@ export function ConversacionesScreen() {
             <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
               <span
                 style={{
-                  font: "600 15px/1.2 var(--font-barlow),Barlow,sans-serif",
+                  font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif",
                   color: "#fff",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -621,7 +731,7 @@ export function ConversacionesScreen() {
               >
                 {det.nombre}
               </span>
-              <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.75)" }}>
+              <span style={{ font: "400 12px/1.2 var(--font-barlow),Barlow,sans-serif", color: "rgba(255,255,255,.75)" }}>
                 {(det.enLinea ? "En línea" : `Últ. vez ${det.hora}`) + " · " + det.tipo}
               </span>
             </div>
@@ -638,7 +748,7 @@ export function ConversacionesScreen() {
                 background: "transparent",
                 color: "#fff",
                 cursor: "pointer",
-                font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif",
+                font: "600 12.5px/1 var(--font-barlow),Barlow,sans-serif",
                 whiteSpace: "nowrap",
               }}
             >
@@ -657,37 +767,9 @@ export function ConversacionesScreen() {
               gap: 9,
             }}
           >
-            <div style={{ textAlign: "center", font: "500 10.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>Hoy</div>
+            <div style={{ textAlign: "center", font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>Hoy</div>
             {detMsgs.map(burbuja)}
           </div>
-
-          {/* Quick-reply templates, shown only when no panel is open */}
-          {s.xPanel === "none" && !s.xGrab && (
-            <div
-              className="zt-no-scrollbar"
-              style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 14px 8px" }}
-            >
-              {PLANTILLAS.map((p) => (
-                <button
-                  key={p.label}
-                  onClick={() => set({ xTexto: p.texto, xPanel: "none" })}
-                  style={{
-                    flex: "0 0 auto",
-                    borderRadius: 999,
-                    padding: "7px 12px",
-                    cursor: "pointer",
-                    font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif",
-                    whiteSpace: "nowrap",
-                    background: t.card,
-                    border: `1px solid ${t.border}`,
-                    color: t.ink2,
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Attachment tray */}
           {s.xPanel === "adj" && (
@@ -713,21 +795,11 @@ export function ConversacionesScreen() {
                     if (a.key === "audioarch") return elegirArchivo("audio/*");
                     if (a.key === "documento") return elegirArchivo("*/*");
 
-                    // Ubicación, contacto y pedido no son archivos: cada uno
-                    // necesita lo suyo (GPS, agenda, armar un pedido) y todavía
-                    // no están. Se dice, en vez de mandar un adjunto inventado.
+                    // Ubicación y contacto no son archivos: necesitan lo suyo
+                    // (GPS, agenda) y todavía no están. Se dice, en vez de
+                    // mandar un adjunto inventado.
                     if (conErp) {
                       set({ xEnvioError: `Todavía no se puede mandar ${a.label.toLowerCase()} desde la app.` });
-                      return;
-                    }
-                    if (a.key === "pedido") {
-                      pushMsg(det.id, {
-                        de: "yo",
-                        hora: "11:42",
-                        tick: "✓",
-                        texto: "Te adjunto el pedido armado para confirmar.",
-                        pedido: { tag: "Pedido sugerido", total: 456000, detalle: "48 × Cerveza lata 350 ml" },
-                      });
                       return;
                     }
                     pushMsg(det.id, {
@@ -751,20 +823,21 @@ export function ConversacionesScreen() {
                 >
                   <span
                     style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 14,
-                      background: a.bg,
-                      color: "#fff",
+                      width: 48,
+                      height: 48,
+                      borderRadius: 15,
+                      // Un solo color para los seis. Seis fondos distintos
+                      // competían entre sí y no decían nada: el que diferencia
+                      // es el dibujo, no el color.
+                      background: MARCA.headerSuave,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      font: "600 17px/1 var(--font-barlow),Barlow,sans-serif",
                     }}
                   >
-                    {a.icono}
+                    {ICONO_ADJUNTO[a.key] ?? <IconDocumento />}
                   </span>
-                  <span style={{ font: "500 10px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink2, textAlign: "center" }}>
+                  <span style={{ font: "500 11px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink2, textAlign: "center" }}>
                     {a.label}
                   </span>
                 </button>
@@ -1005,7 +1078,7 @@ export function ConversacionesScreen() {
                       border: 0,
                       background: "transparent",
                       outline: "none",
-                      fontSize: 14,
+                      fontSize: 15.5,
                       color: t.ink,
                     }}
                   />

@@ -160,6 +160,8 @@ export interface ChatArchivo {
   tag: string;
   nombre: string;
   peso: string;
+  /** Dónde está el archivo. Sin esto la tarjeta se ve pero no se puede abrir. */
+  url?: string;
 }
 
 export interface ChatMsg {
@@ -172,6 +174,16 @@ export interface ChatMsg {
   sticker?: string;
   /** Duration label, e.g. "0:07". Present only on voice notes. */
   audio?: string;
+  /** Foto recibida o enviada: URL servida por el ERP. */
+  imagen?: string;
+  /** Texto que vino junto a la foto o el documento. */
+  epigrafe?: string;
+  /**
+   * Una reacción no es un mensaje: es un emoji pegado a otro. Viene como fila
+   * propia igual, así que se marca para dibujarla suelta y no como globo. Antes
+   * se veía un globo que decía "[reaction]", que no le dice nada a nadie.
+   */
+  reaccion?: string;
 }
 
 export interface Chat {
@@ -186,19 +198,14 @@ export interface Chat {
 }
 
 export interface Adjunto {
+  /** Elige el ícono y qué hace al tocarlo. No es decorativo. */
   key: string;
   label: string;
-  icono: string;
-  bg: string;
   tag: string;
   nombre: string;
   peso: string;
 }
 
-export interface Plantilla {
-  label: string;
-  texto: string;
-}
 
 export type RepTab = "ventas" | "inventario" | "compras";
 

@@ -131,3 +131,65 @@ export function IconLupa({ size = 16, stroke = "currentColor" }: IconProps) {
     </svg>
   );
 }
+
+/* ---------- adjuntos del chat ----------
+   Antes eran glifos sueltos de una tipografía (≡ ◉ ▣ ♪ ◈ ☻ ₲): cada uno con su
+   peso y su centrado, y ninguno parecido al otro. Son SVG de la misma familia
+   que el resto de la app, así que se ven como un juego y no como siete cosas. */
+
+export function IconDocumento({ size = 22, stroke = "#ffffff" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3H7a1.6 1.6 0 0 0-1.6 1.6v14.8A1.6 1.6 0 0 0 7 21h10a1.6 1.6 0 0 0 1.6-1.6V7.6z" />
+      <path d="M14 3v4.6h4.6" />
+      <path d="M8.8 13h6.4M8.8 16.6h4.4" />
+    </svg>
+  );
+}
+
+export function IconCamara({ size = 22, stroke = "#ffffff" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8.6h3.4L8 6.2h8l1.6 2.4H21v10.2H3z" />
+      <circle cx="12" cy="13.4" r="3.4" />
+    </svg>
+  );
+}
+
+export function IconGaleria({ size = 22, stroke = "#ffffff" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.2" y="5.2" width="17.6" height="13.6" rx="2" />
+      <circle cx="8.6" cy="10" r="1.5" />
+      <path d="M3.8 16.4l4.6-4.2 3.4 3 2.8-2.4 4.6 4" />
+    </svg>
+  );
+}
+
+export function IconAudio({ size = 22, stroke = "#ffffff" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.6 11.6a6.4 6.4 0 0 0 12.8 0" />
+      <path d="M12 18v3" />
+    </svg>
+  );
+}
+
+export function IconUbicacion({ size = 22, stroke = "#ffffff" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 21c4.2-4.4 6.3-7.7 6.3-10.3A6.3 6.3 0 0 0 5.7 10.7C5.7 13.3 7.8 16.6 12 21z" />
+      <circle cx="12" cy="10.4" r="2.4" />
+    </svg>
+  );
+}
+
+export function IconContacto({ size = 22, stroke = "#ffffff" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="9" r="3.4" />
+      <path d="M5.6 19.6a6.6 6.6 0 0 1 12.8 0" />
+    </svg>
+  );
+}

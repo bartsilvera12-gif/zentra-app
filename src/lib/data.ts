@@ -15,7 +15,6 @@ import type {
   Metodo,
   Movimiento,
   Paso,
-  Plantilla,
   Producto,
   Proveedor,
   RepCfg,
@@ -194,27 +193,29 @@ export const CHATS: Chat[] = [
     ] },
 ];
 
+/**
+ * Lo que se puede adjuntar en un chat.
+ *
+ * Ya no viene `icono` ni `bg`: el dibujo lo pone la pantalla con un SVG elegido
+ * por `key`, y el color es uno solo de la paleta. Antes eran ocho glifos de
+ * tipografía (≡ ◉ ▣ ♪ ◈ ☻ ⛁ ₲) sobre ocho fondos distintos, cada uno con su
+ * peso y su centrado: ninguno parecía del mismo juego.
+ *
+ * "Pedido" se sacó: armaba un pedido de ejemplo con cifras inventadas.
+ */
 export const ADJUNTOS: Adjunto[] = [
-  { key: "documento", label: "Documento", icono: "≡", bg: "#5478AB", tag: "PDF", nombre: "Lista de precios.pdf", peso: "PDF · 248 KB" },
-  { key: "camara", label: "Cámara", icono: "◉", bg: "#B0527A", tag: "JPG", nombre: "Foto 30-09.jpg", peso: "Imagen · 1,2 MB" },
-  { key: "galeria", label: "Galería", icono: "▣", bg: "#8E5BC4", tag: "JPG", nombre: "Comprobante.jpg", peso: "Imagen · 860 KB" },
-  { key: "audioarch", label: "Audio", icono: "♪", bg: "#D97A33", tag: "MP3", nombre: "Nota de voz.mp3", peso: "Audio · 420 KB" },
-  { key: "ubicacion", label: "Ubicación", icono: "◈", bg: "#1C8C84", tag: "MAP", nombre: "Depósito central", peso: "Asunción · Py" },
-  { key: "contacto", label: "Contacto", icono: "☻", bg: "#209EBB", tag: "VCF", nombre: "Ulises Gómez.vcf", peso: "Contacto · 2 KB" },
-  { key: "pedido", label: "Pedido", icono: "⛁", bg: "#96731A", tag: "", nombre: "", peso: "" },
-  { key: "factura", label: "Factura", icono: "₲", bg: "#023047", tag: "PDF", nombre: "VTA-000148.pdf", peso: "PDF · 96 KB" },
+  { key: "documento", label: "Documento", tag: "PDF", nombre: "Lista de precios.pdf", peso: "PDF · 248 KB" },
+  { key: "camara", label: "Cámara", tag: "JPG", nombre: "Foto 30-09.jpg", peso: "Imagen · 1,2 MB" },
+  { key: "galeria", label: "Galería", tag: "JPG", nombre: "Comprobante.jpg", peso: "Imagen · 860 KB" },
+  { key: "audioarch", label: "Audio", tag: "MP3", nombre: "Nota de voz.mp3", peso: "Audio · 420 KB" },
+  { key: "ubicacion", label: "Ubicación", tag: "MAP", nombre: "Depósito central", peso: "Asunción · Py" },
+  { key: "contacto", label: "Contacto", tag: "VCF", nombre: "Ulises Gómez.vcf", peso: "Contacto · 2 KB" },
 ];
 
 export const EMOJIS = ["😀", "😅", "😂", "🙂", "😉", "😍", "🤝", "👍", "👌", "🙏", "💪", "🔥", "✅", "❌", "⏰", "📦", "🚚", "🧾", "💰", "📈", "🍺", "🥤", "💧", "🧊"];
 export const STICKERS = ["🧾", "📦", "🚚", "🫡", "🤙", "🎉", "😎", "🙌", "💵", "⏳"];
 export const GIFS = ["⚡", "🎬", "✨", "🌀", "🎯", "🛎️"];
 
-export const PLANTILLAS: Plantilla[] = [
-  { label: "Precio y disponibilidad", texto: "Te confirmo precio y disponibilidad en unos minutos." },
-  { label: "Pedido en camino", texto: "Tu pedido ya salió del depósito, llega hoy." },
-  { label: "Recordatorio de pago", texto: "Te recuerdo que tenés una factura pendiente de pago." },
-  { label: "Gracias por la compra", texto: "¡Gracias por tu compra! Cualquier cosa, escribime." },
-];
 
 export const INV: InvProducto[] = [
   { id: "p1", nombre: "Gaseosa cola 2 L", sku: "GAS", stock: 48, minimo: 24, costo: 8640, precio: 12000, unidad: "UNIDAD", categoria: "Bebidas", deposito: "Depósito central", iva: "10%", metodo: "CPP", barras: "7790001234567" },
