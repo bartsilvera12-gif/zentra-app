@@ -136,3 +136,66 @@ conversaciones.
 
 Desde la app no hay nada que tocar: ya pide ese endpoint primero y cae en el otro
 sólo si falla.
+
+---
+
+# Si la lista muestra "Sin nombre" en todas
+
+Pasó en el ERP de Neura y puede pasar en cualquier otro, porque el error es
+fácil de cometer y **no se nota desde el servidor**: la app muestra la lista
+completa, con la hora y el último mensaje bien, y el nombre vacío en todas.
+
+## Qué está pasando
+
+`/api/chat/mobile-inbox` arma el nombre en dos pasos: lee las conversaciones,
+y después busca los contactos por separado para enriquecerlas. Si esa segunda
+consulta pide una columna que no existe, PostgREST devuelve error — y el
+código suele descartarlo:
+
+```ts
+for (const c of (contactsRes.data ?? []) as Array<…>) { … }
+//                              ↑ el error se come acá
+```
+
+Con `data: null`, el `?? []` deja el mapa vacío y cada conversación sale con
+`contact_nombre: null`. No hay excepción, no hay 500, no hay log. Desde
+afuera parece que los contactos no tienen nombre cargado.
+
+## Cómo confirmarlo en un minuto
+
+Mirá qué columnas tiene la tabla, en la base de ese ERP:
+
+```sql
+select column_name
+from information_schema.columns
+where table_schema = '<schema de la empresa>'
+  and table_name = 'chat_contacts'
+order by column_name;
+```
+
+Si ahí dice `name` y `phone_number`, y el endpoint pide `nombre` y `telefono`
+(o al revés), ese es el problema.
+
+## El arreglo
+
+Dos cosas, y la segunda importa tanto como la primera:
+
+```ts
+.select("id, name, phone_number, phone_normalized")   // los nombres reales
+
+if (contactsRes.error) {
+  console.warn("[mobile-inbox] no se pudieron leer los contactos:", contactsRes.error.message);
+}
+```
+
+El log no arregla nada hoy, pero es lo que hace que la próxima vez se vea en
+el servidor en vez de descubrirse mirando un celular.
+
+## Qué NO hace la app
+
+La app no inventa el nombre ni lo busca por otro lado: si el ERP devuelve
+`contact_nombre: null` y `contact_telefono: null`, muestra "Sin nombre". No
+hay de dónde sacarlo — el teléfono y el nombre viven en el ERP.
+
+Por eso esto se arregla en cada ERP que lo tenga, y es un cambio de dos
+líneas en un solo archivo.
