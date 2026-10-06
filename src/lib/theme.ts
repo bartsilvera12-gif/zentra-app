@@ -76,55 +76,37 @@ export const MARCA = {
 } as const;
 
 /**
- * Los botones del inicio. Acá el color SÍ se queda.
- *
- * Es la única pantalla donde seis colores ayudan en vez de molestar: son seis
- * destinos uno al lado del otro, siempre en el mismo lugar, y el color es lo
- * que deja encontrar el de siempre sin leer. Un vendedor que entra veinte
- * veces por día va al naranja, no a "Conversaciones".
- *
- * Lo que molestaba era el resto: que cada pantalla de adentro tuviera además
- * su propio acento, y que el encabezado cambiara de color al navegar. Eso se
- * unificó; esto no.
- *
- * `color` es el fondo en reposo y `fill` el que se pinta al tocarlo.
- */
-/**
  * Los botones del inicio.
  *
  *   color   el fondo en reposo. Es lo que identifica a cada módulo: se busca
- *           "el morado" sin leer el rótulo.
+ *           "el naranja" sin leer el rótulo.
  *   fill    el punto que crece al apretar. Tiene que ser pariente de `color`
  *           —misma familia, otra luminosidad— porque el mismo texto se lee
  *           sobre los dos.
  *   over    el texto y el ícono.
  *
- * Los seis colores en reposo son distintos a propósito: encontrar el de
- * siempre sin leer es justo para lo que sirve el color acá. Es la excepción al
- * resto de la app, donde el color significa estado y no decoración.
+ * Es la excepción al resto de la app, donde el color significa estado y no
+ * decoración: acá encontrar el de siempre sin leer es justo para lo que sirve.
  *
- * Proveedores lleva el ámbar y Compras el azul claro: estaban al revés, y el
- * ámbar se pidió para Proveedores. Es un intercambio y no un color nuevo —
- * dejarlo en las dos habría dado dos baldosas iguales, que es justo lo que el
- * color acá tiene que evitar.
+ * El `#038C8C` de la paleta se cambió por el ámbar `#F3AA20`. De paso se fue
+ * el color más problemático: daba 4.09 con texto blanco y 4.09 con tinta
+ * oscura, o sea que no llegaba al mínimo con ninguna de las dos, porque cae
+ * justo en el medio de luminosidad.
  *
- * `#3D6282` y `#FFD277` no están en la paleta original de cinco: son un tono
- * más claro de `#2A445E` y del ámbar. Hacían falta dos tonos más —seis
- * baldosas, dos tonos cada una— y antes que meter un color nuevo es preferible
- * estirar los que ya están.
+ * `#3DBFB0` y `#013B40` son agregados: la paleta trae cinco colores, las
+ * baldosas son seis, y cada una necesita dos tonos. Los dos son sombras de
+ * colores que ya estaban, no colores nuevos.
  *
- * Contrastes del texto, medidos sobre fondo y sobre relleno: ninguno baja de
- * 5:1. El relleno ámbar es claro y no oscuro porque oscurecerlo dejaba el
- * texto en 3.56, por debajo del mínimo.
+ * Contrastes del texto, medidos sobre fondo y sobre relleno: el peor da 5.50.
  */
 export const MODULES: Record<ModuleKey, ModuleDef> = {
-  venta: { title: "Nueva venta", color: "#2A445E", fill: "#346B6D", over: "#ffffff" },
-  clientes: { title: "Clientes", color: "#346B6D", fill: "#2A445E", over: "#ffffff" },
-  compras: { title: "Compras", color: "#3D6282", fill: "#2A445E", over: "#ffffff" },
-  inventario: { title: "Inventario", color: "#58094F", fill: "#841E62", over: "#ffffff" },
-  conversaciones: { title: "Conversaciones", color: "#841E62", fill: "#58094F", over: "#ffffff" },
-  proveedores: { title: "Proveedores", color: "#F3AA20", fill: "#FFD277", over: "#2A445E" },
-  reportes: { title: "Reportes", color: "#2A445E", fill: "#346B6D", over: "#ffffff" },
+  venta: { title: "Nueva venta", color: "#025159", fill: "#013B40", over: "#ffffff" },
+  clientes: { title: "Clientes", color: "#08A696", fill: "#3DBFB0", over: "#04212A" },
+  compras: { title: "Compras", color: "#3DBFB0", fill: "#08A696", over: "#04212A" },
+  inventario: { title: "Inventario", color: "#F27405", fill: "#F28705", over: "#04212A" },
+  conversaciones: { title: "Conversaciones", color: "#F28705", fill: "#F27405", over: "#04212A" },
+  proveedores: { title: "Proveedores", color: "#F3AA20", fill: "#F28705", over: "#04212A" },
+  reportes: { title: "Reportes", color: "#025159", fill: "#013B40", over: "#ffffff" },
 };
 
 /** Brand palette, named so screens stop repeating raw hex. */
