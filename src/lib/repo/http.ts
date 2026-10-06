@@ -648,6 +648,9 @@ interface ConversacionErp {
   unread_count?: number | null;
   contact_nombre?: string | null;
   contact_telefono?: string | null;
+  /** Quién la está atendiendo, y en qué cola está. Pueden venir vacíos. */
+  agente_nombre?: string | null;
+  cola_nombre?: string | null;
 }
 
 interface ConversacionesErp {
@@ -815,13 +818,57 @@ function aChat(c: ConversacionErp): Chat {
     enLinea: false,
     hora: horaCorta(c.last_message_at),
     noLeidos: Number(c.unread_count) || 0,
+    responsable: primero(c.agente_nombre, c.cola_nombre) || null,
     // El listado trae sólo la vista previa del último mensaje. Los mensajes de
     // verdad llegan al abrir la conversación.
+    //
+    // La vista previa que guarda el ERP para un adjunto es un marcador de
+    // texto: "[audio]", "[documento] x.pdf". Se traduce acá, que si no la
+    // lista se lee como una columna de corchetes.
     msgs: c.last_message_preview
-      ? [{ de: "ellos", texto: c.last_message_preview, hora: horaCorta(c.last_message_at) }]
+      ? [{ de: "ellos", texto: vistaPrevia(c.last_message_preview), hora: horaCorta(c.last_message_at) }]
       : [],
   };
 }
+
+/**
+ * El marcador del ERP, dicho en castellano.
+ *
+ *   "[audio]"                 -> "Audio"
+ *   "[documento] DDJJ.pdf"    -> "DDJJ.pdf"
+ *   "[reaction]"              -> "Reaccionó"
+ *   "Hola"                    -> "Hola"
+ */
+function vistaPrevia(crudo: string): string {
+  const m = /^\s*\[(\w+)\]\s*(.*)$/s.exec(crudo);
+  if (!m) return crudo;
+  const [, clase, resto] = m;
+  const limpio = (resto || "").trim();
+  if (limpio) return limpio;
+  const nombres: Record<string, string> = {
+    imagen: "\u{1F4F7} Foto",
+    image: "\u{1F4F7} Foto",
+    video: "\u{1F3AC} Video",
+    audio: "\u{1F3A4} Audio",
+    voice: "\u{1F3A4} Audio",
+    documento: "\u{1F4CE} Documento",
+    document: "\u{1F4CE} Documento",
+    sticker: "Sticker",
+    reaction: "Reaccion\u00f3",
+    revoke: "Mensaje eliminado",
+  };
+  return nombres[clase.toLowerCase()] ?? crudo;
+}
+
+/**
+ * Cuántas conversaciones por tanda.
+ *
+ * La pantalla ofrece "cargar más" cuando una tanda vuelve completa. Es una
+ * suposición, no un dato: si el total es múltiplo exacto de esto, el último
+ * toque trae cero y el botón desaparece. Una pedida de más es más barato que
+ * arrastrar un número de total por toda la cadena.
+ */
+export const TANDA_CHATS = 50;
 
 /** `Contrato_ERP.pdf` → `PDF`. Es lo que va en el cuadradito de la tarjeta. */
 function extensionDe(nombre: string): string {
@@ -1183,9 +1230,12 @@ export const httpRepo: Repo = {
      * busca una cookie que en el APK no existe. Está anotado en
      * docs/API-ERP.md. Por eso el segundo queda de respaldo.
      */
-    async list() {
+    async list(params) {
+      const desde = Math.max(Number(params?.desde) || 0, 0);
       try {
-        const r = await request<unknown>("/chat/mobile-inbox");
+        const r = await request<unknown>("/chat/mobile-inbox", {
+          query: { offset: desde, limit: TANDA_CHATS },
+        });
         return comoLista<ConversacionErp>(r, "conversations", "/chat/mobile-inbox").map(aChat);
       } catch (e) {
         // Un error de datos no se tapa con el respaldo: si el endpoint
@@ -1193,6 +1243,8 @@ export const httpRepo: Repo = {
         if (e instanceof ApiError && e.status !== 401 && e.status !== 403 && e.status !== 404) throw e;
       }
 
+      // El endpoint viejo no pagina: con él sólo existe la primera tanda.
+      if (desde > 0) return [];
       const r = await request<ConversacionesErp>("/mobile/asesor/conversations");
       // `is_agent: false` no es "no tenés conversaciones": es que este usuario
       // no está en ninguna cola de atención. Son cosas distintas y la pantalla

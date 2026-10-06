@@ -3,20 +3,22 @@
 import { MARCA } from "@/lib/theme";
 import { ADJUNTOS, CHATS, EMOJIS, GIFS, STICKERS } from "@/lib/data";
 import {
+  IconActualizar,
   IconAudio,
   IconCamara,
   IconDocumento,
   IconGaleria,
   IconUbicacion,
 } from "../ui/Icons";
-import { repo, SinCola, usaApiDelErp } from "@/lib/repo";
+import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
-import { useEffect, useRef, useState } from "react";
+import { nombreCorto } from "@/lib/nombre";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Grabador } from "@/lib/grabador";
-import type { ChatMsg, ThemeTokens } from "@/lib/types";
+import type { Chat, ChatMsg, ThemeTokens } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
@@ -332,15 +334,56 @@ export function ConversacionesScreen() {
   // está en ninguna cola hay que decirle eso, no dejarlo mirando una lista
   // vacía creyendo que nadie le escribió.
   const sinCola = error === new SinCola().message;
-  const CHATS_VIVOS = datos;
+
+  /**
+   * Las tandas que se fueron pidiendo con "Cargar más", aparte de la primera.
+   *
+   * El ERP responde de a 50. Una empresa con cientos de conversaciones abiertas
+   * veía sólo las 50 más recientes y no había forma de llegar al resto.
+   *
+   * Se guardan por separado de `datos` porque "Actualizar" vuelve a traer la
+   * primera tanda, y las de abajo tienen que irse con ella: si no, quedarían
+   * conversaciones viejas pegadas debajo de una lista recién refrescada.
+   */
+  const [extra, setExtra] = useState<Chat[]>([]);
+  const [trayendo, setTrayendo] = useState(false);
+  const [finDeLista, setFinDeLista] = useState(false);
+
+  const CHATS_VIVOS = useMemo(() => {
+    // Una conversación puede aparecer en dos tandas si llegó un mensaje nuevo
+    // entre una pedida y la otra: se queda con la primera, que es la más fresca.
+    const vistos = new Set<string>();
+    return [...datos, ...extra].filter((c) => (vistos.has(c.id) ? false : (vistos.add(c.id), true)));
+  }, [datos, extra]);
+
+  const actualizar = () => {
+    setExtra([]);
+    setFinDeLista(false);
+    recargar();
+  };
+
+  const cargarMas = async () => {
+    if (trayendo) return;
+    setTrayendo(true);
+    try {
+      const mas = await repo.chats.list({ desde: CHATS_VIVOS.length });
+      // Tanda incompleta quiere decir que no hay más: se deja de ofrecer el botón.
+      if (mas.length < TANDA_CHATS) setFinDeLista(true);
+      if (mas.length > 0) setExtra((v) => [...v, ...mas]);
+    } catch {
+      // Un fallo acá no rompe lo que ya está en pantalla. Se deja de ofrecer
+      // "cargar más" en vez de dejar un botón que no hace nada.
+      setFinDeLista(true);
+    } finally {
+      setTrayendo(false);
+    }
+  };
 
   const noLeidosTotal = CHATS_VIVOS.reduce((a, c) => a + noLeidosDe(c, s.xLeidos), 0);
   const xq = norm(s.xQuery.trim());
 
   const filtrados = CHATS_VIVOS.filter((c) => {
     if (s.xFiltro === "No leídas" && noLeidosDe(c, s.xLeidos) === 0) return false;
-    if (s.xFiltro === "Clientes" && c.tipo !== "Cliente") return false;
-    if (s.xFiltro === "Proveedores" && c.tipo !== "Proveedor") return false;
     return norm(c.nombre + " " + ultimoDe(c, s.xEnviados)).indexOf(xq) >= 0;
   });
 
@@ -386,7 +429,10 @@ export function ConversacionesScreen() {
     (c) => norm(c.nombre).indexOf(norm(s.xnQuery.trim())) >= 0,
   );
 
-  const chips = ["Todas", "No leídas", "Clientes", "Proveedores"].map((k) => {
+  // Sin "Clientes" y "Proveedores": en el chat del ERP todas son conversaciones
+  // de WhatsApp y `tipo` era siempre "Cliente", así que un filtro no devolvía
+  // nada y el otro no filtraba nada.
+  const chips = ["Todas", "No leídas"].map((k) => {
     const on = s.xFiltro === k;
     return {
       label: k,
@@ -871,6 +917,30 @@ export function ConversacionesScreen() {
                     : "Todo al día"}
                 </span>
               </div>
+              {/* Actualizar a mano. La lista se trae al abrir la pantalla, así
+                  que sin esto había que salir y volver a entrar para ver si
+                  llegó algo. */}
+              <button
+                onClick={actualizar}
+                disabled={cargando}
+                aria-label="Actualizar la lista"
+                style={{
+                  flex: "0 0 auto",
+                  width: 38,
+                  height: 38,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 999,
+                  background: t.card,
+                  color: t.ink2,
+                  cursor: cargando ? "default" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: cargando ? 0.5 : 1,
+                }}
+              >
+                <IconActualizar size={18} stroke="currentColor" />
+              </button>
               <button
                 onClick={() => set({ xSub: "nuevo", xnQuery: "" })}
                 style={{
@@ -963,12 +1033,18 @@ export function ConversacionesScreen() {
                       >
                         {c.nombre}
                       </span>
-                      <Badge
-                        bg={esCliente ? "#E2F0F4" : MARCA.suave}
-                        ink={esCliente ? "#04617A" : VIOLETA_INK}
-                      >
-                        {c.tipo}
-                      </Badge>
+                      {/* Antes acá decía "Cliente" en todas, que no distinguía
+                          nada. Ahora dice de quién es la conversación: el agente
+                          asignado, o la cola si todavía no la tomó nadie. */}
+                      {c.responsable ? (
+                        <Badge bg={MARCA.suave} ink={VIOLETA_INK}>
+                          {nombreCorto(c.responsable)}
+                        </Badge>
+                      ) : (
+                        <Badge bg={t.bg} ink={t.ink3}>
+                          Sin asignar
+                        </Badge>
+                      )}
                     </span>
                     <span
                       style={{
@@ -1017,6 +1093,30 @@ export function ConversacionesScreen() {
             })}
             {!cargando && !error && filtrados.length === 0 && (
               <EmptyState titulo="Sin conversaciones" detalle="Probá con otro término o cambiá el filtro." />
+            )}
+
+            {/* Traer la tanda siguiente. No aparece mientras se busca: ahí lo
+                que se ve es un filtro sobre lo que ya está, y un botón que trae
+                más de abajo confundiría. Tampoco si la última tanda vino
+                incompleta, que quiere decir que no queda nada. */}
+            {conErp && !cargando && !error && !finDeLista && !xq && CHATS_VIVOS.length > 0 && (
+              <button
+                onClick={cargarMas}
+                disabled={trayendo}
+                style={{
+                  width: "100%",
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 12,
+                  background: t.card,
+                  color: trayendo ? t.ink3 : t.ink2,
+                  padding: "13px 0",
+                  marginTop: 2,
+                  cursor: trayendo ? "default" : "pointer",
+                  font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+                }}
+              >
+                {trayendo ? "Cargando…" : "Cargar más"}
+              </button>
             )}
           </ScrollBody>
         </>

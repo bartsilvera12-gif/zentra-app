@@ -193,3 +193,13 @@ export function IconContacto({ size = 22, stroke = "#ffffff" }: IconProps) {
     </svg>
   );
 }
+
+/** Dos flechas en círculo: volver a pedir la lista. */
+export function IconActualizar({ size = 18, stroke = "currentColor" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.2 11.4a8.2 8.2 0 1 0-.6 4.4" />
+      <path d="M20.6 5.6v5.9h-5.9" />
+    </svg>
+  );
+}

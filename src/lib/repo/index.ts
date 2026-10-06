@@ -53,6 +53,6 @@ export function usaApiDelErp(): boolean {
 }
 
 export * from "./ports";
-export { ApiError, SinCola } from "./http";
+export { ApiError, SinCola, TANDA_CHATS } from "./http";
 export { AuthError } from "./supabase-auth";
 export { registrar } from "./supabase";

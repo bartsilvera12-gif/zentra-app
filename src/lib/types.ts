@@ -203,6 +203,11 @@ export interface Chat {
   enLinea: boolean;
   hora: string;
   noLeidos: number;
+  /**
+   * Quién atiende la conversación: el agente asignado o, si no hay, la cola.
+   * `null` cuando no la tomó nadie todavía.
+   */
+  responsable?: string | null;
   msgs: ChatMsg[];
 }
 

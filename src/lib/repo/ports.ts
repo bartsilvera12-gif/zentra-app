@@ -180,7 +180,11 @@ export interface ComprasRepo {
 /* ---------- conversaciones ---------- */
 
 export interface ChatsRepo {
-  list(params?: { q?: string; tipo?: Chat["tipo"]; soloNoLeidas?: boolean }): Promise<Chat[]>;
+  /**
+   * `desde` es cuántas conversaciones ya se tienen, para pedir las siguientes.
+   * El ERP responde por tandas: sin esto sólo se ven las más recientes.
+   */
+  list(params?: { q?: string; tipo?: Chat["tipo"]; soloNoLeidas?: boolean; desde?: number }): Promise<Chat[]>;
   get(id: string): Promise<Chat | null>;
   enviar(chatId: string, msg: Omit<ChatMsg, "hora" | "tick">): Promise<ChatMsg>;
   /**
