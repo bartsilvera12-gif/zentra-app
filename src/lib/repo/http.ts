@@ -818,7 +818,14 @@ function aChat(c: ConversacionErp): Chat {
     enLinea: false,
     hora: horaCorta(c.last_message_at),
     noLeidos: Number(c.unread_count) || 0,
-    responsable: primero(c.agente_nombre, c.cola_nombre) || null,
+    // Tres estados, no dos. `undefined` es "este ERP no informa de quién es la
+    // conversación", y entonces la etiqueta no se dibuja: poner "Sin asignar"
+    // en todas sería afirmar algo que no sabemos. `null` sí es "no la tomó
+    // nadie", y eso sólo se puede decir si el ERP mandó el campo.
+    responsable:
+      "agente_nombre" in c || "cola_nombre" in c
+        ? primero(c.agente_nombre, c.cola_nombre) || null
+        : undefined,
     // El listado trae sólo la vista previa del último mensaje. Los mensajes de
     // verdad llegan al abrir la conversación.
     //

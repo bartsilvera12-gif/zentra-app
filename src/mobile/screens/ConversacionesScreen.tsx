@@ -367,9 +367,13 @@ export function ConversacionesScreen() {
     setTrayendo(true);
     try {
       const mas = await repo.chats.list({ desde: CHATS_VIVOS.length });
-      // Tanda incompleta quiere decir que no hay más: se deja de ofrecer el botón.
-      if (mas.length < TANDA_CHATS) setFinDeLista(true);
-      if (mas.length > 0) setExtra((v) => [...v, ...mas]);
+      // Un ERP que no entiende `offset` devuelve siempre la misma tanda. Sin
+      // esto el botón quedaría para siempre trayendo lo mismo: si nada de lo
+      // que llegó es nuevo, se terminó.
+      const conocidos = new Set(CHATS_VIVOS.map((c) => c.id));
+      const nuevos = mas.filter((c) => !conocidos.has(c.id));
+      if (nuevos.length === 0 || mas.length < TANDA_CHATS) setFinDeLista(true);
+      if (nuevos.length > 0) setExtra((v) => [...v, ...nuevos]);
     } catch {
       // Un fallo acá no rompe lo que ya está en pantalla. Se deja de ofrecer
       // "cargar más" en vez de dejar un botón que no hace nada.
@@ -1036,7 +1040,7 @@ export function ConversacionesScreen() {
                       {/* Antes acá decía "Cliente" en todas, que no distinguía
                           nada. Ahora dice de quién es la conversación: el agente
                           asignado, o la cola si todavía no la tomó nadie. */}
-                      {c.responsable ? (
+                      {c.responsable === undefined ? null : c.responsable ? (
                         <Badge bg={MARCA.suave} ink={VIOLETA_INK}>
                           {nombreCorto(c.responsable)}
                         </Badge>
