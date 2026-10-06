@@ -54,6 +54,49 @@ export async function GET(request: NextRequest) {
 por eso los mensajes de una conversación sí se leen desde la app. Es la misma
 idea, aplicada a un endpoint que quedó afuera.
 
+## Lo que decide quién ve qué: el rol, no la cola
+
+Hay dos puertas distintas, y ahí está la confusión.
+
+**El ERP de escritorio y `/api/chat/mobile-inbox`** miran el **rol** en
+`chat_empresa_operator_roles`:
+
+| Rol | Qué ve |
+|---|---|
+| `admin` | todas las conversaciones de la empresa |
+| `supervisor` | las de los agentes a su cargo |
+| `agente` | las suyas |
+| sin fila, pero con fila en `chat_agents` | las suyas |
+
+**Las colas no entran en esa cuenta.** Por eso alguien sin ninguna cola asignada
+ve todo en el ERP: lo ve por su rol.
+
+**`/api/mobile/asesor/conversations`** usa otra puerta, más estrecha:
+`getMyAgentOperationalPresence().in_queues`. Exige estar en una cola, y **el rol
+no cuenta**. Un administrador sin cola recibe `is_agent: false` y una lista
+vacía.
+
+Esa diferencia es todo el problema. No es que falten permisos: es que el
+endpoint que la app podía usar hace una pregunta distinta.
+
+### Para ver el rol de cada uno
+
+```sql
+select u.nombre,
+       r.role                      as rol_omnicanal,
+       count(a.id)                 as colas
+  from <schema>.usuarios u
+  left join <schema>.chat_empresa_operator_roles r
+         on r.usuario_id = u.id and r.empresa_id = u.empresa_id
+  left join <schema>.chat_agents a
+         on a.usuario_id = u.id and a.empresa_id = u.empresa_id
+ group by u.nombre, r.role
+ order by u.nombre;
+```
+
+Quien tenga `rol_omnicanal = admin` ve todo en el ERP aunque `colas` sea 0. Y
+hoy, en la app, no ve nada — hasta el arreglo de arriba.
+
 ## Lo que NO resuelve el problema
 
 **Meterse en una cola.** El endpoint de asesor devuelve sólo lo asignado a esa
