@@ -193,6 +193,59 @@ notificaciones. Ahora hay tres guardas para que no vuelva a pasar en silencio:
   recurso que genera él mismo.
 - Si el token no llega, el mensaje que muestra la app nombra esta causa.
 
+### 0 bis. El ERP manda desde otro proyecto de Firebase
+
+El síntoma es el peor de todos: **todo está bien y no llega nada.** El permiso
+dado, el token en `agent_device_tokens` con su `app_version`, el usuario dado de
+alta como agente, la conversación asignada, y el ERP mandando pushes que a otras
+apps sí les llegan.
+
+Un token de FCM está atado al proyecto de Firebase que lo emitió. Un servidor
+autenticado como el proyecto A no puede mandarle a un token emitido por el
+proyecto B: Firebase contesta `messaging/mismatched-credential` · `SenderId
+mismatch`. Y el despachador del ERP, ante ese error, **desactiva el token**
+(`is_active: false`), así que al rato ni siquiera figura como dispositivo
+activo y parece que nunca se registró.
+
+Se confirma en diez segundos. Logueado en el ERP, en el navegador:
+
+```
+https://<tu-erp>/api/diag/push-prueba
+```
+
+Manda una notificación de prueba a los teléfonos del usuario logueado y
+devuelve, token por token, lo que contestó Firebase:
+
+```json
+{"ok":true,"enviados":1,"resultados":[
+  {"token":"53d66f5b","platform":"android","ok":false,
+   "code":"messaging/mismatched-credential","error":"SenderId mismatch"}]}
+```
+
+(Va sin guión bajo. `/api/_diag/push` existe en el código pero no se puede
+abrir: Next no rutea las carpetas que empiezan con `_`.)
+
+El arreglo es de configuración y no hay forma de hacerlo desde la app. Las dos
+salidas, con su costo:
+
+- **Un solo proyecto para las dos apps.** Se agrega `py.com.zentra.movil` como
+  app Android dentro del proyecto de Firebase que ya usa el ERP, se baja ese
+  `google-services.json` y reemplaza al de Zentra. Anda enseguida y no toca el
+  ERP. El costo es que ese archivo es **de ese cliente**: otro cliente con su
+  propio proyecto necesitaría otro APK, que es lo contrario de un solo APK para
+  todos.
+- **Zentra tiene su proyecto y cada ERP recibe un service account de él.** Un
+  solo APK para todos los clientes, y cada ERP se configura con
+  `FIREBASE_SERVICE_ACCOUNT_JSON_BASE64` (o el trío `FIREBASE_PROJECT_ID` /
+  `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`) apuntando al proyecto de
+  Zentra. Es la que corresponde al producto.
+
+  Con una salvedad: un ERP que además manda pushes a una app propia queda con
+  dos proyectos, y `firebase-admin` se inicializa una sola vez
+  (`getApps()[0]`, cacheado). Ese ERP necesita sostener dos credenciales y
+  elegir según el token. Es un cambio en el ERP, chico pero real, y hay que
+  contarlo antes de prometer push multiempresa.
+
 Después, por orden de probabilidad:
 
 1. **No se corrió `05_dispositivos.sql`.** Activar el switch tira error.
