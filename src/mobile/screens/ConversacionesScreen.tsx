@@ -622,6 +622,10 @@ export function ConversacionesScreen() {
     // La reacción no es un mensaje: es un emoji suelto, chico, del lado de
     // quien reaccionó. Antes se veía un globo que decía "[reaction]".
     if (m.reaccion) {
+      // De qué lado va: del mensaje reaccionado, no de quien reaccionó. Ese era
+      // el descuadre — un pulgar que un cliente le ponía a mi mensaje aparecía
+      // a la izquierda, lejos del globo del que cuelga.
+      const ladoDerecho = m.reaccionSobreMio ?? mio;
       return (
         // El `gap` de la lista deja 9px entre globos; una reacción tiene que
         // quedar pegada al mensaje de arriba, no flotando a media altura.
@@ -631,11 +635,11 @@ export function ConversacionesScreen() {
           key={i}
           style={{
             display: "flex",
-            justifyContent: mio ? "flex-end" : "flex-start",
+            justifyContent: ladoDerecho ? "flex-end" : "flex-start",
             marginTop: -11,
             // Un poco adentro del borde: la reacción cuelga del globo, no de la pantalla.
-            paddingRight: mio ? 10 : 0,
-            paddingLeft: mio ? 0 : 10,
+            paddingRight: ladoDerecho ? 10 : 0,
+            paddingLeft: ladoDerecho ? 0 : 10,
           }}
         >
           <span
@@ -646,6 +650,9 @@ export function ConversacionesScreen() {
               borderRadius: 999,
               background: t.card,
               border: `1px solid ${t.border}`,
+              // Despega la píldora del globo del que cuelga. Sin esto, sobre un
+              // globo del mismo color se leía como parte del mensaje.
+              boxShadow: "0 1px 3px rgba(0,0,0,.18)",
             }}
             title={`Reaccionó ${m.reaccion}`}
           >
@@ -1073,10 +1080,25 @@ export function ConversacionesScreen() {
             <ChipRow chips={chips} />
           </div>
 
-          <ScrollBody>
-            {cargando && <Cargando t={t} que="las conversaciones" />}
-            {!cargando && error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
-            {!cargando && !error && filtrados.map((c) => {
+          {/* Sin separación entre filas y sin margen lateral: la lista es una
+              lista, no una pila de tarjetas. Cada conversación era una caja con
+              borde y esquinas redondeadas, y veinte cajas seguidas es lo que se
+              veía cuadrado. Ahora las filas van pegadas, separadas por una
+              línea finita, como en cualquier app de mensajes. */}
+          <ScrollBody padding="0" gap={0}>
+            {/* La lista va sin padding para que las filas lleguen de borde a
+                borde; todo lo que no es una fila se lo pone por su cuenta. */}
+            {cargando && (
+              <div style={{ padding: "12px 14px" }}>
+                <Cargando t={t} que="las conversaciones" />
+              </div>
+            )}
+            {!cargando && error && (
+              <div style={{ padding: "12px 14px" }}>
+                <Falla t={t} mensaje={error} onReintentar={recargar} />
+              </div>
+            )}
+            {!cargando && !error && filtrados.map((c, idx) => {
               const nl = noLeidosDe(c, s.xLeidos);
               const esCliente = c.tipo === "Cliente";
               return (
@@ -1085,28 +1107,32 @@ export function ConversacionesScreen() {
                   onClick={() => abrirChat(c.id)}
                   style={{
                     display: "flex",
-                    alignItems: "flex-start",
-                    gap: 11,
+                    alignItems: "center",
+                    gap: 12,
                     textAlign: "left",
-                    borderRadius: 16,
-                    padding: 13,
+                    padding: "11px 14px",
                     cursor: "pointer",
-                    background: nl > 0 ? (s.theme === "oscuro" ? "#1b2238" : "#F4F3FA") : t.card,
-                    border: `1px solid ${nl > 0 ? "#AFD0DE" : t.border}`,
+                    background: t.card,
+                    border: 0,
+                    // La línea arranca después del avatar, como en WhatsApp: así
+                    // el ojo sigue la columna de nombres y no se corta la fila
+                    // entera. La primera no lleva, que si no parece un borde.
+                    borderTop: idx === 0 ? 0 : `1px solid ${t.border}`,
                   }}
                 >
                   <span style={{ position: "relative", flex: "0 0 auto" }}>
                     <span
                       style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 13,
+                        width: 48,
+                        height: 48,
+                        // Redondo, no cuadrado con las puntas limadas.
+                        borderRadius: "50%",
                         background: esCliente ? "#E2F0F4" : MARCA.suave,
                         color: esCliente ? "#04617A" : VIOLETA_INK,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        font: "700 16px/1 var(--font-barlow),Barlow,sans-serif",
+                        font: "700 18px/1 var(--font-barlow),Barlow,sans-serif",
                       }}
                     >
                       {c.nombre.slice(0, 1)}
@@ -1115,12 +1141,12 @@ export function ConversacionesScreen() {
                       <span
                         style={{
                           position: "absolute",
-                          right: -2,
-                          bottom: -2,
-                          width: 11,
-                          height: 11,
+                          right: 0,
+                          bottom: 0,
+                          width: 12,
+                          height: 12,
                           borderRadius: "50%",
-                          background: "#1C8C84",
+                          background: MARCA.acento,
                           border: `2px solid ${t.card}`,
                         }}
                       />
@@ -1131,11 +1157,12 @@ export function ConversacionesScreen() {
                     <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <span
                         style={{
-                          font: "600 15.5px/1.2 var(--font-barlow),Barlow,sans-serif",
+                          font: `${nl > 0 ? 700 : 600} 15.5px/1.2 var(--font-barlow),Barlow,sans-serif`,
                           color: t.ink,
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
+                          minWidth: 0,
                         }}
                       >
                         {c.nombre}
@@ -1172,26 +1199,39 @@ export function ConversacionesScreen() {
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "flex-end",
-                      gap: 5,
+                      gap: 6,
                     }}
                   >
-                    <span style={{ font: "400 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>{c.hora}</span>
+                    {/* La hora en verde cuando hay sin leer: es el mismo par de
+                        señales que usa WhatsApp —hora en color y globito— y se
+                        entiende de un vistazo sin leer el número. */}
+                    <span
+                      style={{
+                        font: `${nl > 0 ? 600 : 400} 11.5px/1 var(--font-barlow),Barlow,sans-serif`,
+                        color: nl > 0 ? MARCA.acento : t.ink3,
+                      }}
+                    >
+                      {c.hora}
+                    </span>
                     {nl > 0 && (
                       <span
                         style={{
-                          minWidth: 18,
-                          height: 18,
-                          borderRadius: 9,
-                          background: VIOLETA,
-                          color: "#fff",
+                          minWidth: 21,
+                          height: 21,
+                          borderRadius: 11,
+                          background: MARCA.acento,
+                          color: "#ffffff",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          font: "700 10.5px/1 var(--font-barlow),Barlow,sans-serif",
-                          padding: "0 5px",
+                          font: "700 12px/1 var(--font-barlow),Barlow,sans-serif",
+                          padding: "0 6px",
                         }}
                       >
-                        {nl}
+                        {/* Más de 99 no entra y tampoco importa: lo que dice es
+                            "muchos". Sin esto, un número de cuatro cifras
+                            estiraba el globito y descuadraba la fila. */}
+                        {nl > 99 ? "99+" : nl}
                       </span>
                     )}
                   </span>
@@ -1199,7 +1239,9 @@ export function ConversacionesScreen() {
               );
             })}
             {!cargando && !error && filtrados.length === 0 && (
-              <EmptyState titulo="Sin conversaciones" detalle="Probá con otro término o cambiá el filtro." />
+              <div style={{ padding: "12px 14px" }}>
+                <EmptyState titulo="Sin conversaciones" detalle="Probá con otro término o cambiá el filtro." />
+              </div>
             )}
 
             {/* Traer la tanda siguiente. No aparece mientras se busca: ahí lo
@@ -1211,13 +1253,12 @@ export function ConversacionesScreen() {
                 onClick={cargarMas}
                 disabled={trayendo}
                 style={{
-                  width: "100%",
                   border: `1px solid ${t.border}`,
                   borderRadius: 12,
                   background: t.card,
                   color: trayendo ? t.ink3 : t.ink2,
                   padding: "13px 0",
-                  marginTop: 2,
+                  margin: "12px 14px 14px",
                   cursor: trayendo ? "default" : "pointer",
                   font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
                 }}

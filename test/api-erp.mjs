@@ -149,12 +149,34 @@ const server = createServer((req, res) => {
         { id: "c2", status: "open", last_message_at: "2026-10-05T15:00:00Z",
           last_message_preview: "Gracias!", unread_count: 0,
           contact_nombre: "Edgar Maldonado", contact_telefono: "0973 549 547" },
+        // Los ERP no se ponen de acuerdo en como se llama esta columna, y sin
+        // el numero el globito de no leidos no aparece nunca.
+        { id: "c3", contact_nombre: "Otro ERP", no_leidos: 5 },
+        { id: "c4", contact_nombre: "ERP en camello", unreadCount: "7" },
       ] });
     }
     if (ruta === "/chat/messages") {
       if (inboxCaido) return json(401, { success: false, error: "No autenticado" });
       if (u.searchParams.get("conversation_id") === "con-foto") {
         return ok([{ id: "m1", from_me: false, content: "", message_type: "image", created_at: "2026-10-05T14:03:00Z" }]);
+      }
+      if (u.searchParams.get("conversation_id") === "con-reacciones") {
+        return ok([
+          // Mio, y el cliente le reacciona: el emoji va de MI lado.
+          { id: "m1", from_me: true, content: "Te paso precios", message_type: "text", created_at: "2026-10-05T14:00:00Z" },
+          { id: "m2", from_me: false, content: "[reaction]", message_type: "reaction", created_at: "2026-10-05T14:01:00Z",
+            raw_payload: { reaction: { emoji: "\u{1F44D}", key: { fromMe: true, id: "w1" } } } },
+          // De el, y yo le reacciono: va de SU lado.
+          { id: "m3", from_me: false, content: "Gracias!", message_type: "text", created_at: "2026-10-05T14:02:00Z" },
+          { id: "m4", from_me: true, content: "[reaction]", message_type: "reaction", created_at: "2026-10-05T14:03:00Z",
+            raw_payload: { whatsappMessage: { reaction: { text: "\u{2764}", key: { from_me: false, id: "w3" } } } } },
+          // Reaccion retirada: emoji vacio. No se dibuja nada.
+          { id: "m5", from_me: false, content: "[reaction]", message_type: "reaction", created_at: "2026-10-05T14:04:00Z",
+            raw_payload: { reaction: { emoji: "", key: { fromMe: true, id: "w1" } } } },
+          // Sin `key`: no se sabe de que lado, se cae al de quien reacciono.
+          { id: "m6", from_me: true, content: "[reaction]", message_type: "reaction", created_at: "2026-10-05T14:05:00Z",
+            raw_payload: { reaction: { emoji: "\u{1F602}" } } },
+        ]);
       }
       return ok([
         { id: "m1", from_me: false, content: "Buenas, tenes stock?", message_type: "text", created_at: "2026-10-05T14:03:00Z" },
@@ -420,10 +442,51 @@ t("sin estado en el listado, se deriva del tipo y no queda todo pendiente", asyn
 
 t("un administrador ve todas: se usa el endpoint que respeta el rol", async () => {
   const cs = await httpRepo.chats.list();
-  // El de asesor devuelve una sola; el que respeta el rol, las dos.
-  if (cs.length !== 2) throw new Error("conversaciones: " + cs.length);
+  // El de asesor devuelve una sola; el que respeta el rol, las cuatro.
+  if (cs.length !== 4) throw new Error("conversaciones: " + cs.length);
   if (cs[0].nombre !== "Lucia Benitez") throw new Error("nombre: " + cs[0].nombre);
   if (cs[0].noLeidos !== 2) throw new Error("no leidos: " + cs[0].noLeidos);
+});
+
+t("el numero de no leidos se lee aunque el ERP le diga de otra forma", async () => {
+  const cs = await httpRepo.chats.list();
+  const por = (n) => cs.find((c) => c.nombre === n);
+  if (por("Otro ERP").noLeidos !== 5) throw new Error("no_leidos: " + por("Otro ERP").noLeidos);
+  // Y como texto, que es como lo manda mas de uno.
+  if (por("ERP en camello").noLeidos !== 7) throw new Error("unreadCount: " + por("ERP en camello").noLeidos);
+  // Cero sigue siendo cero, no "no vino el campo".
+  if (por("Edgar Maldonado").noLeidos !== 0) throw new Error("cero deberia quedar en cero");
+});
+
+t("la reaccion se alinea con el mensaje al que reacciona, no con quien reacciono", async () => {
+  const d = await httpRepo.chats.get("con-reacciones");
+  const reacciones = d.msgs.filter((m) => m.reaccion);
+  // Son tres: la retirada no se dibuja.
+  if (reacciones.length !== 3) throw new Error("reacciones dibujadas: " + reacciones.length);
+
+  // El cliente reacciona a MI mensaje: el emoji va de mi lado.
+  const pulgar = reacciones.find((m) => m.reaccion === "\u{1F44D}");
+  if (!pulgar) throw new Error("se perdio el pulgar");
+  if (pulgar.de !== "ellos") throw new Error("reacciono el cliente, no yo");
+  if (pulgar.reaccionSobreMio !== true) throw new Error("tenia que ir de mi lado");
+
+  // Yo reacciono al mensaje DE EL: va de su lado. Y el emoji viene en `text`.
+  const corazon = reacciones.find((m) => m.reaccion === "\u{2764}");
+  if (!corazon) throw new Error("no leyo el emoji de `text`");
+  if (corazon.reaccionSobreMio !== false) throw new Error("tenia que ir de su lado");
+
+  // Sin `key` no se sabe: se cae al lado de quien reacciono, que fui yo.
+  const risa = reacciones.find((m) => m.reaccion === "\u{1F602}");
+  if (risa.reaccionSobreMio !== true) throw new Error("sin key deberia caer en quien reacciono");
+});
+
+t("sacar una reaccion no deja un pulgar que nadie puso", async () => {
+  const d = await httpRepo.chats.get("con-reacciones");
+  // El mensaje m5 es una reaccion con el emoji vacio: es un retiro.
+  if (d.msgs.some((m) => m.reaccion === "\u{1F44D}" && m.reaccionSobreMio === true && m.de === "ellos" && m.hora === "14:04")) {
+    throw new Error("el retiro se dibujo como pulgar");
+  }
+  if (d.msgs.length !== 5) throw new Error("tenian que quedar 5 de 6: " + d.msgs.length);
 });
 
 t("si ese endpoint no autentica, cae en el de asesor en vez de romperse", async () => {
@@ -467,7 +530,7 @@ t("quien no esta en ninguna cola no ve una lista vacia, ve por que", async () =>
     inboxCaido = false;
   }
   // Y con el endpoint que respeta el rol, la lista sale completa.
-  if ((await httpRepo.chats.list()).length !== 2) throw new Error("tenía que listar las dos");
+  if ((await httpRepo.chats.list()).length !== 4) throw new Error("tenía que listarlas todas");
 });
 
 t("al abrir una conversacion llegan sus mensajes, con el tick del propio", async () => {

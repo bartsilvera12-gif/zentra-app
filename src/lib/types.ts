@@ -207,6 +207,12 @@ export interface ChatMsg {
    * se veía un globo que decía "[reaction]", que no le dice nada a nadie.
    */
   reaccion?: string;
+  /**
+   * De qué lado se dibuja la reacción: la del mensaje al que reacciona, no la
+   * de quien reaccionó. Si un cliente le pone un pulgar a algo que escribí yo,
+   * el emoji va con mi mensaje, a la derecha.
+   */
+  reaccionSobreMio?: boolean;
 }
 
 export interface Chat {

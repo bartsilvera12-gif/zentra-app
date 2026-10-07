@@ -645,7 +645,16 @@ interface ConversacionErp {
   status?: string | null;
   last_message_at?: string | null;
   last_message_preview?: string | null;
+  /**
+   * Cuántos sin leer. El nombre del campo cambia según el ERP, así que se
+   * miran varios: la app no puede pedirle a cada cliente que renombre una
+   * columna para que se vea el globito.
+   */
   unread_count?: number | null;
+  unread?: number | null;
+  unreadCount?: number | null;
+  no_leidos?: number | null;
+  mensajes_sin_leer?: number | null;
   contact_nombre?: string | null;
   contact_telefono?: string | null;
   /** Quién la está atendiendo, y en qué cola está. Pueden venir vacíos. */
@@ -805,18 +814,43 @@ function urlEnElTexto(texto: string | null | undefined): string | null {
 }
 
 /**
- * El emoji de una reacción.
+ * Lo que trae una reacción: el emoji y de quién es el mensaje reaccionado.
  *
  * Viaja en el sobre de WhatsApp, que según el proveedor anida el mensaje un
  * nivel más adentro. Se miran las tres formas conocidas y se corta en la
- * primera que tenga algo.
+ * primera que tenga el objeto `reaction`.
+ *
+ * `sobreMio` es lo que faltaba y es lo que descolocaba las reacciones. Una
+ * reacción se dibuja colgando del mensaje al que reacciona, no del lado de
+ * quien reaccionó: si un cliente le pone un pulgar a algo que escribí yo, el
+ * emoji va a la derecha, con mi mensaje. Antes se alineaba por `from_me` del
+ * mensaje de reacción —o sea, por quién reaccionó— y quedaba del lado
+ * contrario, flotando suelto.
+ *
+ * `emoji` vacío NO es un error: WhatsApp manda una reacción con el emoji en
+ * blanco para decir "le saqué la reacción". Por eso se devuelve `""` y no se
+ * rellena acá; quien llame decide, y lo que corresponde es no dibujar nada.
  */
-function emojiDeReaccion(raw: Record<string, unknown> | null | undefined): string | null {
+function datosDeReaccion(
+  raw: Record<string, unknown> | null | undefined,
+): { emoji: string; sobreMio: boolean | null } | null {
   for (const r of raicesDelSobre(raw)) {
     const reaccion = r.reaction;
     if (!reaccion || typeof reaccion !== "object" || Array.isArray(reaccion)) continue;
-    const e = (reaccion as { emoji?: unknown }).emoji;
-    if (typeof e === "string" && e.trim()) return e.trim();
+    const obj = reaccion as { emoji?: unknown; text?: unknown; key?: unknown };
+    // Algunos proveedores le dicen `text` en vez de `emoji`.
+    const crudo = typeof obj.emoji === "string" ? obj.emoji : typeof obj.text === "string" ? obj.text : "";
+    // `key` apunta al mensaje reaccionado. Sin él no se puede saber de qué
+    // lado va, y entonces se cae al lado de quien reaccionó, que es lo que
+    // había antes: peor que esto, pero es lo único que queda.
+    const key = obj.key;
+    let sobreMio: boolean | null = null;
+    if (key && typeof key === "object" && !Array.isArray(key)) {
+      const k = key as { fromMe?: unknown; from_me?: unknown };
+      const v = typeof k.fromMe === "boolean" ? k.fromMe : typeof k.from_me === "boolean" ? k.from_me : null;
+      if (v !== null) sobreMio = v;
+    }
+    return { emoji: crudo.trim(), sobreMio };
   }
   return null;
 }
@@ -850,6 +884,28 @@ function horaCorta(iso: string | null | undefined): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/**
+ * Cuántos mensajes sin leer tiene la conversación.
+ *
+ * Cada ERP le pone un nombre distinto a esta columna y la app no puede pedirle
+ * a cada cliente que la renombre: sin esto, el globito con el número no
+ * aparece nunca y no hay ningún error que lo explique, que es la peor forma de
+ * fallar. Se prueban los nombres conocidos y gana el primero que traiga un
+ * número; un `0` legítimo corta la búsqueda igual, porque cero es una
+ * respuesta, no un campo ausente.
+ */
+function cuantosSinLeer(c: ConversacionErp): number {
+  // Tipado suelto a propósito: el ERP puede mandar el número como texto, y
+  // declararlo `number` acá no impide que llegue `"3"`.
+  const candidatos: unknown[] = [c.unread_count, c.unread, c.unreadCount, c.no_leidos, c.mensajes_sin_leer];
+  for (const v of candidatos) {
+    if (v === null || v === undefined || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n) && n >= 0) return Math.floor(n);
+  }
+  return 0;
+}
+
 function aChat(c: ConversacionErp): Chat {
   return {
     id: String(c.id),
@@ -860,7 +916,7 @@ function aChat(c: ConversacionErp): Chat {
     refId: null,
     enLinea: false,
     hora: horaCorta(c.last_message_at),
-    noLeidos: Number(c.unread_count) || 0,
+    noLeidos: cuantosSinLeer(c),
     // Tres estados, no dos. `undefined` es "este ERP no informa de quién es la
     // conversación", y entonces la etiqueta no se dibuja: poner "Sin asignar"
     // en todas sería afirmar algo que no sabemos. `null` sí es "no la tomó
@@ -928,7 +984,15 @@ function extensionDe(nombre: string): string {
   return ext.length <= 4 ? ext : "DOC";
 }
 
-function aMensaje(m: MensajeErp): ChatMsg {
+/**
+ * Un mensaje del ERP, como lo muestra la app.
+ *
+ * Devuelve `null` cuando el mensaje no se tiene que dibujar. Hoy el único caso
+ * es una reacción retirada, que llega como un mensaje de reacción con el emoji
+ * vacío. Antes eso caía en un `|| "👍"` y aparecía un pulgar que nadie puso:
+ * sacar una reacción dejaba una reacción.
+ */
+function aMensaje(m: MensajeErp): ChatMsg | null {
   const tipo = (m.message_type || "text").toLowerCase();
   const base = {
     de: (m.from_me ? "yo" : "ellos") as "yo" | "ellos",
@@ -945,8 +1009,17 @@ function aMensaje(m: MensajeErp): ChatMsg {
 
   // Una reacción es un emoji sobre otro mensaje, no un mensaje.
   if (tipo.includes("reaction")) {
-    const emoji = emojiDeReaccion(m.raw_payload) || sinMarcador(m.content) || "";
-    return { ...base, reaccion: emoji.trim() || "\u{1F44D}" };
+    const datos = datosDeReaccion(m.raw_payload);
+    const emoji = (datos?.emoji || sinMarcador(m.content) || "").trim();
+    // Reacción retirada: no se dibuja nada.
+    if (!emoji) return null;
+    return {
+      ...base,
+      reaccion: emoji,
+      // De qué lado va: del mensaje reaccionado. Si el sobre no lo dice, del
+      // lado de quien reaccionó, que es lo único que se sabe.
+      reaccionSobreMio: datos?.sobreMio ?? base.de === "yo",
+    };
   }
 
   if (tipo.includes("sticker")) {
@@ -1323,7 +1396,7 @@ export const httpRepo: Repo = {
           enLinea: false,
           hora: "",
           noLeidos: 0,
-          msgs: msgs.map(aMensaje),
+          msgs: msgs.map(aMensaje).filter((x): x is ChatMsg => x !== null),
         };
       } catch (e) {
         if (e instanceof ApiError && e.status !== 401 && e.status !== 403 && e.status !== 404) throw e;
@@ -1342,7 +1415,7 @@ export const httpRepo: Repo = {
         enLinea: false,
         hora: "",
         noLeidos: 0,
-        msgs: (r.messages ?? []).map(aMensaje),
+        msgs: (r.messages ?? []).map(aMensaje).filter((x): x is ChatMsg => x !== null),
       };
     },
 
