@@ -147,11 +147,52 @@ El código de la app no cambia: el plugin es el mismo para las dos plataformas.
 
 ## Si no llegan los avisos
 
-Por orden de probabilidad:
+**Primero mirá el APK, no la base de datos.** Es la causa más común, la más
+silenciosa y la que ya nos costó dos días de buscar en el lugar equivocado.
+
+### 0. El APK se compiló sin Firebase
+
+```
+git ls-files android/app/google-services.json
+```
+
+Si no imprime nada, el archivo no está en el repo y **ningún APK compilado
+desde ese commit recibe notificaciones**. Recuperalo:
+
+```
+git checkout 760579c^ -- android/app/google-services.json
+git add android/app/google-services.json && git commit
+```
+
+Por qué no se nota: el `android/app/build.gradle` que genera Capacitor hace
+
+```gradle
+def servicesJSON = file('google-services.json')
+if (servicesJSON.text) { apply plugin: 'com.google.gms.google-services' }
+```
+
+y cuando no lo encuentra lo dice con `logger.info`, que en una corrida normal
+de Gradle no se imprime. El APK compila, instala y anda en todo lo demás. Lo
+único que no hace es recibir avisos, y nada lo avisa — ni Gradle, ni el APK, ni
+la app.
+
+Pasó de verdad: un commit sobre los íconos (`760579c`) borró ese archivo sin
+mencionarlo en el mensaje, y la fábrica siguió publicando APKs sin
+notificaciones. Ahora hay tres guardas para que no vuelva a pasar en silencio:
+
+- `npm run android:init` **corta** si falta el archivo, y también si el archivo
+  es de otra app (compara el `package_name` con el `applicationId` del APK).
+  Para un APK sin avisos a propósito: `SIN_PUSH=1 npm run apk`.
+- La fábrica verifica que el plugin de Google haya corrido de verdad, mirando el
+  recurso que genera él mismo.
+- Si el token no llega, el mensaje que muestra la app nombra esta causa.
+
+Después, por orden de probabilidad:
 
 1. **No se corrió `05_dispositivos.sql`.** Activar el switch tira error.
-2. **El `google-services.json` no está en `android/app/`** o es de otro proyecto.
-   El `package_name` de adentro tiene que ser exactamente `py.com.zentra.movil`.
+2. **El `google-services.json` es de otro proyecto.** El `package_name` de
+   adentro tiene que ser exactamente `py.com.zentra.movil`. `android:init` ya lo
+   verifica, pero un APK viejo puede tener el equivocado.
 3. **Falta el permiso.** Desde Android 13 hay que pedirlo y la persona puede
    rechazarlo; el sistema no vuelve a preguntar.
 4. **El teléfono no tiene Google Play Services** (algunos Huawei). FCM no funciona

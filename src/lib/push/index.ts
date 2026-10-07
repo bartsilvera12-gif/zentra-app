@@ -45,7 +45,18 @@ function esperarToken(timeoutMs = 15000): Promise<string> {
     const corte = setTimeout(() => {
       if (listo) return;
       listo = true;
-      reject(new Error("Firebase no respondió con el token del dispositivo."));
+      // El mensaje nombra la causa probable a propósito. Cuando esto falla, lo
+      // que se ve es "no me llegan las notificaciones", y sin esta pista se
+      // busca en la base de datos y en el ERP — que es donde no está. La causa
+      // más común es un APK compilado sin `google-services.json`: Gradle no lo
+      // avisa y el APK anda en todo lo demás.
+      reject(
+        new Error(
+          "Firebase no respondió con el token. Puede que este APK se haya " +
+            "compilado sin la configuración de Firebase, o que el teléfono no " +
+            "tenga Google Play Services.",
+        ),
+      );
     }, timeoutMs);
 
     const terminar = (fn: () => void) => {
@@ -57,7 +68,15 @@ function esperarToken(timeoutMs = 15000): Promise<string> {
 
     PushNotifications.addListener("registration", (t) => terminar(() => resolve(t.value)));
     PushNotifications.addListener("registrationError", (e) =>
-      terminar(() => reject(new Error(String(e?.error || "Error registrando el dispositivo.")))),
+      terminar(() =>
+        reject(
+          new Error(
+            String(e?.error || "Error registrando el dispositivo.") +
+              " (Si dice que falta el FirebaseApp o el google_app_id, el APK se " +
+              "compiló sin la configuración de Firebase.)",
+          ),
+        ),
+      ),
     );
     PushNotifications.register().catch((e: unknown) => terminar(() => reject(e as Error)));
   });

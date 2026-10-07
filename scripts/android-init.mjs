@@ -82,10 +82,36 @@ if (existsSync(GS)) {
   console.log(`Configuración de Firebase guardada en ${COPIA}`);
 } else if (existsSync(COPIA)) {
   console.log(`Usando la copia de ${COPIA} de una corrida anterior.`);
+} else if (process.env.SIN_PUSH === "1") {
+  console.log(`\nSIN_PUSH=1: se compila sin ${GS}. El APK no va a tener notificaciones.`);
 } else {
-  console.log(`Aviso: no está ${GS}.`);
-  console.log("El APK va a andar igual, pero sin notificaciones.");
-  console.log("Si debería estar, recuperalo con:  git checkout " + GS);
+  // Esto corta la compilación, y el motivo vale la pena escribirlo.
+  //
+  // El `android/app/build.gradle` que genera Capacitor hace esto:
+  //
+  //     def servicesJSON = file('google-services.json')
+  //     if (servicesJSON.text) { apply plugin: 'com.google.gms.google-services' }
+  //     ...
+  //     logger.info("google-services.json not found ... Push Notifications won't work")
+  //
+  // `logger.info` no se imprime en una corrida normal de Gradle. O sea: sin
+  // este archivo el APK compila, instala y anda, y lo único que no hace es
+  // recibir notificaciones — sin un solo mensaje de error en ninguna parte.
+  //
+  // Ya nos costó caro: un commit sobre los íconos borró este archivo sin
+  // mencionarlo, y durante dos días la respuesta a "no me llegan las push"
+  // fue buscar en la base de datos y en el ERP, cuando el APK no tenía
+  // Firebase adentro. Un APK sin notificaciones no se entrega por accidente:
+  // si es a propósito, se dice con SIN_PUSH=1.
+  console.log(`\nERROR: falta ${GS}, la configuración de Firebase.`);
+  console.log("Sin ese archivo el APK compila igual pero NO recibe notificaciones,");
+  console.log("y Gradle no lo avisa. Por eso esto corta acá.\n");
+  console.log("Recuperalo del historial:");
+  console.log(`  git checkout 760579c^ -- ${GS}\n`);
+  console.log("O bajalo de la consola de Firebase (proyecto zentra-app-android,");
+  console.log("app py.com.zentra.movil) y guardalo en esa ruta.\n");
+  console.log("Si de verdad querés un APK sin notificaciones:  SIN_PUSH=1 npm run apk\n");
+  process.exit(1);
 }
 
 /**
@@ -383,12 +409,64 @@ async function verificarIcono() {
 
 await verificarIcono();
 
+/**
+ * Que el APK realmente vaya a tener Firebase adentro.
+ *
+ * Tener el archivo no alcanza. Capacitor sólo aplica el plugin si
+ * `servicesJSON.text` da verdadero, así que un archivo vacío lo saltea igual.
+ * Y el error más fácil de cometer es bajar de la consola de Firebase la
+ * configuración de **otra** app: el archivo está, es válido, y el token nunca
+ * llega porque el paquete no coincide. Las dos cosas se ven igual desde afuera
+ * —"no me llegan las notificaciones"— y ninguna da un error al compilar.
+ */
+function verificarFirebase() {
+  if (process.env.SIN_PUSH === "1") return;
+
+  const crudo = readFileSync(GS, "utf8");
+  if (!crudo.trim()) {
+    console.log(`\nERROR: ${GS} está vacío. Capacitor lo saltea y el APK sale sin notificaciones.`);
+    process.exit(1);
+  }
+
+  let cfg;
+  try {
+    cfg = JSON.parse(crudo);
+  } catch {
+    console.log(`\nERROR: ${GS} no es JSON válido. Bajalo de nuevo de la consola de Firebase.`);
+    process.exit(1);
+  }
+
+  // El paquete del APK, leído del proyecto generado y no de una constante acá:
+  // si mañana cambia el appId, esto lo sigue.
+  const gradle = readFileSync("android/app/build.gradle", "utf8");
+  const paquete = /applicationId\s+"([^"]+)"/.exec(gradle)?.[1] || "";
+
+  const paquetes = (cfg.client || [])
+    .map((c) => c?.client_info?.android_client_info?.package_name)
+    .filter(Boolean);
+
+  if (!paquetes.includes(paquete)) {
+    console.log(`\nERROR: ${GS} no es de esta app.`);
+    console.log(`  El APK es           ${paquete}`);
+    console.log(`  La configuración es ${paquetes.join(", ") || "(ninguna app)"}`);
+    console.log("\nFirebase entrega tokens por paquete: con esta configuración, el token nunca llega.");
+    console.log("Bajá el google-services.json de la app correcta en la consola de Firebase.");
+    process.exit(1);
+  }
+
+  console.log(`OK: Firebase configurado para ${paquete} (proyecto ${cfg.project_info?.project_id || "?"}).`);
+}
+
 if (existsSync(COPIA)) {
   mkdirSync("android/app", { recursive: true });
   copyFileSync(COPIA, GS);
   unlinkSync(COPIA);
   console.log(`\nConfiguración de Firebase devuelta a ${GS}`);
 }
+
+// Después de devolver el archivo, no antes: `cap add android` regenera la
+// carpeta y hasta esta línea no hay nada que verificar.
+verificarFirebase();
 
 /**
  * Que lo que va a entrar al APK sea lo que se acaba de compilar.

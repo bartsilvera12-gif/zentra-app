@@ -135,6 +135,38 @@ jobs:
           print("OK: el APK lleva el directorio adentro:", ", ".join(d))
           PY
 
+      # Que el APK lleve Firebase adentro, o no va a recibir notificaciones.
+      #
+      # El build.gradle que genera Capacitor aplica el plugin de Google sólo si
+      # encuentra google-services.json, y cuando no lo encuentra lo dice con
+      # logger.info — que en una corrida normal de Gradle no se imprime. O sea
+      # que un APK sin Firebase compila, instala y anda: lo unico que no hace es
+      # recibir notificaciones, y nada lo avisa.
+      #
+      # Pasó: un commit sobre los iconos borró google-services.json del repo y
+      # la fábrica siguió publicando APKs sin notificaciones durante dos dias.
+      #
+      # Lo que se mira es el recurso que genera el plugin. Si existe, el plugin
+      # corrió; si no existe, no corrió. Es la señal mas directa que hay, y no
+      # depende de leer el binario del APK.
+      - name: Verificar que el APK lleva Firebase
+        run: |
+          python3 - <<'PY'
+          import glob, sys
+          encontrados = glob.glob("android/app/build/generated/res/google-services/*/values/values.xml")
+          if not encontrados:
+              sys.exit(
+                  "ERROR: el plugin de Google no corrio, asi que este APK no recibe notificaciones.\n"
+                  "Casi siempre es que falta android/app/google-services.json en el repo.\n"
+                  "Recuperalo:  git checkout 760579c^ -- android/app/google-services.json"
+              )
+          for ruta in encontrados:
+              with open(ruta, encoding="utf-8") as f:
+                  if "google_app_id" not in f.read():
+                      sys.exit(f"ERROR: {ruta} no tiene google_app_id; la configuracion de Firebase quedo vacia.")
+          print("OK: el APK lleva Firebase (" + ", ".join(encontrados) + ").")
+          PY
+
       # Y que el icono haya entrado al paquete, no solo que se haya generado.
       - name: Verificar que el APK lleva el icono
         run: |
