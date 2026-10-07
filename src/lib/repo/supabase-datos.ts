@@ -890,6 +890,9 @@ export const dispositivosRepo: DispositivosRepo = {
       p_plataforma: input.plataforma,
     });
     if (error) reventar("registrando el dispositivo", error);
+    // Esta instalación no tiene el contact center del ERP, así que no hay
+    // concepto de agente. `null` es "no se sabe", y la pantalla calla.
+    return { esAgente: null };
   },
 
   async baja(token: string) {

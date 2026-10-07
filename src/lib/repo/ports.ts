@@ -223,12 +223,28 @@ export interface DispositivoInput {
   plataforma: "android" | "ios" | "web";
 }
 
+/** Lo que el ERP contesta al registrar el teléfono. */
+export interface DispositivoAlta {
+  /**
+   * Si este usuario está dado de alta como agente de conversaciones.
+   *
+   * El ERP elige a quién mandarle el aviso de un chat por su `agent_id`. Un
+   * usuario que no es agente no tiene ninguno, así que no le va a llegar jamás
+   * un aviso de chat — por más que el interruptor esté prendido, el permiso
+   * dado y el token guardado. Es el final mudo que nos costó dos días: todo
+   * parecía bien y no sonaba nada.
+   *
+   * `null` cuando el ERP no lo informa; entonces no se afirma nada.
+   */
+  esAgente: boolean | null;
+}
+
 export interface DispositivosRepo {
   /**
    * Guarda el token del dispositivo para el usuario de la sesión. Se llama en cada
    * arranque: el token cambia al reinstalar la app, así que hay que refrescarlo.
    */
-  registrar(input: DispositivoInput): Promise<void>;
+  registrar(input: DispositivoInput): Promise<DispositivoAlta>;
   /** Da de baja el token: al apagar los avisos o al cerrar sesión. */
   baja(token: string): Promise<void>;
 }

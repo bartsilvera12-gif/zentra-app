@@ -99,14 +99,25 @@ export function ConfigScreen() {
     set({ pushOcupado: true, pushAviso: "" });
     try {
       if (prender) {
-        const ok = await activarPush();
+        const { ok, esAgente } = await activarPush();
         guardarPreferenciaPush(ok);
         set({
           push: ok,
           pushOcupado: false,
-          // Si lo rechazaron, el sistema no vuelve a preguntar: hay que mandarlos
-          // a los ajustes del teléfono.
-          pushAviso: ok ? "" : "Falta el permiso de notificaciones. Se habilita en los ajustes del teléfono.",
+          // Tres respuestas distintas, y la del medio es la que faltaba.
+          //
+          // Que el interruptor quede prendido no quiere decir que vayan a
+          // llegar avisos de chats: el ERP elige a quién mandárselos por su
+          // `agent_id`, y quien no está dado de alta como agente de
+          // conversaciones no tiene ninguno. Antes eso terminaba en silencio
+          // —todo en orden, nada sonando— y no había forma de enterarse desde
+          // el teléfono. El ERP ya lo contestaba; la app lo tiraba.
+          pushAviso: !ok
+            ? "Falta el permiso de notificaciones. Se habilita en los ajustes del teléfono."
+            : esAgente === false
+              ? "Listo, pero tu usuario no figura como agente de conversaciones en el ERP, " +
+                "así que los avisos de chats no te van a llegar. Hay que darte de alta allá."
+              : "",
         });
       } else {
         await desactivarPush();

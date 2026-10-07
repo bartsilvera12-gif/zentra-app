@@ -1482,16 +1482,23 @@ export const httpRepo: Repo = {
    */
   dispositivos: {
     async registrar(input) {
-      await request("/cc/agent/device-token", {
-        method: "POST",
-        body: JSON.stringify({
-          fcm_token: input.token,
-          platform: input.plataforma,
-          // Para saber desde qué build llegó un token cuando algo no suene.
-          // El ERP lo recorta a 40, pero mandarlo ya corto evita depender de eso.
-          app_version: `${config.version}${config.build ? ` (${config.build})` : ""}`.slice(0, 40),
-        }),
-      });
+      const r = await request<{ is_agent?: boolean; agent_id?: string | null } | null>(
+        "/cc/agent/device-token",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            fcm_token: input.token,
+            platform: input.plataforma,
+            // Para saber desde qué build llegó un token cuando algo no suene.
+            // El ERP lo recorta a 40, pero mandarlo ya corto evita depender de eso.
+            app_version: `${config.version}${config.build ? ` (${config.build})` : ""}`.slice(0, 40),
+          }),
+        },
+      );
+      // El ERP ya venía contestando esto y la app lo tiraba. Es el dato que
+      // explica por qué un teléfono con todo en orden no recibe avisos de
+      // chats: sin `agent_id` el despachador no tiene a quién mandárselos.
+      return { esAgente: typeof r?.is_agent === "boolean" ? r.is_agent : null };
     },
 
     /**

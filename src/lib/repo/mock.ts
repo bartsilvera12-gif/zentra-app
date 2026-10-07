@@ -484,6 +484,9 @@ export const mockRepo: Repo = {
     async registrar(input) {
       extra.dispositivos[input.token] = input.plataforma;
       await demora(null);
+      // Sin backend no se sabe si es agente, y `null` es justo eso: no se
+      // afirma nada, y la pantalla no muestra una advertencia inventada.
+      return { esAgente: null };
     },
     async baja(token) {
       delete extra.dispositivos[token];

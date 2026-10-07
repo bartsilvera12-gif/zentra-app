@@ -88,20 +88,33 @@ function esperarToken(timeoutMs = 15000): Promise<string> {
  * Devuelve `false` cuando la persona rechazó el permiso. Eso no es un error: el
  * sistema no vuelve a preguntar, hay que mandarla a los ajustes del teléfono.
  */
-export async function activarPush(): Promise<boolean> {
-  if (!pushDisponible()) return false;
+export interface ResultadoPush {
+  /** Si quedó activado: permiso dado y token guardado. */
+  ok: boolean;
+  /**
+   * Si el backend reconoce a este usuario como agente de conversaciones.
+   *
+   * `false` significa que los avisos de chats no van a llegar nunca, aunque
+   * todo lo demás esté bien: el ERP elige a quién mandárselos por su
+   * `agent_id`, y quien no es agente no tiene ninguno. `null` es "no se sabe".
+   */
+  esAgente: boolean | null;
+}
+
+export async function activarPush(): Promise<ResultadoPush> {
+  if (!pushDisponible()) return { ok: false, esAgente: null };
 
   const estado = await PushNotifications.checkPermissions();
   const permiso =
     estado.receive === "granted"
       ? estado
       : await PushNotifications.requestPermissions();
-  if (permiso.receive !== "granted") return false;
+  if (permiso.receive !== "granted") return { ok: false, esAgente: null };
 
   const token = await esperarToken();
   tokenActual = token;
-  await repo.dispositivos.registrar({ token, plataforma: plataforma() });
-  return true;
+  const alta = await repo.dispositivos.registrar({ token, plataforma: plataforma() });
+  return { ok: true, esAgente: alta.esAgente };
 }
 
 /**
@@ -179,7 +192,7 @@ export function guardarPreferenciaPush(on: boolean): void {
 export async function reanudarPush(): Promise<boolean> {
   if (!pushDisponible() || !pushPreferido()) return false;
   try {
-    return await activarPush();
+    return (await activarPush()).ok;
   } catch {
     return false;
   }
