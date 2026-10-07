@@ -146,25 +146,49 @@ jobs:
       # Pasó: un commit sobre los iconos borró google-services.json del repo y
       # la fábrica siguió publicando APKs sin notificaciones durante dos dias.
       #
-      # Lo que se mira es el recurso que genera el plugin. Si existe, el plugin
-      # corrió; si no existe, no corrió. Es la señal mas directa que hay, y no
-      # depende de leer el binario del APK.
+      # Lo que se busca es el recurso `google_app_id` que genera el plugin: si
+      # está, el plugin corrió; si no está, no corrió. Se busca por contenido y
+      # no por una ruta fija a propósito — la primera version de este paso
+      # miraba `build/generated/res/google-services/*/values/values.xml` y dio
+      # rojo en un APK que SI tenía Firebase, porque esa ruta cambia entre
+      # versiones del plugin y de AGP. Un chequeo que falla cuando todo está
+      # bien es peor que no tenerlo: frena la entrega y enseña a ignorarlo.
       - name: Verificar que el APK lleva Firebase
         run: |
           python3 - <<'PY'
-          import glob, sys
-          encontrados = glob.glob("android/app/build/generated/res/google-services/*/values/values.xml")
+          import os, sys
+          RAIZ = "android/app/build"
+          encontrados = []
+          for base, _, archivos in os.walk(RAIZ):
+              for n in archivos:
+                  if not n.endswith(".xml"):
+                      continue
+                  ruta = os.path.join(base, n)
+                  try:
+                      with open(ruta, encoding="utf-8", errors="ignore") as f:
+                          if "google_app_id" in f.read():
+                              encontrados.append(ruta)
+                  except OSError:
+                      pass
           if not encontrados:
+              # Sin esta lista, un falso positivo deja a oscuras: no se sabe si
+              # el plugin no corrió o si sólo cambió de carpeta.
+              generados = []
+              for base, dirs, _ in os.walk(os.path.join(RAIZ, "generated")):
+                  generados.append(base)
+                  if len(generados) > 40:
+                      break
               sys.exit(
-                  "ERROR: el plugin de Google no corrio, asi que este APK no recibe notificaciones.\n"
-                  "Casi siempre es que falta android/app/google-services.json en el repo.\n"
-                  "Recuperalo:  git checkout 760579c~1 -- android/app/google-services.json"
+                  "ERROR: no aparece google_app_id en ningun recurso generado, asi que\n"
+                  "el plugin de Google no corrio y este APK no recibe notificaciones.\n"
+                  "Casi siempre es que falta android/app/google-services.json en el repo:\n"
+                  "  git checkout 760579c~1 -- android/app/google-services.json\n\n"
+                  "Carpetas generadas, por si el plugin sólo cambió de ruta:\n  "
+                  + "\n  ".join(generados)
               )
-          for ruta in encontrados:
-              with open(ruta, encoding="utf-8") as f:
-                  if "google_app_id" not in f.read():
-                      sys.exit(f"ERROR: {ruta} no tiene google_app_id; la configuracion de Firebase quedo vacia.")
-          print("OK: el APK lleva Firebase (" + ", ".join(encontrados) + ").")
+          print("OK: el APK lleva Firebase. google_app_id en:")
+          for r in encontrados:
+              print("  " + r)
           PY
 
       # Y que el icono haya entrado al paquete, no solo que se haya generado.
