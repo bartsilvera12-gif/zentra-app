@@ -5,14 +5,22 @@ build/
 dist/
 
 # Los proyectos nativos los genera Capacitor, así que no se versionan...
-android/
-ios/
+#
+# Van con `/*` y no como `android/`: git no puede volver a incluir un archivo si
+# un directorio padre está excluido —deja de recorrerlo y nunca llega a leer la
+# excepción—. Escrito `android/`, los `!` de abajo eran decorativos: el
+# google-services.json figuraba como ignorado y agregarlo pedía `-f`. Así, se
+# ignora el contenido y se vuelve a abrir el camino nivel por nivel.
+android/*
+ios/*
 
 # ...con una excepción: la configuración de Firebase no se regenera, se descarga
 # de la consola. Si se pierde, la app deja de recibir notificaciones.
 !android/app/
 android/app/*
 !android/app/google-services.json
+!ios/App/
+ios/App/*
 !ios/App/App/
 ios/App/App/*
 !ios/App/App/GoogleService-Info.plist
