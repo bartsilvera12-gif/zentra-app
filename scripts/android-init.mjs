@@ -107,7 +107,7 @@ if (existsSync(GS)) {
   console.log("Sin ese archivo el APK compila igual pero NO recibe notificaciones,");
   console.log("y Gradle no lo avisa. Por eso esto corta acá.\n");
   console.log("Recuperalo del historial:");
-  console.log(`  git checkout 760579c^ -- ${GS}\n`);
+  console.log(`  git checkout 760579c~1 -- ${GS}\n`);
   console.log("O bajalo de la consola de Firebase (proyecto zentra-app-android,");
   console.log("app py.com.zentra.movil) y guardalo en esa ruta.\n");
   console.log("Si de verdad querés un APK sin notificaciones:  SIN_PUSH=1 npm run apk\n");

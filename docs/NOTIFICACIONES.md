@@ -160,9 +160,15 @@ Si no imprime nada, el archivo no está en el repo y **ningún APK compilado
 desde ese commit recibe notificaciones**. Recuperalo:
 
 ```
-git checkout 760579c^ -- android/app/google-services.json
+git checkout 760579c~1 -- android/app/google-services.json
 git add android/app/google-services.json && git commit
 ```
+
+Va `~1` y no `^`. En el `cmd` de Windows el `^` es el carácter de escape y
+desaparece antes de que git lo vea: `760579c^` le llega como `760579c`, que es
+justo el commit donde el archivo ya no está, y el error que sale —"pathspec did
+not match any file(s) known to git"— hace pensar que el archivo nunca existió.
+`~1` significa lo mismo y no tiene caracteres especiales en ningún shell.
 
 Por qué no se nota: el `android/app/build.gradle` que genera Capacitor hace
 

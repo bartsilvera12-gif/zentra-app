@@ -158,7 +158,7 @@ jobs:
               sys.exit(
                   "ERROR: el plugin de Google no corrio, asi que este APK no recibe notificaciones.\n"
                   "Casi siempre es que falta android/app/google-services.json en el repo.\n"
-                  "Recuperalo:  git checkout 760579c^ -- android/app/google-services.json"
+                  "Recuperalo:  git checkout 760579c~1 -- android/app/google-services.json"
               )
           for ruta in encontrados:
               with open(ruta, encoding="utf-8") as f:
