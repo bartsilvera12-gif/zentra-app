@@ -13,6 +13,7 @@ import {
 } from "../ui/Icons";
 import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
+import { useLatido } from "./useLatido";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
@@ -347,7 +348,7 @@ export function ConversacionesScreen() {
   // Las conversaciones salen del ERP: son los chats de WhatsApp asignados a
   // este asesor. Sin ERP quedan las de ejemplo, para poder ver la pantalla.
   const conErp = usaApiDelErp();
-  const { datos, cargando, error, recargar } = useRemoto(
+  const { datos, cargando, error, recargar, refrescar: refrescarLista } = useRemoto(
     () => (conErp ? repo.chats.list() : Promise.resolve(CHATS)),
     [conErp],
   );
@@ -417,10 +418,29 @@ export function ConversacionesScreen() {
   // El listado sólo trae la vista previa del último mensaje; la conversación
   // entera se pide al abrirla. Sin esto se vería un solo globo y parecería que
   // no hay historial.
-  const { datos: conversacion } = useRemoto(
+  const { datos: conversacion, refrescar: refrescarChat } = useRemoto(
     () => (conErp && s.xSel ? repo.chats.get(s.xSel).then((c) => (c ? [c] : [])) : Promise.resolve([])),
     [conErp, s.xSel],
   );
+
+  /**
+   * El chat se actualiza solo.
+   *
+   * Antes no: para ver un mensaje nuevo había que salir de la conversación y
+   * volver a entrar. En una app de mensajes eso no es un detalle que falta, es
+   * la función.
+   *
+   * Ocho segundos en la conversación abierta, veinticinco en el listado. La
+   * conversación abierta es donde alguien está esperando una respuesta ahora
+   * mismo; el listado puede tardar un poco más sin que se note. Los dos se
+   * frenan con la app en segundo plano y vuelven a pedir apenas se vuelve.
+   *
+   * Esto no reemplaza a las notificaciones push: con la app cerrada no corre
+   * nada. Sirve para el rato en que se está mirando la pantalla, que es
+   * justamente cuando una espera de treinta segundos se siente eterna.
+   */
+  useLatido(refrescarChat, 8000, conErp && s.xSub === "chat" && !!s.xSel);
+  useLatido(refrescarLista, 25000, conErp && s.xSub === "lista");
   const detMsgs = conErp
     ? [...(conversacion[0]?.msgs ?? []), ...(s.xEnviados[s.xSel ?? ""] ?? [])]
     : det
@@ -442,9 +462,33 @@ export function ConversacionesScreen() {
   const cajas = useRef<(HTMLDivElement | null)[]>([]);
   const hilo = useRef<HTMLDivElement | null>(null);
   const final = useRef<HTMLDivElement | null>(null);
+  // Qué conversación estaba abierta la última vez que se dibujó, para saber si
+  // esto es "se abrió" o "llegó un mensaje a la que ya estaba abierta".
+  const abiertaAntes = useRef<string | null>(null);
   useEffect(() => {
     if (s.xSub !== "chat") return;
-    final.current?.scrollIntoView({ block: "end" });
+    const reciénAbierta = abiertaAntes.current !== s.xSel;
+    abiertaAntes.current = s.xSel;
+
+    // Al abrir, siempre abajo: es lo último que te escribieron.
+    if (reciénAbierta) {
+      final.current?.scrollIntoView({ block: "end" });
+      return;
+    }
+
+    /**
+     * Con la conversación ya abierta, sólo si ya estabas abajo.
+     *
+     * Ahora que el chat se refresca solo, bajar siempre sería peor que no
+     * bajar nunca: estás leyendo algo de hace dos semanas, entra un mensaje, y
+     * la pantalla te arranca al final. Perdés dónde estabas y no sabés por
+     * qué. Es lo mismo que hace WhatsApp: si estás al final te sigue; si
+     * subiste a leer, te deja donde estás.
+     */
+    const caja = hilo.current;
+    if (!caja) return;
+    const alFinal = caja.scrollHeight - caja.scrollTop - caja.clientHeight < 120;
+    if (alFinal) final.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [s.xSub, s.xSel, detMsgs.length]);
 
   const contactos = CHATS_VIVOS.map((c) => ({

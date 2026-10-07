@@ -13,7 +13,7 @@
  * Esa distinción es el punto. Una lista vacía por un error de red se lee como
  * "no tengo clientes cargados", y alguien sale a vender creyendo eso.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface Remoto<T> {
   datos: T[];
@@ -22,6 +22,16 @@ export interface Remoto<T> {
   error: string | null;
   /** Para el botón de reintentar. */
   recargar: () => void;
+  /**
+   * Vuelve a pedir los datos sin que se note.
+   *
+   * La diferencia con `recargar` es todo: `recargar` enciende `cargando` y la
+   * pantalla se vacía un instante, que es lo correcto cuando alguien apretó un
+   * botón, y es inaceptable cada diez segundos. Y si el pedido falla, éste se
+   * queda con lo que ya estaba en pantalla en vez de borrarlo: una conversación
+   * no se tiene que vaciar porque el teléfono pasó un segundo por un túnel.
+   */
+  refrescar: () => Promise<void>;
 }
 
 export function useRemoto<T>(cargar: () => Promise<T[]>, deps: unknown[] = []): Remoto<T> {
@@ -59,5 +69,22 @@ export function useRemoto<T>(cargar: () => Promise<T[]>, deps: unknown[] = []): 
     };
   }, [fn, intento]);
 
-  return { datos, cargando, error, recargar: () => setIntento((n) => n + 1) };
+  // La última versión de la función de carga, para que `refrescar` no quede
+  // con la de cuando se montó la pantalla.
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+
+  const refrescar = useCallback(async () => {
+    try {
+      const r = await fnRef.current();
+      setDatos(r);
+      setError(null);
+    } catch {
+      // A propósito en silencio. Un refresco de fondo que falla no es una
+      // noticia: lo que está en pantalla sigue siendo lo último que se supo, y
+      // el próximo latido vuelve a intentar.
+    }
+  }, []);
+
+  return { datos, cargando, error, recargar: () => setIntento((n) => n + 1), refrescar };
 }
