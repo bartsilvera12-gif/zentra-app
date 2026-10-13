@@ -17,6 +17,6 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "comentario_exclude": "supabase/functions corre en Deno, no en Next: usa el global Deno y URLs jsr:, que este proyecto no conoce. Se compila sola al desplegarla; sus partes puras se prueban con npm run test:pagopar.",
-  "exclude": ["node_modules", "supabase/functions"]
+  "comentario_exclude": "server/ es el backend de cobros: Node en la VPS, con su propio package.json y sus propias dependencias. No es parte del bundle de la app.",
+  "exclude": ["node_modules", "server"]
 }

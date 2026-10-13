@@ -22,7 +22,7 @@ desincroniza de nada.
 | `zentra.cobros` | La intención: qué empresa va a pagar qué plan |
 | `zentra.pagos` | El libro de lo que entró de verdad |
 | `zentra.registrar_pago_pasarela()` | Registra el pago y empuja la fecha, todo junto |
-| `supabase/functions/pagopar-callback` | Recibe el aviso de Pagopar |
+| `server/` | El server de la VPS: crea el pedido y recibe el aviso |
 
 `cobros` existe por una razón concreta: el aviso de pago trae el `hash_pedido`
 de Pagopar y nada más. **La relación entre ese hash y la empresa hay que
@@ -35,12 +35,12 @@ va a saber de quién es.
 2. Se crea el pedido en Pagopar (`iniciar-transaccion`), que devuelve un hash.
    **Ese hash se guarda en el cobro.**
 3. La persona paga, por el medio que sea.
-4. Pagopar le pega a la Edge Function.
-5. La función verifica la firma, y `registrar_pago_pasarela` inserta el pago y
+4. Pagopar le pega a `POST /pagopar/webhook` del server.
+5. El server verifica la firma, y `registrar_pago_pasarela` inserta el pago y
    empuja `vence`.
 6. La app, al entrar, lee el `vence` nuevo.
 
-Los pasos 1 y 2 los hace `pagopar-cobrar`; del 4 al 5, `pagopar-callback`.
+Los pasos 1 y 2 los hace `POST /pagopar/crear-cobro`; del 4 al 5, `POST /pagopar/webhook`.
 
 ## Conectar la cuenta de Pagopar
 
@@ -60,7 +60,7 @@ firman pedidos y se falsifican avisos de pago.
 ### 2. Probar las claves antes de desplegar nada
 
 ```bash
-PAGOPAR_PUBLIC_KEY=xxx PAGOPAR_PRIVATE_KEY=yyy npm run pagopar:prueba
+cd server && node --env-file=.env src/prueba.js
 ```
 
 Crea un pedido de prueba de verdad contra Pagopar —de mil guaraníes, que
@@ -86,15 +86,15 @@ cargarlo.
 ### 4. Desplegar
 
 ```bash
-supabase secrets set PAGOPAR_PUBLIC_KEY=... PAGOPAR_PRIVATE_KEY=...
-supabase functions deploy pagopar-cobrar
-supabase functions deploy pagopar-callback --no-verify-jwt
+cd server && npm install
+cp .env.example .env    # completar con las claves
+npm start               # o con pm2 / systemd / Coolify, como el resto de la VPS
 ```
 
 ### 5. Decirle a Pagopar a dónde avisar
 
 En el panel, **Integrar con mi sitio web → URL de respuesta**, la URL que
-devolvió el deploy de `pagopar-callback`.
+`https://tu-dominio/pagopar/webhook`.
 
 ### 6. Probar el circuito entero
 
@@ -115,7 +115,7 @@ aviso no llegó: revisá la URL de respuesta y los logs de la función.
 `POST` a la función, con la sesión de la persona:
 
 ```
-POST /functions/v1/pagopar-cobrar
+POST /pagopar/crear-cobro
 Authorization: Bearer <access_token de Supabase>
 { "plan": "max", "documento": "1234567" }
 
@@ -137,26 +137,14 @@ Y un detalle que cuesta encontrar solo: la firma del pedido es
 `sha1(clave_privada + referencia + monto)`, donde el monto va escrito como lo
 escribe PHP con `strval(floatval($monto))` — `"150000"`, no `"150000.00"`.
 Mandar los dos decimales hace que Pagopar conteste "token inválido" sin decir
-por qué. Está en `montoParaToken()` y tiene su prueba.
+por qué. Está en `phpStrvalFloatval()` y tiene su prueba.
 
 Tocar "Pagar" dos veces no crea dos pedidos: si hay uno pendiente del mismo
 plan y monto de las últimas 48 horas, se devuelve el mismo link.
 
-## Desplegar la función
+## Dónde corre
 
-```bash
-supabase secrets set PAGOPAR_PRIVATE_KEY=...
-supabase functions deploy pagopar-callback --no-verify-jwt
-```
-
-`--no-verify-jwt` es necesario: quien llama es Pagopar, que no tiene sesión de
-Supabase. Lo que autentica el pedido es la firma SHA1, que se verifica antes de
-leer nada del contenido.
-
-La URL que sale del deploy es la que va en **Integrar con mi sitio web → URL de
-respuesta** en el panel de Pagopar.
-
-**La clave privada no sale de ahí.** Con ella se pueden firmar pedidos y
+En la VPS, no en la app. **La clave privada no sale del `.env` de ahí.** Con ella se pueden firmar pedidos y
 falsificar avisos de pago, así que no va en la app, ni en el ERP de nadie, ni
 en el repositorio.
 
