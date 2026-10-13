@@ -44,8 +44,46 @@ Los pasos 1 y 2 los hace `pagopar-cobrar`; del 4 al 5, `pagopar-callback`.
 
 ## Conectar la cuenta de Pagopar
 
-Las dos claves salen del panel de Pagopar, en **Integrar con mi sitio web**.
-No van al repositorio ni a la app: se cargan como secretos, una sola vez.
+En orden, y sin saltear el paso 2: casi todo lo que sale mal después se
+diagnostica ahí en veinte segundos.
+
+### 1. Sacar las claves
+
+Del panel de Pagopar, en **Integrar con mi sitio web**: una pública y una
+privada. Ojo con el ambiente — las de desarrollo no sirven en producción ni al
+revés. Habilitar el comercio para producción lo hace el soporte de Pagopar, no
+se destraba desde el código.
+
+**La privada no va al repositorio, ni a la app, ni a un chat.** Con ella se
+firman pedidos y se falsifican avisos de pago.
+
+### 2. Probar las claves antes de desplegar nada
+
+```bash
+PAGOPAR_PUBLIC_KEY=xxx PAGOPAR_PRIVATE_KEY=yyy npm run pagopar:prueba
+```
+
+Crea un pedido de prueba de verdad contra Pagopar —de mil guaraníes, que
+caduca solo en una hora— y dice si lo aceptó. Usa el mismo código que la
+función, así que lo que pase acá es lo que va a pasar allá.
+
+Esto separa dos preguntas que de otro modo se mezclan: *¿están bien mis
+claves?* y *¿está bien desplegada mi función?*. Sin separarlas, un "token
+inválido" puede ser la clave mal copiada, el ambiente equivocado o el comercio
+sin habilitar, y no hay forma de saber cuál.
+
+### 3. Correr las migraciones y cargar los precios
+
+```sql
+-- supabase/06_planes.sql, 07_cobros.sql, 08_precios.sql
+update zentra.planes set precio_mensual = 150000, vendible = true where codigo = 'max';
+```
+
+Los precios arrancan en cero y sin vender a propósito: un precio por defecto
+inventado es el que termina cobrándose el día que alguien se olvida de
+cargarlo.
+
+### 4. Desplegar
 
 ```bash
 supabase secrets set PAGOPAR_PUBLIC_KEY=... PAGOPAR_PRIVATE_KEY=...
@@ -53,14 +91,24 @@ supabase functions deploy pagopar-cobrar
 supabase functions deploy pagopar-callback --no-verify-jwt
 ```
 
-Y en el panel de Pagopar, la **URL de respuesta** apunta a la URL que devuelve
-el deploy de `pagopar-callback`.
+### 5. Decirle a Pagopar a dónde avisar
 
-Falta cargar los precios, que arrancan en cero y sin vender a propósito:
+En el panel, **Integrar con mi sitio web → URL de respuesta**, la URL que
+devolvió el deploy de `pagopar-callback`.
+
+### 6. Probar el circuito entero
+
+Un pago de prueba, y después:
 
 ```sql
-update zentra.planes set precio_mensual = 150000, vendible = true where codigo = 'max';
+select estado, hash_pedido from zentra.cobros order by creado_en desc limit 1;
+select * from zentra.pagos order by pagado_en desc limit 1;
+select nombre, plan, vence from zentra.empresas where id = '...';
 ```
+
+El cobro tiene que quedar `pagado`, el pago registrado, y `vence` un mes más
+adelante. Si el cobro quedó `pendiente` con hash, el pedido se creó pero el
+aviso no llegó: revisá la URL de respuesta y los logs de la función.
 
 ## Crear el pedido
 

@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "check": "node scripts/check.mjs",
     "empresa": "node scripts/empresa.mjs",
+    "pagopar:prueba": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs scripts/pagopar-prueba.mjs",
     "dev:lan": "next dev -H 0.0.0.0",
     "sync": "npm run build && npx cap sync",
     "android:init": "node scripts/android-init.mjs",
