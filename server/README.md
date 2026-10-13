@@ -54,8 +54,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/zentra-cobros
-EnvironmentFile=/opt/zentra-cobros/.env
+WorkingDirectory=/opt/zentra-app/server
+EnvironmentFile=/opt/zentra-app/server/.env
 ExecStart=/usr/bin/node src/index.js
 Restart=always
 RestartSec=5
@@ -87,7 +87,7 @@ Con nginx, un `proxy_pass` al mismo lugar y el certificado con certbot.
 **3. El `.env` con permisos cerrados.**
 
 ```bash
-chmod 600 .env && chown zentra:zentra .env
+sudo chown root:root .env && sudo chmod 600 .env
 ```
 
 Adentro están la clave privada de PagoPar —con la que se firman pedidos y se

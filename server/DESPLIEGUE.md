@@ -67,33 +67,45 @@ node -v        # tiene que decir v22.x
 
 ## 5. Traer el código
 
-El repo es privado, así que `git clone` a secas va a pedir credenciales. La
-forma limpia es una **deploy key**: una llave que sólo sirve para leer este
-repositorio.
+El repo es privado, así que `git clone` necesita permiso. La forma limpia es
+una **deploy key**: una llave que sólo sirve para leer este repositorio.
+
+Se genera con tu usuario normal, no con `zentra`. El usuario del servicio no
+tiene shell y hacerlo ahí es pelear con permisos para nada: `zentra` sólo
+necesita *correr* el server, no bajarlo.
 
 ```bash
-sudo -u zentra ssh-keygen -t ed25519 -N "" -f /opt/zentra-cobros/.ssh/id_ed25519
-cat /opt/zentra-cobros/.ssh/id_ed25519.pub
+ssh-keygen -t ed25519 -C "vps-zentra-cobros" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub
 ```
 
-Esa clave pública se pega en GitHub → el repo `zentra-app` → **Settings → Deploy
-keys → Add deploy key**, con permiso de sólo lectura. Después:
+Lo que imprime el `cat` se pega en GitHub → el repo `zentra-app` → **Settings →
+Deploy keys → Add deploy key**. Sin marcar *Allow write access*: sólo lee.
 
 ```bash
-cd /opt
-sudo -u zentra git clone git@github.com:bartsilvera12-gif/zentra-app.git zentra-app
-ln -sfn /opt/zentra-app/server /opt/zentra-cobros/app
-cd /opt/zentra-cobros/app && sudo -u zentra npm install --omit=dev
+sudo mkdir -p /opt/zentra-app
+sudo chown "$USER:$USER" /opt/zentra-app
+git clone git@github.com:bartsilvera12-gif/zentra-app.git /opt/zentra-app
+cd /opt/zentra-app/server
+npm install --omit=dev
 ```
+
+La primera vez pregunta si confiás en `github.com`. Esa huella sí es pública y
+conocida, así que `yes`.
 
 ## 6. El `.env`
 
 ```bash
-cd /opt/zentra-cobros/app
-sudo -u zentra cp .env.example .env
-sudo -u zentra nano .env
-chmod 600 .env
+cd /opt/zentra-app/server
+cp .env.example .env
+nano .env
+sudo chown root:root .env && sudo chmod 600 .env
 ```
+
+El `.env` queda de `root` y en 600 **a propósito**: systemd lo lee como root
+antes de bajar a `zentra`, así que el servicio arranca igual y el usuario que
+corre el proceso no puede leer sus propios secretos. Si algún día alguien
+entra por el server, no se lleva las claves.
 
 Lo que hay que completar:
 
@@ -131,8 +143,8 @@ update zentra.planes set precio_mensual =  80000, vendible = true where codigo =
 ## 8. Probar las claves ANTES de exponer nada
 
 ```bash
-cd /opt/zentra-cobros/app
-sudo -u zentra node --env-file=.env src/prueba.js
+cd /opt/zentra-app/server
+node --env-file=.env src/prueba.js
 ```
 
 Crea un pedido de prueba de mil guaraníes que caduca en una hora. **No pagues
@@ -154,8 +166,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/zentra-cobros/app
-EnvironmentFile=/opt/zentra-cobros/app/.env
+WorkingDirectory=/opt/zentra-app/server
+EnvironmentFile=/opt/zentra-app/server/.env
 ExecStart=/usr/bin/node src/index.js
 Restart=always
 RestartSec=5
@@ -248,9 +260,9 @@ más adelante.
 ## Actualizar después
 
 ```bash
-cd /opt/zentra-app && sudo -u zentra git pull
-cd server && sudo -u zentra npm install --omit=dev
-systemctl restart zentra-cobros
+cd /opt/zentra-app && git pull
+cd server && npm install --omit=dev
+sudo systemctl restart zentra-cobros
 ```
 
 El `.env` no se toca: está fuera del repo y `git pull` no lo pisa.
