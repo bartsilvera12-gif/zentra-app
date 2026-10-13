@@ -17,5 +17,6 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "comentario_exclude": "supabase/functions corre en Deno, no en Next: usa el global Deno y URLs jsr:, que este proyecto no conoce. Se compila sola al desplegarla; sus partes puras se prueban con npm run test:pagopar.",
+  "exclude": ["node_modules", "supabase/functions"]
 }
