@@ -40,8 +40,59 @@ va a saber de quién es.
    empuja `vence`.
 6. La app, al entrar, lee el `vence` nuevo.
 
-El paso 2 todavía no está escrito: hoy el cobro se carga a mano. Con uno o dos
-clientes alcanza, y permite cobrar sin esperar a tener todo automatizado.
+Los pasos 1 y 2 los hace `pagopar-cobrar`; del 4 al 5, `pagopar-callback`.
+
+## Conectar la cuenta de Pagopar
+
+Las dos claves salen del panel de Pagopar, en **Integrar con mi sitio web**.
+No van al repositorio ni a la app: se cargan como secretos, una sola vez.
+
+```bash
+supabase secrets set PAGOPAR_PUBLIC_KEY=... PAGOPAR_PRIVATE_KEY=...
+supabase functions deploy pagopar-cobrar
+supabase functions deploy pagopar-callback --no-verify-jwt
+```
+
+Y en el panel de Pagopar, la **URL de respuesta** apunta a la URL que devuelve
+el deploy de `pagopar-callback`.
+
+Falta cargar los precios, que arrancan en cero y sin vender a propósito:
+
+```sql
+update zentra.planes set precio_mensual = 150000, vendible = true where codigo = 'max';
+```
+
+## Crear el pedido
+
+`POST` a la función, con la sesión de la persona:
+
+```
+POST /functions/v1/pagopar-cobrar
+Authorization: Bearer <access_token de Supabase>
+{ "plan": "max", "documento": "1234567" }
+
+→ { "url": "https://www.pagopar.com/pagos/<hash>", "monto": 150000, "plan": "Max" }
+```
+
+Se manda a la persona a esa URL. El resto lo hace Pagopar.
+
+Dos cosas **no** se le creen nunca a quien llama, y son las que hacen que esto
+sea seguro:
+
+- **El monto** sale de `zentra.planes`. Si lo mandara el navegador, cualquiera
+  abre las herramientas de desarrollo y se compra un mes de Max por mil
+  guaraníes.
+- **La empresa** sale de la sesión, no del cuerpo, para que nadie pueda crear
+  un cobro a nombre de otro.
+
+Y un detalle que cuesta encontrar solo: la firma del pedido es
+`sha1(clave_privada + referencia + monto)`, donde el monto va escrito como lo
+escribe PHP con `strval(floatval($monto))` — `"150000"`, no `"150000.00"`.
+Mandar los dos decimales hace que Pagopar conteste "token inválido" sin decir
+por qué. Está en `montoParaToken()` y tiene su prueba.
+
+Tocar "Pagar" dos veces no crea dos pedidos: si hay uno pendiente del mismo
+plan y monto de las últimas 48 horas, se devuelve el mismo link.
 
 ## Desplegar la función
 
