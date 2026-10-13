@@ -1,5 +1,6 @@
 import { haceDias, hoyIso } from "@/lib/format";
 import type { TenantConfig } from "@/lib/tenant/types";
+import type { Plan } from "@/lib/planes";
 import type {
   CompraLinea,
   Compra,
@@ -59,7 +60,15 @@ export interface AppState {
   /** Pantalla de entrada: iniciar sesión o crear cuenta. */
   modoAcceso: "login" | "registro";
   /** Perfil de la sesión abierta. null mientras no haya login. */
-  sesion: { nombre: string; rol: string; empresa: string } | null;
+  sesion: {
+    nombre: string;
+    rol: string;
+    empresa: string;
+    /** El plan de la empresa, cuando el backend lo informa. */
+    plan?: Plan;
+    /** Hasta cuándo está pago. Nulo o ausente es sin vencimiento. */
+    vence?: string | null;
+  } | null;
   /** Mensaje de error de autenticación, listo para mostrar. */
   authError: string;
   entrando: boolean;

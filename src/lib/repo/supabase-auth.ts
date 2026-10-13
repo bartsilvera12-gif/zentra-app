@@ -6,6 +6,7 @@
  * segundo paso la app no sabe qué datos mostrar.
  */
 import { sb } from "../supabase/client";
+import type { Plan } from "../planes";
 import type { AuthRepo, Sesion } from "./ports";
 
 /** Error con un mensaje ya listo para mostrarle al usuario. */
@@ -70,16 +71,26 @@ async function leerPerfil(userId: string, reintentar = true): Promise<Sesion["us
     empresa_id: string | null;
   };
 
-  // El nombre de la empresa es para mostrar en el encabezado: si no se puede
-  // leer, no vale la pena impedir que la persona entre.
+  // El nombre de la empresa es para mostrar en el encabezado; el plan y el
+  // vencimiento deciden qué se puede hacer. Si nada de esto se puede leer, no
+  // vale la pena impedir que la persona entre: se cae a lo que diga el
+  // directorio, que para el tenant público es Free.
   let empresa = "";
+  let plan: Plan | undefined;
+  let vence: string | null | undefined;
   if (fila.empresa_id) {
     const { data: emp } = await sb()
       .from("empresas")
-      .select("nombre")
+      .select("nombre, plan, vence")
       .eq("id", fila.empresa_id)
       .maybeSingle();
-    empresa = (emp as { nombre: string } | null)?.nombre || "";
+    const e = emp as { nombre?: string; plan?: string; vence?: string | null } | null;
+    empresa = e?.nombre || "";
+    // Un plan que no reconocemos se ignora en vez de tratarse como Free: el
+    // directorio sigue mandando, y nadie pierde lo que pagó por un valor raro
+    // en una columna.
+    if (e?.plan === "free" || e?.plan === "emprendedor" || e?.plan === "max") plan = e.plan;
+    vence = e?.vence ?? null;
   }
 
   return {
@@ -87,6 +98,8 @@ async function leerPerfil(userId: string, reintentar = true): Promise<Sesion["us
     nombre: fila.nombre || "",
     rol: fila.rol || "VENDEDOR",
     empresa,
+    ...(plan ? { plan } : {}),
+    ...(vence !== undefined ? { vence } : {}),
   };
 }
 

@@ -122,6 +122,14 @@ export interface Contexto {
   plan: Plan;
   /** Productos ya cargados, para el tope. Sólo hace falta en `inventario.alta`. */
   productos?: number;
+  /**
+   * Hasta cuándo está pago el plan, en ISO corto (`2026-11-13`).
+   *
+   * Vacío o ausente es "sin vencimiento": la empresa no tiene suscripción que
+   * controlar y no se le bloquea nada por esto. Sólo se carga cuando hay una
+   * suscripción de verdad.
+   */
+  vence?: string | null;
   /** Cuándo se ajustó por última vez ese producto, en ISO. Para el cooldown. */
   ultimoAjuste?: string | null;
   /** Hoy, para poder probar el cooldown sin esperar un mes. */
@@ -142,16 +150,29 @@ export function motivoBloqueo(accion: Accion, ctx: Contexto): Motivo {
   // Regla 1: con ERP, todo.
   if (ctx.conErp) return null;
 
-  const def = PLANES[ctx.plan];
+  const vencioEl = fechaVencida(ctx.vence, ctx.ahora);
+  // Regla 2: vencido se comporta como Free. Lo cargado se sigue viendo —de eso
+  // no se ocupa esta función, que sólo habla de escribir— pero no se puede
+  // tocar más de lo que el plan gratis permite.
+  const def = PLANES[vencioEl ? "free" : ctx.plan];
 
   if (!def.permite.has(accion)) {
-    return `Tu plan ${def.nombre} no incluye esto.`;
+    // El motivo tiene que decir la verdad. "Tu plan Free no incluye esto" a
+    // alguien que pagó Max el mes pasado es desconcertante y hace pensar que
+    // la app se equivocó; lo que pasó es que se le venció y tiene arreglo.
+    return vencioEl
+      ? `Tu plan venció el ${enCriollo(vencioEl)}. Seguís viendo todo lo cargado, pero para editar o cargar hay que renovar.`
+      : `Tu plan ${def.nombre} no incluye esto.`;
   }
 
   if (accion === "inventario.alta" && def.limites.productos !== null) {
     const cargados = ctx.productos ?? 0;
     if (cargados >= def.limites.productos) {
-      return `Llegaste a ${def.limites.productos} productos, el tope del plan ${def.nombre}.`;
+      // Quien venció con 200 productos cargados ve el tope de Free, que ya
+      // superó hace rato. Decirle "llegaste a 20" sería absurdo.
+      return vencioEl
+        ? `Tu plan venció el ${enCriollo(vencioEl)}. Para cargar más productos hay que renovar.`
+        : `Llegaste a ${def.limites.productos} productos, el tope del plan ${def.nombre}.`;
     }
   }
 
@@ -165,6 +186,61 @@ export function motivoBloqueo(accion: Accion, ctx: Contexto): Motivo {
   }
 
   return null;
+}
+
+/**
+ * Si el plan está vencido, y desde cuándo.
+ *
+ * Devuelve la fecha de vencimiento cuando ya pasó, y `null` cuando no. Que
+ * devuelva la fecha y no un booleano es para poder decirla en el mensaje:
+ * "venció el 13 de noviembre" se entiende, "tu plan venció" deja pensando.
+ *
+ * Tres casos se tratan como NO vencido, y los tres por la misma razón:
+ *
+ *   - sin fecha      la empresa no tiene suscripción que controlar
+ *   - fecha ilegible un dato mal cargado de nuestro lado
+ *   - hoy mismo      el día que vence todavía se puede trabajar
+ *
+ * El plan es un límite comercial, no una medida de seguridad. Dejar trabajar a
+ * alguien de más por un dato roto es un problema nuestro; trabar a alguien que
+ * pagó es un problema suyo, y bastante peor.
+ */
+export function fechaVencida(vence: string | null | undefined, ahora?: Date): string | null {
+  if (!vence) return null;
+  const limite = new Date(vence);
+  if (isNaN(limite.getTime())) return null;
+  // Se compara por día, no por instante: alguien que vence el 13 trabaja todo
+  // el 13, no hasta la hora en que se grabó la fecha.
+  const hoy = ahora ?? new Date();
+  const d = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
+  return d(hoy) > d(limite) ? vence : null;
+}
+
+/**
+ * Cuántos días faltan para que venza. Negativo si ya venció, `null` sin fecha.
+ *
+ * Es lo que decide si hay que avisar y con qué texto.
+ */
+export function diasParaVencer(vence: string | null | undefined, ahora?: Date): number | null {
+  if (!vence) return null;
+  const limite = new Date(vence);
+  if (isNaN(limite.getTime())) return null;
+  const hoy = ahora ?? new Date();
+  const d = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
+  return Math.round((d(limite) - d(hoy)) / 86400000);
+}
+
+/** El plan que rige de verdad: el contratado, o Free si venció. */
+export function planEfectivo(plan: Plan, vence?: string | null, ahora?: Date): Plan {
+  return fechaVencida(vence, ahora) ? "free" : plan;
+}
+
+/** `2026-11-13` → `13/11/2026`, para decirlo en un mensaje. */
+function enCriollo(iso: string): string {
+  const f = new Date(iso);
+  if (isNaN(f.getTime())) return iso;
+  const dos = (n: number) => String(n).padStart(2, "0");
+  return `${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${f.getFullYear()}`;
 }
 
 /** Atajo para cuando sólo importa si se puede. */

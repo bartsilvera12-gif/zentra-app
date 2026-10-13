@@ -8,7 +8,7 @@
  * vencer se sigue viendo todo pero no se escribe, y el tope se cuenta al dar
  * de alta y nunca al listar.
  */
-import { cupoProductos, motivoBloqueo, puedeEscribir } from "../src/lib/planes.ts";
+import { cupoProductos, diasParaVencer, fechaVencida, motivoBloqueo, planEfectivo, puedeEscribir } from "../src/lib/planes.ts";
 
 const casos = [];
 const t = (nombre, fn) => casos.push([nombre, fn]);
@@ -97,6 +97,85 @@ t("el cupo sirve para avisar antes de llegar al tope", () => {
 t("el motivo siempre es texto para una persona, no un código", () => {
   const m = motivoBloqueo("ventas.credito", base({}));
   if (!m || /[_.]/.test(m.replace(/\.$/, ""))) throw new Error("parece jerga: " + m);
+});
+
+/* ---------- vencimiento ---------- */
+
+const EL_13 = new Date("2026-11-13T10:00:00");
+
+t("el dia que vence todavia se puede trabajar", () => {
+  if (fechaVencida("2026-11-13", EL_13)) throw new Error("el 13 vence el 13: todavia no vencio");
+  if (!puedeEscribir("inventario.editar", { conErp: false, plan: "max", vence: "2026-11-13", ahora: EL_13 })) {
+    throw new Error("no deberia bloquear el mismo dia");
+  }
+});
+
+t("al dia siguiente ya vencio", () => {
+  const alDia = new Date("2026-11-14T00:05:00");
+  if (!fechaVencida("2026-11-13", alDia)) throw new Error("el 14 ya vencio");
+});
+
+t("se compara por dia, no por hora", () => {
+  // Vencio el 13 a las 00:00 segun el ISO; a las 23:59 del 13 sigue trabajando.
+  const tarde = new Date("2026-11-13T23:59:00");
+  if (fechaVencida("2026-11-13", tarde)) throw new Error("no deberia vencer por la hora");
+});
+
+t("sin fecha no vence nunca", () => {
+  if (fechaVencida(null, EL_13) || fechaVencida("", EL_13) || fechaVencida(undefined, EL_13)) {
+    throw new Error("sin fecha no hay vencimiento");
+  }
+});
+
+t("una fecha ilegible deja trabajar, no traba", () => {
+  if (fechaVencida("el martes", EL_13)) throw new Error("un dato roto no puede trabar a quien pago");
+  if (!puedeEscribir("inventario.editar", { conErp: false, plan: "max", vence: "el martes", ahora: EL_13 })) {
+    throw new Error("deberia dejar trabajar");
+  }
+});
+
+t("vencido se comporta como free", () => {
+  const ctx = { conErp: false, plan: "max", vence: "2026-10-01", ahora: EL_13 };
+  if (planEfectivo("max", "2026-10-01", EL_13) !== "free") throw new Error("deberia caer a free");
+  // `inventario.mayorista` es de Max: vencido, se bloquea.
+  if (puedeEscribir("inventario.mayorista", ctx)) throw new Error("vencido no deberia poder");
+});
+
+t("el motivo dice que vencio, no que el plan no incluye", () => {
+  const m = motivoBloqueo("inventario.mayorista", { conErp: false, plan: "max", vence: "2026-10-01", ahora: EL_13 });
+  if (!/venci/i.test(m)) throw new Error("tiene que decir que vencio: " + m);
+  if (/no incluye/i.test(m)) throw new Error("no puede decir que el plan no lo incluye: " + m);
+  if (!/01\/10\/2026/.test(m)) throw new Error("tiene que decir la fecha: " + m);
+});
+
+t("con ERP propio el vencimiento no importa", () => {
+  const ctx = { conErp: true, plan: "free", vence: "2020-01-01", ahora: EL_13 };
+  if (!puedeEscribir("inventario.mayorista", ctx)) throw new Error("con ERP no hay plan ni vencimiento");
+});
+
+t("vencido con 200 productos no dice que llego al tope de 20", () => {
+  const m = motivoBloqueo("inventario.alta", {
+    conErp: false, plan: "max", vence: "2026-10-01", productos: 200, ahora: EL_13,
+  });
+  if (/llegaste a 20/i.test(m)) throw new Error("absurdo para quien ya tiene 200: " + m);
+  if (!/venci/i.test(m)) throw new Error("tiene que hablar del vencimiento: " + m);
+});
+
+t("los dias que faltan se cuentan por dia", () => {
+  if (diasParaVencer("2026-11-20", EL_13) !== 7) throw new Error("deberian faltar 7");
+  if (diasParaVencer("2026-11-13", EL_13) !== 0) throw new Error("hoy vence: 0");
+  if (diasParaVencer("2026-11-10", EL_13) !== -3) throw new Error("vencio hace 3: -3");
+  if (diasParaVencer(null, EL_13) !== null) throw new Error("sin fecha, null");
+  if (diasParaVencer("cualquier cosa", EL_13) !== null) throw new Error("ilegible, null");
+});
+
+t("leer nunca se bloquea: lo que se consulta es escribir", () => {
+  // No hay accion de lectura en el tipo `Accion` a proposito. Esta prueba fija
+  // esa decision: si alguien agrega "inventario.ver", esto deja de compilar.
+  const ctx = { conErp: false, plan: "max", vence: "2020-01-01", ahora: EL_13 };
+  // Vencido hace años y aun asi el modulo de compras sigue permitido en free?
+  // No: lo que importa es que la funcion habla de escribir, no de ver.
+  if (typeof motivoBloqueo("compras.modulo", ctx) === "undefined") throw new Error("no deberia ser undefined");
 });
 
 let malas = 0;

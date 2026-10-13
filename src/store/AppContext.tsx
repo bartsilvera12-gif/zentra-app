@@ -292,10 +292,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const plan = useCallback(
     (extra: Partial<Contexto> = {}): Contexto => ({
       conErp: usaApiDelErp(),
-      plan: s.tenant?.plan ?? "free",
+      // El plan de la sesión gana sobre el del directorio. La app se vende
+      // sola, con los datos del lado nuestro, y ahí la suscripción vive en la
+      // empresa del backend. El directorio es para las empresas que entran con
+      // su propio ERP, que no tienen plan que mirar.
+      plan: s.sesion?.plan ?? s.tenant?.plan ?? "free",
+      vence: s.sesion?.vence ?? null,
       ...extra,
     }),
-    [s.tenant],
+    [s.tenant, s.sesion],
   );
 
   const value = useMemo<AppApi>(

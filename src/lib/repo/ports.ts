@@ -24,13 +24,30 @@ import type {
   RepTab,
   Venta,
 } from "../types";
+import type { Plan } from "../planes";
 
 /* ---------- autenticación ---------- */
 
 export interface Sesion {
   /** Token a mandar en cada request. */
   token: string;
-  usuario: { id: string; nombre: string; rol: string; empresa: string };
+  usuario: {
+    id: string;
+    nombre: string;
+    rol: string;
+    empresa: string;
+    /**
+     * Lo que contrató la empresa. Se lee al entrar porque lo que se contrata
+     * es la empresa, no la persona: todos sus vendedores trabajan bajo el
+     * mismo plan.
+     *
+     * Ausente cuando el backend no lo informa —un ERP de un cliente no sabe
+     * nada de nuestros planes— y entonces manda lo que diga el directorio.
+     */
+    plan?: Plan;
+    /** Hasta cuándo está pago, en ISO corto. Nulo es sin vencimiento. */
+    vence?: string | null;
+  };
 }
 
 export interface AuthRepo {

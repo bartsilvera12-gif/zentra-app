@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { EMPRESA, USUARIO } from "@/lib/data";
 import { fechaDeHoy, inicialDe, nombreCorto, rolLegible } from "@/lib/nombre";
 import { usePanel } from "./usePanel";
 import { MARCA, MODULES } from "@/lib/theme";
-import { motivoBloqueo } from "@/lib/planes";
+import { diasParaVencer, motivoBloqueo } from "@/lib/planes";
+import { avisarVencimiento, textoVencimiento } from "@/lib/vencimiento";
+import { usaApiDelErp } from "@/lib/repo";
 import type { ModuleKey } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -245,6 +247,29 @@ export function HomeScreen() {
   const barras = (panel.ventas?.serie ?? Array(7).fill(0)).map((v) => (v / tope) * 100);
   const gs = (n: number) => "Gs. " + Math.round(n).toLocaleString("es-PY");
 
+  /**
+   * El aviso de vencimiento que se muestra en pantalla.
+   *
+   * Es independiente de la notificación: la notificación avisa una vez en cada
+   * hito y se va, el cartel se queda mientras la situación siga siendo cierta.
+   * Quien abre la app el día 5 antes de vencer no recibió notificación ese día,
+   * pero igual tiene que ver que le queda poco.
+   */
+  const vence = s.sesion?.vence ?? null;
+  const avisoPlan = useMemo(() => {
+    if (usaApiDelErp()) return null; // con ERP propio no hay plan que vencer
+    const dias = diasParaVencer(vence);
+    if (dias === null || dias > 7) return null;
+    const t = textoVencimiento(dias < 0 ? -1 : dias);
+    return { ...t, vencido: dias < 0 };
+  }, [vence]);
+
+  // La notificación, una vez por hito. Va acá y no en el login porque el plan
+  // puede vencer con la app ya abierta hace días.
+  useEffect(() => {
+    void avisarVencimiento(vence);
+  }, [vence]);
+
   const onDashScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
@@ -410,6 +435,29 @@ export function HomeScreen() {
             </button>
           </div>
         </>
+      )}
+
+      {/* El vencimiento del plan, cuando está cerca o ya pasó.
+          Va arriba de todo porque es lo único de esta pantalla que tiene fecha
+          límite. No lleva botón de pagar: cobrar adentro de la app choca con la
+          política de Google Play, así que la app informa y el cobro vive
+          afuera. */}
+      {avisoPlan && (
+        <div style={{ padding: "12px 14px 0" }}>
+          <div
+            style={{
+              borderRadius: 12,
+              padding: "11px 13px",
+              background: avisoPlan.vencido ? "#FBE9E8" : "#FFF3DC",
+              color: avisoPlan.vencido ? "#7A2220" : "#6B4A00",
+              font: "500 12.5px/1.45 var(--font-barlow),Barlow,sans-serif",
+            }}
+          >
+            <strong style={{ fontWeight: 700 }}>{avisoPlan.titulo}</strong>
+            <br />
+            {avisoPlan.cuerpo}
+          </div>
+        </div>
       )}
 
       {/* Swipeable dashboard cards */}
