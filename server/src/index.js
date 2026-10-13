@@ -39,6 +39,16 @@ import {
 } from "./db.js";
 
 const PORT = Number(process.env.PORT || 8790);
+/**
+ * A qué interfaz se asoma.
+ *
+ * Por defecto sólo a la de adentro (`127.0.0.1`), que en una VPS nueva es la
+ * diferencia entre un servicio al que sólo llega el proxy y uno que cualquiera
+ * en internet puede golpear directo por el puerto. Si hace falta exponerlo
+ * —un contenedor, por ejemplo, donde el proxy vive en otra red— se pone
+ * `HOST=0.0.0.0` a conciencia y con firewall.
+ */
+const HOST = (process.env.HOST || "127.0.0.1").trim();
 const PUBLICA = stripPagoparSecret(process.env.PAGOPAR_PUBLIC_KEY);
 const PRIVADA = stripPagoparSecret(process.env.PAGOPAR_PRIVATE_KEY);
 const ORIGENES = String(process.env.ALLOWED_ORIGINS || "")
@@ -328,8 +338,11 @@ app.post("/pagopar/webhook", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.info(`[zentra-cobros] escuchando en :${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.info(`[zentra-cobros] escuchando en ${HOST}:${PORT}`);
+  if (HOST === "0.0.0.0") {
+    console.warn("[zentra-cobros] OJO: expuesto a toda interfaz. Revisá el firewall.");
+  }
   const problema = falta();
   if (problema) console.warn(`[zentra-cobros] OJO: ${problema}`);
   try {

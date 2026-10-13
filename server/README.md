@@ -38,6 +38,71 @@ habilitar, y no hay forma de saber cuál.
 Después, en el panel de PagoPar, la **URL de respuesta** apunta a
 `https://tu-dominio/pagopar/webhook`.
 
+## Desplegar en la VPS
+
+Tres cosas y ninguna es opcional:
+
+**1. Que no muera.** El servicio tiene que levantarse solo al reiniciar la
+máquina y volver si se cae. Con Coolify eso ya viene; a mano, un servicio de
+systemd:
+
+```ini
+# /etc/systemd/system/zentra-cobros.service
+[Unit]
+Description=Zentra — cobros con PagoPar
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/zentra-cobros
+EnvironmentFile=/opt/zentra-cobros/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=5
+User=zentra
+# El .env tiene la clave privada y la service_role: que no lo lea cualquiera.
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now zentra-cobros
+sudo journalctl -u zentra-cobros -f     # los logs
+```
+
+**2. HTTPS por delante.** PagoPar tiene que poder llegar al webhook desde
+internet, y por HTTPS. El server escucha en `127.0.0.1` a propósito: lo que se
+expone es el proxy, no el proceso. Con Caddy alcanza con:
+
+```
+cobros.tudominio.com.py {
+    reverse_proxy 127.0.0.1:8790
+}
+```
+
+Con nginx, un `proxy_pass` al mismo lugar y el certificado con certbot.
+
+**3. El `.env` con permisos cerrados.**
+
+```bash
+chmod 600 .env && chown zentra:zentra .env
+```
+
+Adentro están la clave privada de PagoPar —con la que se firman pedidos y se
+falsifican avisos de pago— y la `service_role` de Supabase, que pasa por
+encima de RLS. Son las dos llaves del negocio.
+
+Para verificar que quedó bien:
+
+```bash
+curl https://cobros.tudominio.com.py/pagopar/health
+```
+
+Devuelve el ambiente y las claves enmascaradas. Si dice `FALTA SUPABASE_URL`
+o las claves salen `(vacía)`, el `.env` no se está leyendo.
+
 ## Las dos reglas que lo hacen seguro
 
 **El monto sale de `zentra.planes`, nunca del cuerpo del pedido.** Si lo
