@@ -7,7 +7,7 @@
  * todo, y otra cuando el refresco automático empezó a tirar la vista al final
  * mientras alguien leía historial.
  */
-import { alFinal, citaDe, debeBajarAlAbrir, marcaLocal, pegarReacciones, resolverCitas, resumenDeMensaje, vaSinGlobo } from "../src/lib/hilo.ts";
+import { alFinal, altoDeEscritura, citaDe, debeBajarAlAbrir, marcaLocal, pegarReacciones, resolverCitas, resumenDeMensaje, vaSinGlobo } from "../src/lib/hilo.ts";
 
 const casos = [];
 const t = (n, f) => casos.push([n, f]);
@@ -187,6 +187,22 @@ t("si el mensaje reaccionado no esta, la reaccion se sigue viendo", () => {
   // que perderla.
   const hilo = pegarReacciones([{ de: "yo", hora: "13:53", reaccion: "\u2764\uFE0F", reaccionSobre: "wamid.NOESTA" }]);
   if (hilo.length !== 1 || !hilo[0].reaccion) throw new Error("se perdió la reacción");
+});
+
+t("el cuadro de escritura crece con el texto", () => {
+  const una = altoDeEscritura(38);
+  const tres = altoDeEscritura(80);
+  if (!(tres > una)) throw new Error("no creció");
+});
+
+t("una linea sola no deja el cuadro mas chico de lo que es", () => {
+  if (altoDeEscritura(12) !== 38) throw new Error("se achicó abajo del mínimo");
+  if (altoDeEscritura(0) !== 38) throw new Error("sin medida tendría que quedar en una línea");
+});
+
+t("un parrafo largo no se come la conversacion", () => {
+  // De cinco líneas para arriba el cuadro se queda quieto y scrollea adentro.
+  if (altoDeEscritura(900) !== 116) throw new Error("creció sin límite: " + altoDeEscritura(900));
 });
 
 let malas = 0;

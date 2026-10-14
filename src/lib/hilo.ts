@@ -240,3 +240,32 @@ export function pegarReacciones(msgs: ChatMsg[]): ChatMsg[] {
   }
   return salida;
 }
+
+/** Alto mínimo del cuadro de escritura, en píxeles: una línea. */
+export const ALTO_MINIMO_ESCRITURA = 38;
+
+/**
+ * Alto máximo: unas cinco líneas. De ahí para arriba el cuadro se queda quieto
+ * y el texto scrollea adentro, porque un cuadro que sigue creciendo se come la
+ * conversación entera.
+ */
+export const ALTO_MAXIMO_ESCRITURA = 116;
+
+/**
+ * Qué alto tiene que tener el cuadro de escritura para el texto que hay.
+ *
+ * Era de alto fijo, de una línea: escribir un párrafo largo corría el texto
+ * hacia la izquierda y lo que se había escrito antes no se veía más. No se
+ * podía releer lo que uno estaba por mandar.
+ *
+ * `contenido` es el `scrollHeight` del campo medido con el alto en automático,
+ * que es lo único que sabe cuántas líneas entraron.
+ */
+export function altoDeEscritura(
+  contenido: number,
+  min = ALTO_MINIMO_ESCRITURA,
+  max = ALTO_MAXIMO_ESCRITURA,
+): number {
+  if (!Number.isFinite(contenido) || contenido <= 0) return min;
+  return Math.max(min, Math.min(Math.round(contenido), max));
+}

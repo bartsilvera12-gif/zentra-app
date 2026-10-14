@@ -16,7 +16,15 @@ import {
 import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
-import { alFinal, debeBajarAlAbrir, marcaLocal, resumenDeMensaje, vaSinGlobo } from "@/lib/hilo";
+import {
+  alFinal,
+  altoDeEscritura,
+  ALTO_MINIMO_ESCRITURA,
+  debeBajarAlAbrir,
+  marcaLocal,
+  resumenDeMensaje,
+  vaSinGlobo,
+} from "@/lib/hilo";
 import { colorAvatar } from "@/lib/avatar";
 import { TODAS, colasDe, enCola } from "@/lib/colas";
 import { FichaChatPanel } from "./FichaChatPanel";
@@ -579,6 +587,27 @@ export function ConversacionesScreen() {
   const contenido = useRef<HTMLDivElement | null>(null);
 
   /**
+   * El cuadro de escritura crece con lo que se escribe.
+   *
+   * Era de una línea y de alto fijo: al escribir un párrafo el texto se corría
+   * hacia la izquierda y lo de antes dejaba de verse, así que no había forma de
+   * releer el mensaje antes de mandarlo.
+   *
+   * Se mide poniendo el alto en automático primero: el `scrollHeight` de un
+   * campo que ya tiene alto puesto devuelve el alto puesto, no el que necesita.
+   */
+  const escritura = useRef<HTMLTextAreaElement | null>(null);
+  const ajustarEscritura = () => {
+    const el = escritura.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${altoDeEscritura(el.scrollHeight)}px`;
+  };
+  // Al mandar, el texto se vacía desde el estado y el cuadro tiene que volver a
+  // una línea; también al abrir otra conversación.
+  useEffect(ajustarEscritura, [s.xTexto, s.xSel]);
+
+  /**
    * Si la vista tiene que seguir pegada a lo último.
    *
    * Se prende al abrir y mientras se esté mirando el final; se apaga en cuanto
@@ -661,6 +690,9 @@ export function ConversacionesScreen() {
       if (anclado.current) caja.scrollTop = caja.scrollHeight;
     });
     ro.observe(dentro);
+    // También la caja: cuando el cuadro de escritura crece o abre el teclado,
+    // el hilo se achica y el último mensaje se iría abajo de la pantalla.
+    ro.observe(caja);
     return () => ro.disconnect();
   }, [s.xSub, s.xSel]);
 
@@ -2155,7 +2187,9 @@ export function ConversacionesScreen() {
               background: t.card,
               borderTop: `1px solid ${t.border}`,
               display: "flex",
-              alignItems: "center",
+              // Abajo, no al centro: cuando el cuadro de escritura crece, los
+              // botones se quedan a la altura de la última línea.
+              alignItems: "flex-end",
               gap: 8,
             }}
           >
@@ -2253,21 +2287,34 @@ export function ConversacionesScreen() {
                     flex: 1,
                     minWidth: 0,
                     display: "flex",
-                    alignItems: "center",
+                    // Abajo: con un mensaje de varias líneas el emoji queda al
+                    // pie del cuadro y no flotando en el medio.
+                    alignItems: "flex-end",
                     gap: 4,
                     borderRadius: 12,
-                    padding: "0 6px 0 12px",
-                    height: 40,
+                    padding: "3px 6px 3px 12px",
+                    minHeight: 40,
                     background: t.bg,
                     border: `1px solid ${t.border}`,
                   }}
                 >
-                  <input
-                    type="text"
+                  <textarea
+                    ref={escritura}
+                    rows={1}
                     value={s.xTexto}
-                    onChange={(e) => set({ xTexto: e.target.value })}
+                    onChange={(e) => {
+                      set({ xTexto: e.target.value });
+                      ajustarEscritura();
+                    }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") enviarTexto();
+                      // Enter hace renglón nuevo, como en WhatsApp: en el
+                      // teléfono es la única forma de escribir un mensaje de
+                      // varias líneas. Se manda con el botón, o con Ctrl+Enter
+                      // para quien escribe en un teclado de verdad.
+                      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        enviarTexto();
+                      }
                     }}
                     placeholder="Escribí un mensaje…"
                     style={{
@@ -2276,7 +2323,14 @@ export function ConversacionesScreen() {
                       border: 0,
                       background: "transparent",
                       outline: "none",
-                      fontSize: 15.5,
+                      resize: "none",
+                      // El alto lo maneja `ajustarEscritura`; esto es el punto
+                      // de partida, antes de que se escriba nada.
+                      height: ALTO_MINIMO_ESCRITURA,
+                      maxHeight: 116,
+                      overflowY: "auto",
+                      padding: "9px 0",
+                      font: "400 15.5px/1.35 var(--font-barlow),Barlow,sans-serif",
                       color: t.ink,
                     }}
                   />
