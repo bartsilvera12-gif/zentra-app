@@ -14,6 +14,7 @@ import {
 import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
+import { alFinal, debeBajarAlAbrir } from "@/lib/hilo";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
@@ -464,17 +465,29 @@ export function ConversacionesScreen() {
   const final = useRef<HTMLDivElement | null>(null);
   // Qué conversación estaba abierta la última vez que se dibujó, para saber si
   // esto es "se abrió" o "llegó un mensaje a la que ya estaba abierta".
-  const abiertaAntes = useRef<string | null>(null);
+  /**
+   * Para qué conversación ya se bajó al último mensaje.
+   *
+   * No alcanza con "cambió el chat": la pantalla se dibuja antes de que la
+   * conversación llegue del ERP, así que en la primera pasada no hay a dónde
+   * bajar. Se marca recién cuando hay mensajes.
+   */
+  const bajadoPara = useRef<string | null>(null);
   useEffect(() => {
-    if (s.xSub !== "chat") return;
-    const reciénAbierta = abiertaAntes.current !== s.xSel;
-    abiertaAntes.current = s.xSel;
+    if (s.xSub !== "chat") {
+      // Al salir se olvida, para que volver a entrar vuelva a bajar.
+      bajadoPara.current = null;
+      return;
+    }
 
-    // Al abrir, siempre abajo: es lo último que te escribieron.
-    if (reciénAbierta) {
+    // Al abrir, al último mensaje: es lo que te acaban de escribir.
+    if (debeBajarAlAbrir(bajadoPara.current, s.xSel, detMsgs.length)) {
+      bajadoPara.current = s.xSel;
+      // `auto` y no `smooth`: al abrir tiene que estar abajo ya, no verse el viaje.
       final.current?.scrollIntoView({ block: "end" });
       return;
     }
+    if (bajadoPara.current !== s.xSel) return; // todavía no llegaron los mensajes
 
     /**
      * Con la conversación ya abierta, sólo si ya estabas abajo.
@@ -486,9 +499,9 @@ export function ConversacionesScreen() {
      * subiste a leer, te deja donde estás.
      */
     const caja = hilo.current;
-    if (!caja) return;
-    const alFinal = caja.scrollHeight - caja.scrollTop - caja.clientHeight < 120;
-    if (alFinal) final.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    if (caja && alFinal(caja)) {
+      final.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    }
   }, [s.xSub, s.xSel, detMsgs.length]);
 
   const contactos = CHATS_VIVOS.map((c) => ({
