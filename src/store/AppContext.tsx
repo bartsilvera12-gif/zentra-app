@@ -300,11 +300,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       xSub: "chat",
       xSel: id,
       xTexto: "",
+      // Optimista: el globito se va ya, sin esperar al servidor. Dura hasta la
+      // próxima lista, que es la que manda.
       xLeidos: { ...prev.xLeidos, [id]: true },
       xPanel: "none",
       xGrab: false,
       xSeg: 0,
     }));
+    // Y de verdad, en el ERP. Sin esto el contador se quedaba puesto: la app lo
+    // escondía de su lado nomás, así que seguía ahí en la web y volvía a
+    // aparecer al reinstalar. Va sin `await`: abrir el chat no espera a esto.
+    if (usaApiDelErp()) void repo.chats.marcarLeido(id).catch(() => {});
   }, []);
 
   const pushMsg = useCallback((id: string, msg: ChatMsg) => {

@@ -454,6 +454,23 @@ export function ConversacionesScreen() {
     }
   };
 
+  /**
+   * Lo leído a mano dura hasta que llega una lista nueva.
+   *
+   * Era permanente: una vez abierta la conversación, su globito no volvía a
+   * aparecer en toda la sesión. Si el cliente escribía otra vez, el mensaje
+   * entraba en la lista pero sin marcar — y esa es justamente la conversación
+   * que hay que contestar.
+   *
+   * La cuenta del ERP es la que vale; esto es sólo para que el globito se vaya
+   * en el acto al abrir, sin esperar la vuelta del servidor.
+   */
+  useEffect(() => {
+    if (datos.length > 0) set({ xLeidos: {} });
+    // `set` es estable y `datos` cambia con cada respuesta del ERP.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datos]);
+
   const noLeidosTotal = CHATS_VIVOS.reduce((a, c) => a + noLeidosDe(c, s.xLeidos), 0);
   const xq = norm(s.xQuery.trim());
 
@@ -1141,7 +1158,9 @@ export function ConversacionesScreen() {
                 <span
                   style={{
                     font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
-                    color: m.tick === "✓✓" ? VIOLETA_INK : "#6E97A8",
+                    // El color es lo que separa "llegó" de "lo leyó": los dos
+                    // llevan dos tildes, como en WhatsApp.
+                    color: m.leido ? VIOLETA_INK : "#6E97A8",
                   }}
                 >
                   {m.tick ?? "✓"}

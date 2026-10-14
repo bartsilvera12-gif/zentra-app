@@ -1421,6 +1421,21 @@ function extensionDe(nombre: string): string {
  * vacío. Antes eso caía en un `|| "👍"` y aparecía un pulgar que nadie puso:
  * sacar una reacción dejaba una reacción.
  */
+/**
+ * Los tildes de un mensaje propio, con los tres estados de WhatsApp.
+ *
+ * Antes eran dos: leído o no leído. Un mensaje ENTREGADO —que ya está en el
+ * teléfono del cliente— se veía igual que uno que todavía estaba saliendo, así
+ * que no había forma de distinguir "no lo vio todavía" de "no le llegó". Son
+ * dos problemas distintos y se actúa distinto con cada uno.
+ */
+function marcasDeEntrega(estado: string | null | undefined): { tick: string; leido?: boolean } {
+  const v = (estado || "").toLowerCase();
+  if (/read|le[ií]d/.test(v)) return { tick: "\u2713\u2713", leido: true };
+  if (/deliver|entreg/.test(v)) return { tick: "\u2713\u2713" };
+  return { tick: "\u2713" };
+}
+
 function aMensaje(m: MensajeErp): ChatMsg | null {
   const tipo = (m.message_type || "text").toLowerCase();
   const base = {
@@ -1494,9 +1509,7 @@ function aMensaje(m: MensajeErp): ChatMsg | null {
   return {
     ...base,
     texto: sinMarcador(m.content) || "",
-    ...(m.from_me
-      ? { tick: /read/i.test(m.whatsapp_delivery_status || "") ? "\u2713\u2713" : "\u2713" }
-      : {}),
+    ...(m.from_me ? marcasDeEntrega(m.whatsapp_delivery_status) : {}),
   };
 }
 
@@ -2191,8 +2204,26 @@ export const httpRepo: Repo = {
       return { de: "yo", hora: horaCorta(new Date().toISOString()), tick: "✓", sticker: url };
     },
 
-    // El ERP marca leído solo al abrir la conversación; no hay endpoint aparte.
-    async marcarLeido() {},
+    /**
+     * Decirle al ERP que esta conversación ya se leyó.
+     *
+     * No hay un endpoint dedicado: el ERP baja el contador como efecto de
+     * `GET /mobile/asesor/conversations/<id>`, que es por donde el escritorio
+     * abre un chat. La app leía los mensajes por `/chat/messages`, que NO lo
+     * baja, así que el globito de no leídos se quedaba puesto para siempre —en
+     * la app, en la web y en el teléfono de al lado—.
+     *
+     * Se ignora la respuesta: lo que importa es el efecto. Y si falla no se
+     * levanta error: no poder bajar un contador no tiene que impedirle a nadie
+     * leer la conversación que ya tiene abierta.
+     */
+    async marcarLeido(chatId) {
+      try {
+        await request(`/mobile/asesor/conversations/${encodeURIComponent(chatId)}`);
+      } catch {
+        /* el contador se baja en el próximo intento */
+      }
+    },
 
     /**
      * Reaccionar a un mensaje.

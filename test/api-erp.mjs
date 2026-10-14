@@ -183,8 +183,12 @@ const server = createServer((req, res) => {
         ]);
       }
       return ok([
-        { id: "m1", from_me: false, content: "Buenas, tenes stock?", message_type: "text", created_at: "2026-10-05T14:03:00Z" },
-        { id: "m2", from_me: true, content: "Si, te paso precios", message_type: "text", created_at: "2026-10-05T14:05:00Z", whatsapp_delivery_status: "read" },
+        { id: "m1", from_me: false, content: "Buenas, tenes stock?", message_type: "text", created_at: "2026-10-05T14:03:00Z", wa_message_id: "wamid.AAA" },
+        { id: "m2", from_me: true, content: "Si, te paso precios", message_type: "text", created_at: "2026-10-05T14:05:00Z", whatsapp_delivery_status: "read", wa_message_id: "wamid.BBB" },
+        // Entregado: dos tildes, pero sin leer. Era el estado que faltaba.
+        { id: "m3", from_me: true, content: "Te mando el link", message_type: "text", created_at: "2026-10-05T14:06:00Z", whatsapp_delivery_status: "delivered" },
+        // Recien salido: un solo tilde.
+        { id: "m4", from_me: true, content: "Ahi va", message_type: "text", created_at: "2026-10-05T14:07:00Z", whatsapp_delivery_status: "sent" },
       ]);
     }
     // Las conversaciones usan su propio sobre: { ok, ... }
@@ -322,6 +326,11 @@ const server = createServer((req, res) => {
       };
       if (o.idempotency_key) comprasPorClave.set(o.idempotency_key, compra);
       return ok({ compra });
+    }
+    if (/^\/mobile\/asesor\/conversations\/[^/]+\/react$/.test(ruta) && req.method === "POST") {
+      const o = JSON.parse(cuerpo || "{}");
+      if (!o.target_wa_message_id) return json(400, { ok: false, error: "Se requiere target_wa_message_id" });
+      return json(200, { ok: true });
     }
     if (ruta === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
     return json(404, { success: false, error: "no existe" });
@@ -643,9 +652,43 @@ t("al abrir una conversacion llegan sus mensajes, con el tick del propio", async
   void d;
   if (!d) throw new Error("no trajo la conversacion");
   // El listado sólo trae la vista previa: sin esto se veria un solo globo.
-  if (d.msgs.length !== 2) throw new Error("mensajes: " + d.msgs.length);
+  if (d.msgs.length !== 4) throw new Error("mensajes: " + d.msgs.length);
   if (d.msgs[1].de !== "yo") throw new Error("el segundo era nuestro");
   if (d.msgs[1].tick !== "✓✓") throw new Error("leido lleva doble tilde: " + d.msgs[1].tick);
+});
+
+t("los tres estados de entrega se distinguen", async () => {
+  const d = await httpRepo.chats.get("c1");
+  const [, leido, entregado, salido] = d.msgs;
+  // Leido: dos tildes Y la marca que los pinta de color.
+  if (leido.tick !== "✓✓" || leido.leido !== true) throw new Error("leido: " + JSON.stringify(leido));
+  // Entregado: dos tildes, sin color. Antes se veia igual que uno saliendo.
+  if (entregado.tick !== "✓✓" || entregado.leido) throw new Error("entregado: " + JSON.stringify(entregado));
+  if (salido.tick !== "✓") throw new Error("recien salido lleva uno: " + JSON.stringify(salido));
+});
+
+t("cada mensaje trae el id de WhatsApp, que es a lo que apunta una reaccion", async () => {
+  const d = await httpRepo.chats.get("c1");
+  if (d.msgs[0].wamid !== "wamid.AAA") throw new Error("sin wamid: " + JSON.stringify(d.msgs[0]));
+  // El que todavia no salio no tiene: no se le puede reaccionar.
+  if (d.msgs[2].wamid) throw new Error("invento un wamid");
+});
+
+t("reaccionar apunta al mensaje de WhatsApp", async () => {
+  await httpRepo.chats.reaccionar("c1", "wamid.AAA", "\u{1F44D}");
+  const env = recibido.filter((r) => /\/react$/.test(r.ruta)).at(-1);
+  if (!env) throw new Error("no mando la reaccion");
+  if (env.cuerpo.target_wa_message_id !== "wamid.AAA") throw new Error("apunto mal: " + JSON.stringify(env.cuerpo));
+  // Emoji vacio = sacarla, que es como lo entiende WhatsApp.
+  await httpRepo.chats.reaccionar("c1", "wamid.AAA", "");
+  const quitar = recibido.filter((r) => /\/react$/.test(r.ruta)).at(-1);
+  if (quitar.cuerpo.emoji !== "") throw new Error("no mando el emoji vacio");
+});
+
+t("abrir una conversacion le avisa al ERP que se leyo", async () => {
+  await httpRepo.chats.marcarLeido("c1");
+  const env = recibido.filter((r) => r.ruta === "/mobile/asesor/conversations/c1").at(-1);
+  if (!env) throw new Error("no le aviso a nadie: el globito se queda puesto para siempre");
 });
 
 t("una foto no queda como globo vacio: dice que era", async () => {

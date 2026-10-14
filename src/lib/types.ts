@@ -205,7 +205,17 @@ export interface ChatMsg {
   wamid?: string;
   texto?: string;
   hora: string;
+  /** `"✓"` salió, `"✓✓"` llegó. Sólo en los míos. */
   tick?: string;
+  /**
+   * El otro lo abrió.
+   *
+   * Es el tercer estado que faltaba: WhatsApp distingue "salió" (un tilde),
+   * "llegó al teléfono" (dos tildes grises) y "lo leyó" (dos tildes en color).
+   * La app juntaba los dos primeros en un tilde, así que un mensaje entregado
+   * se veía igual que uno que todavía estaba saliendo.
+   */
+  leido?: boolean;
   pedido?: ChatPedido;
   archivo?: ChatArchivo;
   sticker?: string;
