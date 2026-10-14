@@ -1,5 +1,6 @@
 "use client";
 
+import { MARCA } from "@/lib/theme";
 import { useApp } from "@/store/AppContext";
 import { StatusBar } from "../layout/StatusBar";
 import { Field, Notice } from "../ui/primitives";
@@ -9,7 +10,7 @@ import { Field, Notice } from "../ui/primitives";
  * le arma la empresa y el perfil, así entra con todo listo aunque arranque vacío.
  */
 export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
-  const { s, set } = useApp();
+  const { s, t, set } = useApp();
   const ocupado = s.tenantResolviendo || s.entrando;
 
   const volver = () => set({ modoAcceso: "login", authError: "", regConfirmar: false });
@@ -52,7 +53,13 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
 
       <div
         style={{
-          background: "#f3f5f8",
+          /*
+           * Del tema, no fijo en claro. En modo oscuro el panel quedaba blanco
+           * con los campos negros encima —los campos sí venían del tema— y la
+           * pantalla se veía partida al medio. Es el mismo arreglo que ya se le
+           * había hecho al login; esta pantalla quedó afuera.
+           */
+          background: s.theme === "oscuro" ? t.bg : "#f3f5f8",
           borderRadius: "26px 26px 0 0",
           padding: "24px 24px 22px",
           display: "flex",
@@ -64,7 +71,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
       >
         {s.regConfirmar ? (
           <>
-            <div style={{ font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#023047" }}>
+            <div style={{ font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
               Revisá tu correo
             </div>
             <Notice bg="#E3F1EF" ink="#0C5F58" border="#9CCDC6">
@@ -77,7 +84,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
                 height: 50,
                 border: 0,
                 borderRadius: 14,
-                background: "#023047",
+                background: s.theme === "oscuro" ? MARCA.headerSuave : MARCA.header,
                 color: "#fff",
                 font: "600 15px/1 var(--font-barlow),Barlow,sans-serif",
                 cursor: "pointer",
@@ -88,10 +95,10 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
           </>
         ) : (
           <>
-            <div style={{ font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#023047" }}>
+            <div style={{ font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
               Crear una cuenta
             </div>
-            <div style={{ font: "400 12.5px/1.45 var(--font-barlow),Barlow,sans-serif", color: "#4b5563" }}>
+            <div style={{ font: "400 12.5px/1.45 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
               Vas a arrancar con todo en blanco: cargás tus productos y tus clientes, y empezás a
               vender.
             </div>
@@ -125,7 +132,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
             />
 
             {s.authError && (
-              <div style={{ font: "500 12.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#9e3b3b" }}>
+              <div style={{ font: "500 12.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: s.theme === "oscuro" ? "#F2A9A4" : "#9e3b3b" }}>
                 {s.authError}
               </div>
             )}
@@ -137,7 +144,11 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
                 height: 52,
                 border: 0,
                 borderRadius: 14,
-                background: ocupado ? "#5C7A85" : "#023047",
+                background: ocupado
+                  ? "#5C7A85"
+                  : s.theme === "oscuro"
+                    ? MARCA.headerSuave
+                    : MARCA.header,
                 color: "#fff",
                 font: "600 16px/1 var(--font-barlow),Barlow,sans-serif",
                 letterSpacing: ".04em",
@@ -154,7 +165,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
                 background: "none",
                 cursor: "pointer",
                 font: "500 13px/1 var(--font-barlow),Barlow,sans-serif",
-                color: "#04617A",
+                color: s.theme === "oscuro" ? MARCA.sobreSuave : MARCA.headerSuave,
                 textDecoration: "underline",
               }}
             >

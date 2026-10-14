@@ -92,7 +92,11 @@ export function ConfigScreen() {
     if (!pushDisponible()) {
       // En el navegador no hay plugin nativo. Se deja cambiar el switch para que
       // la pantalla se pueda probar, pero se avisa que no va a llegar nada.
-      set({ push: prender, pushAviso: prender ? "En el navegador no llegan avisos: hace falta la app instalada." : "" });
+      set({
+        push: prender,
+        pushAviso: prender ? "En el navegador no llegan avisos: hace falta la app instalada." : "",
+        pushAvisoGrave: prender,
+      });
       return;
     }
 
@@ -104,25 +108,37 @@ export function ConfigScreen() {
         set({
           push: ok,
           pushOcupado: false,
-          // Tres respuestas distintas, y la del medio es la que faltaba.
-          //
-          // Que el interruptor quede prendido no quiere decir que vayan a
-          // llegar avisos de chats: el ERP elige a quién mandárselos por su
-          // `agent_id`, y quien no está dado de alta como agente de
-          // conversaciones no tiene ninguno. Antes eso terminaba en silencio
-          // —todo en orden, nada sonando— y no había forma de enterarse desde
-          // el teléfono. El ERP ya lo contestaba; la app lo tiraba.
+          /*
+           * El aviso de "no sos agente" decía que los avisos de chats no iban a
+           * llegar. Es falso, y lo dije con todas las letras en una pantalla.
+           *
+           * El ERP tiene DOS caminos para avisar de un mensaje: uno por
+           * `agent_id`, para el asesor que tiene la conversación asignada, y
+           * otro por usuario, para quien ve esa conversación por su rol
+           * —supervisión, PM, administración—. No ser agente deja afuera del
+           * primero, no del segundo. Un administrador recibe avisos de todo lo
+           * que ve, y eso es exactamente lo que pasaba mientras la app le
+           * decía que no le iba a llegar nada.
+           *
+           * Así que ahora se dice qué significa, sin prometer ni negar: es un
+           * dato útil —explica por qué no llegan los de una conversación
+           * puntual asignada a otro— y no una sentencia.
+           */
           pushAviso: !ok
             ? "Falta el permiso de notificaciones. Se habilita en los ajustes del teléfono."
             : esAgente === false
-              ? "Listo, pero tu usuario no figura como agente de conversaciones en el ERP, " +
-                "así que los avisos de chats no te van a llegar. Hay que darte de alta allá."
+              ? "Listo. Tu usuario no está dado de alta como agente de conversaciones, " +
+                "así que vas a recibir avisos de los chats que ves por tu rol, no de los " +
+                "asignados a vos."
               : "",
+          // Sin permiso no llega nada: eso sí es un problema. Lo del agente es
+          // una aclaración, y va en gris.
+          pushAvisoGrave: !ok,
         });
       } else {
         await desactivarPush();
         guardarPreferenciaPush(false);
-        set({ push: false, pushOcupado: false, pushAviso: "" });
+        set({ push: false, pushOcupado: false, pushAviso: "", pushAvisoGrave: false });
       }
     } catch (e) {
       guardarPreferenciaPush(false);
@@ -242,7 +258,11 @@ export function ConfigScreen() {
             <Toggle on={s.push} onToggle={cambiarPush} label="Avisos push" />
           </div>
           {s.pushAviso ? (
-            <Notice bg={claro ? "#fdf1f1" : "#3a2328"} ink="#9e3b3b">
+            <Notice
+              bg={s.pushAvisoGrave ? (claro ? "#fdf1f1" : "#3a2328") : claro ? "#eef2f6" : t.card}
+              ink={s.pushAvisoGrave ? "#9e3b3b" : t.ink2}
+              border={s.pushAvisoGrave ? undefined : t.border}
+            >
               {s.pushAviso}
             </Notice>
           ) : null}

@@ -323,6 +323,13 @@ export interface AppState {
   pushOcupado: boolean;
   /** Por qué no se pudieron activar los avisos. Vacío = sin problema. */
   pushAviso: string;
+  /**
+   * Si ese aviso es un problema (rojo) o sólo una aclaración (gris).
+   *
+   * Pintar de rojo "tu usuario no es agente" convertía un dato en una falla, y
+   * la primera reacción es creer que algo se rompió.
+   */
+  pushAvisoGrave: boolean;
 
   /* Home dashboard */
   hover: ModuleKey | null;
@@ -529,6 +536,7 @@ export const initialState: AppState = {
   push: false,
   pushOcupado: false,
   pushAviso: "",
+  pushAvisoGrave: false,
 
   hover: null,
   dash: 0,
