@@ -11,13 +11,14 @@ import {
   type ReactNode,
 } from "react";
 import { IVAS } from "@/lib/data";
-import { desactivarPush, escucharAvisos, pushPreferido } from "@/lib/push";
+import { desactivarPush, escucharAvisos, pushPreferido, reanudarPush } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
 import { escucharTemaDelSistema, leerPreferencia, temaDelSistema } from "@/lib/tema";
 import { repo, usaApiDelErp, usaSupabase } from "@/lib/repo";
 import type { Contexto } from "@/lib/planes";
 import { activarTenant } from "@/lib/supabase/client";
 import { resolverTenant } from "@/lib/tenant/directory";
+import { restaurarSesion } from "@/lib/sesion";
 import { leerUltimoCodigo } from "@/lib/tenant/storage";
 import { mensajeTenantError } from "@/lib/tenant/types";
 import type { ChatMsg, ModuleKey, ThemeTokens } from "@/lib/types";
@@ -160,8 +161,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Si este celular ya entró con un código, damos por contestada la pregunta.
     if (ultimo) setS((prev) => ({ ...prev, codigoEmpresa: ultimo, tieneErp: true }));
     // La preferencia de avisos también vive en el dispositivo. Acá sólo se refleja
-    // en el switch; el token se vuelve a registrar al entrar (ver LoginScreen).
+    // en el switch; el token se registra al entrar o al restaurar la sesión.
     if (pushPreferido()) setS((prev) => ({ ...prev, push: true }));
+  }, []);
+
+  /**
+   * Reabrir la sesión guardada, una sola vez, al arrancar.
+   *
+   * Esto faltaba y es lo que hacía que la app "echara" cada rato: la sesión de
+   * Supabase se guardaba en el teléfono y el token se renovaba solo, pero la
+   * app abría siempre en el login. Cada vez que Android descartaba la app en
+   * segundo plano —que es todo el tiempo— había que escribir la contraseña de
+   * nuevo.
+   *
+   * El token de avisos se vuelve a registrar acá por el mismo motivo que al
+   * entrar: cambia al reinstalar, y la fila de la base está atada al usuario.
+   */
+  useEffect(() => {
+    let vigente = true;
+    void restaurarSesion({
+      usaSupabase,
+      ultimoCodigo: leerUltimoCodigo,
+      resolver: resolverTenant,
+      activar: activarTenant,
+      sesion: () => repo.auth.sesionActual(),
+    }).then((r) => {
+      if (!vigente) return;
+      if (r.estado === "sin-sesion") {
+        setS((prev) => ({ ...prev, restaurando: false }));
+        return;
+      }
+      setS((prev) => ({
+        ...prev,
+        restaurando: false,
+        screen: "home",
+        sesion: r.sesion.usuario,
+        ...(r.tenant ? { tenant: r.tenant, codigoEmpresa: r.tenant.codigo } : {}),
+      }));
+      if (pushPreferido()) void reanudarPush().then((ok) => setS((prev) => ({ ...prev, push: ok })));
+    });
+    return () => {
+      vigente = false;
+    };
   }, []);
 
   // Tocar un aviso desde la bandeja tiene que abrir la pantalla que corresponde,

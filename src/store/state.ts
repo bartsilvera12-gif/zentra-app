@@ -37,6 +37,14 @@ export type CompraPaso = "proveedor" | "producto" | "condiciones" | "listo";
 
 export interface AppState {
   screen: Screen;
+  /**
+   * Se está intentando reabrir la sesión guardada.
+   *
+   * Arranca en `true` para que el arranque no muestre el formulario de login un
+   * instante antes de entrar: mientras dura, el login deja a la vista sólo el
+   * logo, como una pantalla de inicio.
+   */
+  restaurando: boolean;
   user: string;
   pass: string;
   error: boolean;
@@ -326,6 +334,7 @@ export interface AppState {
 
 export const initialState: AppState = {
   screen: "login",
+  restaurando: true,
   user: "",
   pass: "",
   error: false,

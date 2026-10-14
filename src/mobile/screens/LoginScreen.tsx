@@ -193,7 +193,11 @@ export function LoginScreen() {
           background: s.theme === "oscuro" ? t.bg : "#f3f5f8",
           borderRadius: "26px 26px 0 0",
           padding: "26px 24px 22px",
-          display: "flex",
+          // Mientras se intenta reabrir la sesión guardada, el formulario no se
+          // dibuja: queda sólo el logo, como una pantalla de inicio. Si se
+          // mostrara, alguien empezaría a escribir la contraseña y la app le
+          // saltaría al inicio en la mitad.
+          display: s.restaurando ? "none" : "flex",
           flexDirection: "column",
           gap: 14,
         }}
