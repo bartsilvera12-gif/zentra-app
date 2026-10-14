@@ -20,6 +20,11 @@
  */
 import { useEffect, useRef } from "react";
 
+function esNativo(): boolean {
+  const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return typeof cap?.isNativePlatform === "function" && cap.isNativePlatform();
+}
+
 export function useLatido(fn: () => Promise<void>, ms: number, activo: boolean): void {
   // La función cambia en cada render; el intervalo no se tiene que rearmar por
   // eso, o con un render por tecla no llegaría a latir nunca.
@@ -31,10 +36,23 @@ export function useLatido(fn: () => Promise<void>, ms: number, activo: boolean):
 
     let corriendo = false;
     let parado = false;
+    /**
+     * Si la app está adelante.
+     *
+     * Arranca en `true` a propósito: si el estado no se puede saber, latir de
+     * más es molesto y no latir nunca deja el chat quieto, que es el problema
+     * que este hook existe para resolver.
+     *
+     * Y por eso adentro del APK se pregunta al plugin y NO a
+     * `document.visibilityState`: el WebView de Android lo reporta `hidden` en
+     * situaciones en que la app está perfectamente adelante —cambio de
+     * actividad, teclado, una notificación que pasa— y ahí el latido se
+     * apagaba y no volvía a arrancar hasta reabrir la app.
+     */
+    let adelante = true;
 
     const latir = async () => {
-      if (corriendo || parado) return;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (corriendo || parado || !adelante) return;
       corriendo = true;
       try {
         await ref.current();
@@ -44,17 +62,37 @@ export function useLatido(fn: () => Promise<void>, ms: number, activo: boolean):
     };
 
     const id = setInterval(latir, ms);
+    const soltar: (() => void)[] = [];
 
-    // Al volver a la app, una pedida inmediata.
-    const alVolver = () => {
-      if (document.visibilityState === "visible") void latir();
-    };
-    document.addEventListener("visibilitychange", alVolver);
+    if (esNativo()) {
+      void import("@capacitor/app").then(({ App }) => {
+        if (parado) return;
+        void App.getState().then((e) => {
+          adelante = e.isActive;
+        });
+        void App.addListener("appStateChange", (e) => {
+          adelante = e.isActive;
+          // Al volver a la app, una pedida inmediata.
+          if (e.isActive) void latir();
+        }).then((sub) => {
+          if (parado) void sub.remove();
+          else soltar.push(() => void sub.remove());
+        });
+      });
+    } else if (typeof document !== "undefined") {
+      adelante = document.visibilityState !== "hidden";
+      const alCambiar = () => {
+        adelante = document.visibilityState !== "hidden";
+        if (adelante) void latir();
+      };
+      document.addEventListener("visibilitychange", alCambiar);
+      soltar.push(() => document.removeEventListener("visibilitychange", alCambiar));
+    }
 
     return () => {
       parado = true;
       clearInterval(id);
-      document.removeEventListener("visibilitychange", alVolver);
+      for (const q of soltar) q();
     };
   }, [ms, activo]);
 }

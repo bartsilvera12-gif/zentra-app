@@ -574,7 +574,36 @@ export function ConversacionesScreen() {
       pulsacion.current = null;
     }
   };
-  const final = useRef<HTMLDivElement | null>(null);
+  // El contenido del hilo, aparte de la caja que scrollea: lo que se observa
+  // para saber que creció.
+  const contenido = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Si la vista tiene que seguir pegada a lo último.
+   *
+   * Se prende al abrir y mientras se esté mirando el final; se apaga en cuanto
+   * alguien sube a leer historial.
+   *
+   * Hace falta un estado propio —no alcanza con preguntar "¿está al final?" en
+   * el momento— porque las fotos entran sin alto: la app baja al último
+   * mensaje, la imagen termina de cargar y de golpe agrega 300px arriba. Para
+   * cuando se puede medir, la vista ya quedó a mitad del hilo, así que
+   * preguntar ahí daría "no, no estaba al final" y no bajaría nunca. De eso
+   * venía que la conversación se abriera mostrando el mensaje más viejo.
+   */
+  const anclado = useRef(true);
+
+  /**
+   * Abajo del todo, sin animación.
+   *
+   * `scrollTop = scrollHeight` y no `scrollIntoView`: el ancla del final mide
+   * cero píxeles y en el WebView de Android eso dejaba la vista unos globos
+   * antes.
+   */
+  const pegarAbajo = () => {
+    const caja = hilo.current;
+    if (caja) caja.scrollTop = caja.scrollHeight;
+  };
   // Qué conversación estaba abierta la última vez que se dibujó, para saber si
   // esto es "se abrió" o "llegó un mensaje a la que ya estaba abierta".
   /**
@@ -592,17 +621,18 @@ export function ConversacionesScreen() {
       return;
     }
 
+    // Otra conversación: se vuelve a mirar lo último.
+    if (bajadoPara.current !== s.xSel) anclado.current = true;
+
     // Al abrir, al último mensaje: es lo que te acaban de escribir.
     if (debeBajarAlAbrir(bajadoPara.current, s.xSel, detMsgs.length)) {
       bajadoPara.current = s.xSel;
-      // `auto` y no `smooth`: al abrir tiene que estar abajo ya, no verse el viaje.
-      final.current?.scrollIntoView({ block: "end" });
+      pegarAbajo();
       return;
     }
-    if (bajadoPara.current !== s.xSel) return; // todavía no llegaron los mensajes
 
     /**
-     * Con la conversación ya abierta, sólo si ya estabas abajo.
+     * Con la conversación ya abierta, sólo si estabas mirando el final.
      *
      * Ahora que el chat se refresca solo, bajar siempre sería peor que no
      * bajar nunca: estás leyendo algo de hace dos semanas, entra un mensaje, y
@@ -610,11 +640,29 @@ export function ConversacionesScreen() {
      * qué. Es lo mismo que hace WhatsApp: si estás al final te sigue; si
      * subiste a leer, te deja donde estás.
      */
-    const caja = hilo.current;
-    if (caja && alFinal(caja)) {
-      final.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-    }
+    if (anclado.current) pegarAbajo();
   }, [s.xSub, s.xSel, detMsgs.length]);
+
+  /**
+   * Mientras se mire el final, la vista se mantiene abajo sola.
+   *
+   * El hilo cambia de alto después de dibujarse y no sólo cuando llega un
+   * mensaje: una foto que termina de cargar, un audio que calcula su duración,
+   * el teclado que abre y cierra. Cada una de esas empujaba el final fuera de
+   * la pantalla sin que ningún efecto se enterara, y el chat quedaba mostrando
+   * cualquier parte del medio.
+   */
+  useEffect(() => {
+    const caja = hilo.current;
+    const dentro = contenido.current;
+    if (s.xSub !== "chat" || !caja || !dentro) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (anclado.current) caja.scrollTop = caja.scrollHeight;
+    });
+    ro.observe(dentro);
+    return () => ro.disconnect();
+  }, [s.xSub, s.xSel]);
 
   const contactos = CHATS_VIVOS.map((c) => ({
     nombre: c.nombre,
@@ -1712,24 +1760,28 @@ export function ConversacionesScreen() {
 
           <div
             ref={hilo}
+            onScroll={() => {
+              // Quién manda la vista: si estás al final, el hilo te sigue; si
+              // subiste a leer, te deja donde estás.
+              const caja = hilo.current;
+              if (caja) anclado.current = alFinal(caja);
+            }}
             style={{
               flex: 1,
               minHeight: 0,
               overflow: "auto",
               padding: "14px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 9,
               // El lienzo del hilo también es del chat: con el fondo general
               // los globos propios quedaban flotando sin apoyo.
               background: ch.lienzo,
             }}
           >
-            <div style={{ textAlign: "center", font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>Hoy</div>
-            {detMsgs.map(burbuja)}
-            {/* El ancla del final. Se baja hasta acá al abrir y al llegar algo
-                nuevo: un chat se lee desde lo último, no desde el principio. */}
-            <div ref={final} />
+            {/* Los globos van en su propia caja, adentro de la que scrollea:
+                es la que se mide para saber que el hilo creció. */}
+            <div ref={contenido} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              <div style={{ textAlign: "center", font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>Hoy</div>
+              {detMsgs.map(burbuja)}
+            </div>
           </div>
 
           {/* Attachment tray */}
