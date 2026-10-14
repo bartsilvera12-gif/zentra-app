@@ -188,8 +188,12 @@ correr(
   // Sin comillas tampoco sirve: en bash, un `#` después de un espacio arranca
   // un comentario y se come el resto de la línea. Las dobles funcionan en los
   // dos.
+  // El color del icono es el del archivo que nos pasaron (#119f9f) y no el
+  // acento de la app (#1c8c84): son parecidos pero no iguales. El del splash sí
+  // es el de la app, porque lo que aparece inmediatamente después es la pantalla
+  // de entrada, que está pintada de ese color.
   'npx @capacitor/assets generate --android' +
-    ' --iconBackgroundColor "#1c8c84" --iconBackgroundColorDark "#1c8c84"' +
+    ' --iconBackgroundColor "#119f9f" --iconBackgroundColorDark "#119f9f"' +
     ' --splashBackgroundColor "#1c8c84" --splashBackgroundColorDark "#023047"',
 );
 

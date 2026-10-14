@@ -74,7 +74,10 @@ jobs:
         run: |
           node -e "
           const sharp = require('sharp');
-          const MARCA = [28, 140, 132];   // #1C8C84, el verde de Zentra
+          // #119F9F, el verde azulado del icono. No es el mismo que el acento
+          // de la app (#1C8C84): el icono vino con su propio tono y se respeta
+          // tal cual lo entregaron.
+          const MARCA = [17, 159, 159];
           (async () => {
             const f = 'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png';
             const { data } = await sharp(f).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
