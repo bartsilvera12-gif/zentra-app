@@ -5,6 +5,8 @@ import { ADJUNTOS, CHATS, EMOJIS, STICKERS } from "@/lib/data";
 import { alternarFavorito, guardarFavoritos, leerFavoritos, ordenarPorFavoritos } from "@/lib/favoritos";
 import {
   IconActualizar,
+  IconBurbuja,
+  IconEtiqueta,
   IconAudio,
   IconCamara,
   IconDocumento,
@@ -15,6 +17,7 @@ import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
 import { alFinal, debeBajarAlAbrir } from "@/lib/hilo";
+import { colorAvatar } from "@/lib/avatar";
 import { TODAS, colasDe, enCola } from "@/lib/colas";
 import { FichaChatPanel } from "./FichaChatPanel";
 import { TransferirPanel } from "./TransferirPanel";
@@ -32,6 +35,20 @@ import { Badge, ChipRow, EmptyState, ScrollBody, SearchInput } from "../ui/primi
 
 const VIOLETA = MARCA.header;
 const VIOLETA_INK = MARCA.headerSuave;
+
+/** Los dos filtros que no son una cola. "Todas" sale de lib/colas. */
+const SIN_LEER = "No leídas";
+const CERRADAS = "Cerradas";
+
+/** El puntito del filtro de no leídas. Un círculo no amerita un SVG. */
+function Punto({ color }: { color: string }) {
+  return (
+    <span
+      aria-hidden
+      style={{ width: 8, height: 8, borderRadius: "50%", background: color, flex: "0 0 auto" }}
+    />
+  );
+}
 
 /**
  * El visor de fotos y videos, a pantalla completa y adentro de la app.
@@ -360,7 +377,7 @@ export function ConversacionesScreen() {
    * que atender. Pedirlas cambia la consulta, así que el filtro no es un
    * colador sobre lo cargado como los otros dos: vuelve a preguntar.
    */
-  const verCerradas = s.xFiltro === "Cerradas";
+  const verCerradas = s.xFiltro === CERRADAS;
   const { datos, cargando, error, recargar, refrescar: refrescarLista } = useRemoto(
     () => (conErp ? repo.chats.list({ incluirCerradas: verCerradas }) : Promise.resolve(CHATS)),
     [conErp, verCerradas],
@@ -443,16 +460,28 @@ export function ConversacionesScreen() {
     [CHATS_VIVOS, s.xLeidos],
   );
 
+  /**
+   * Un solo filtro, no dos.
+   *
+   * Había dos filas de filtros —"Todas / No leídas" por un lado y las colas por
+   * otro— y las dos empezaban con "Todas". Dos botones iguales, uno al lado del
+   * otro, que hacían cosas distintas: imposible de adivinar cuál era cuál.
+   *
+   * Ahora es una sola fila con una sola selección. Se pierde "no leídas DE una
+   * cola", que es un cruce que casi nadie hace, y se gana que el filtro se
+   * entienda de un vistazo.
+   */
+  const soloNoLeidas = s.xFiltro === SIN_LEER;
   // Si la cola elegida se queda sin conversaciones —se cerró la última, o
   // cambió de empresa— se vuelve a "Todas" en vez de mostrar una lista vacía
   // sin explicación.
-  const colaActiva = colas.some((c) => c.nombre === s.xCola) ? s.xCola : TODAS;
+  const colaActiva = colas.some((c) => c.nombre === s.xFiltro) ? s.xFiltro : TODAS;
 
   const filtrados = CHATS_VIVOS.filter((c) => {
     // Una cerrada no aparece entre las abiertas aunque el ERP la haya mandado.
     if (verCerradas ? !c.cerrada : c.cerrada) return false;
     if (!enCola(c, colaActiva)) return false;
-    if (s.xFiltro === "No leídas" && noLeidosDe(c, s.xLeidos) === 0) return false;
+    if (soloNoLeidas && noLeidosDe(c, s.xLeidos) === 0) return false;
     return norm(c.nombre + " " + ultimoDe(c, s.xEnviados)).indexOf(xq) >= 0;
   });
 
@@ -559,37 +588,45 @@ export function ConversacionesScreen() {
   // Sin "Clientes" y "Proveedores": en el chat del ERP todas son conversaciones
   // de WhatsApp y `tipo` era siempre "Cliente", así que un filtro no devolvía
   // nada y el otro no filtraba nada.
-  const chips = ["Todas", "No leídas", "Cerradas"].map((k) => {
-    const on = s.xFiltro === k;
-    return {
-      label: k,
-      bg: on ? VIOLETA : t.card,
-      fg: on ? "#ffffff" : t.ink2,
-      border: on ? VIOLETA : t.border,
-      pick: () => set({ xFiltro: k }),
-    };
-  });
-
   /**
-   * Las pestañas de colas. "Todas" primero, y después una por cola con el
-   * número de conversaciones sin leer al lado: es lo que uno mira para decidir
-   * a cuál entrar.
+   * Una fila de filtros, con las colas adentro.
+   *
+   * El orden es el de uso: primero el que no filtra, después el corte por
+   * estado, y al final las colas, que son las que cambian de empresa a empresa.
    */
-  const chipsColas = colas.length
-    ? [
-        { nombre: TODAS, sinLeer: colas.reduce((a, c) => a + c.sinLeer, 0) },
-        ...colas,
-      ].map((c) => {
-        const on = colaActiva === c.nombre;
-        return {
-          label: c.sinLeer > 0 ? `${c.nombre} (${c.sinLeer > 99 ? "99+" : c.sinLeer})` : c.nombre,
-          bg: on ? MARCA.acento : t.card,
-          fg: on ? "#ffffff" : t.ink2,
-          border: on ? MARCA.acento : t.border,
-          pick: () => set({ xCola: c.nombre }),
-        };
-      })
-    : [];
+  /**
+   * El valor y el texto son distintos a propósito: el chip de una cola muestra
+   * "Ventas (3)" y el filtro guarda "Ventas". Si se guardara el texto, el
+   * contador formaría parte del nombre, al llegar un mensaje cambiaría solo y
+   * la cola elegida dejaría de coincidir con ninguna.
+   */
+  const chip = (valor: string, texto: string, icono?: React.ReactNode) => {
+    const on = (s.xFiltro || TODAS) === valor;
+    return {
+      label: texto,
+      icono,
+      bg: on ? MARCA.acento : t.card,
+      fg: on ? "#ffffff" : t.ink2,
+      border: on ? MARCA.acento : t.border,
+      pick: () => set({ xFiltro: valor }),
+    };
+  };
+
+  const chips = [
+    chip(TODAS, TODAS, <IconBurbuja stroke="currentColor" />),
+    chip(SIN_LEER, SIN_LEER, <Punto color={soloNoLeidas ? "#ffffff" : MARCA.acento} />),
+    chip(CERRADAS, CERRADAS),
+    // Las colas sólo si el ERP las informa; si no, la fila queda como antes.
+    ...colas.map((c) =>
+      chip(
+        c.nombre,
+        c.sinLeer > 0 ? `${c.nombre} (${c.sinLeer > 99 ? "99+" : c.sinLeer})` : c.nombre,
+        <IconEtiqueta stroke="currentColor" />,
+      ),
+    ),
+  ];
+
+
 
   // Los favoritos primero: es para lo que sirve marcarlos.
   const panelLista = ordenarPorFavoritos(s.xPanelTab === "Emojis" ? EMOJIS : STICKERS, favoritos);
@@ -1126,22 +1163,32 @@ export function ConversacionesScreen() {
               borderBottom: `1px solid ${t.border}`,
             }}
           >
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* El ícono de la app, que de paso hace de botón para volver al
+                  inicio: en el encabezado de una pantalla principal una flecha
+                  "‹" sugiere que hay algo atrás, y acá no lo hay. */}
               <button
                 onClick={() => set({ screen: "home" })}
+                aria-label="Ir al inicio"
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 44,
+                  height: 44,
                   flex: "0 0 auto",
+                  padding: 0,
                   border: 0,
-                  borderRadius: 10,
+                  borderRadius: 13,
+                  overflow: "hidden",
                   cursor: "pointer",
-                  font: "600 17px/1 var(--font-barlow),Barlow,sans-serif",
-                  background: t.bg,
-                  color: t.ink,
+                  background: "transparent",
+                  display: "block",
                 }}
               >
-                ‹
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/icono-192.png"
+                  alt=""
+                  style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }}
+                />
               </button>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                 <span style={{ font: "700 19px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>Conversaciones</span>
@@ -1175,21 +1222,28 @@ export function ConversacionesScreen() {
               >
                 <IconActualizar size={18} stroke="currentColor" />
               </button>
+              {/* Redondo y sólo con el "+": con el ícono de la app a la
+                  izquierda, dos botones con texto no entran al lado del
+                  título en una pantalla angosta. */}
               <button
                 onClick={() => set({ xSub: "nuevo", xnQuery: "" })}
+                aria-label="Nueva conversación"
                 style={{
                   flex: "0 0 auto",
+                  width: 38,
+                  height: 38,
                   border: 0,
                   borderRadius: 999,
-                  background: VIOLETA,
+                  background: MARCA.acento,
                   color: "#fff",
-                  padding: "9px 15px",
                   cursor: "pointer",
-                  font: "600 13px/1 var(--font-barlow),Barlow,sans-serif",
-                  whiteSpace: "nowrap",
+                  font: "600 19px/1 var(--font-barlow),Barlow,sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                + Nueva
+                +
               </button>
             </div>
             <SearchInput
@@ -1198,11 +1252,6 @@ export function ConversacionesScreen() {
               placeholder="Buscar conversación…"
             />
             <ChipRow chips={chips} />
-            {/* Las colas van en su propia fila y con el otro color de la marca:
-                son dos cortes distintos —la cola es de quién es el chat, el
-                otro es si está leído— y mezclarlos en una sola fila hacía que
-                tocar "Ventas" pareciera apagar "No leídas". */}
-            {chipsColas.length > 0 && <ChipRow chips={chipsColas} />}
             {/* Una transferencia no deja rastro en pantalla: la conversación
                 desaparece de la lista y listo. Sin esto parece que se perdió. */}
             {transferido && (
@@ -1258,7 +1307,9 @@ export function ConversacionesScreen() {
             )}
             {!cargando && !error && filtrados.map((c, idx) => {
               const nl = noLeidosDe(c, s.xLeidos);
-              const esCliente = c.tipo === "Cliente";
+              // El color sale del contacto, no del tipo: en el chat del ERP
+              // todas son "Cliente", así que el tipo pintaba todo igual.
+              const color = colorAvatar(c.id || c.nombre, s.theme === "oscuro");
               return (
                 <button
                   key={c.id}
@@ -1285,8 +1336,8 @@ export function ConversacionesScreen() {
                         height: 48,
                         // Redondo, no cuadrado con las puntas limadas.
                         borderRadius: "50%",
-                        background: esCliente ? "#E2F0F4" : MARCA.suave,
-                        color: esCliente ? "#04617A" : VIOLETA_INK,
+                        background: color.fondo,
+                        color: color.tinta,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -1392,6 +1443,19 @@ export function ConversacionesScreen() {
                         {nl > 99 ? "99+" : nl}
                       </span>
                     )}
+                  </span>
+
+                  {/* La flecha dice que la fila se abre. Sin ella, una fila con
+                      borde arriba y abajo se lee como un renglón de tabla. */}
+                  <span
+                    aria-hidden
+                    style={{
+                      flex: "0 0 auto",
+                      color: t.ink3,
+                      font: "400 17px/1 var(--font-barlow),Barlow,sans-serif",
+                    }}
+                  >
+                    ›
                   </span>
                 </button>
               );
@@ -2038,7 +2102,7 @@ export function ConversacionesScreen() {
 
           <ScrollBody>
             {contactosFiltrados.map((c) => {
-              const esCliente = c.tipo === "Cliente";
+              const color = colorAvatar(c.chatId || c.nombre, s.theme === "oscuro");
               return (
                 <button
                   key={c.chatId}
@@ -2061,8 +2125,8 @@ export function ConversacionesScreen() {
                       height: 40,
                       flex: "0 0 auto",
                       borderRadius: 12,
-                      background: esCliente ? "#E2F0F4" : MARCA.suave,
-                      color: esCliente ? "#04617A" : VIOLETA_INK,
+                      background: color.fondo,
+                      color: color.tinta,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",

@@ -109,14 +109,19 @@ export interface ChipSpec {
   fg: string;
   border: string;
   pick: () => void;
+  /** Un ícono chico antes del texto. Opcional: no todos los filtros tienen uno. */
+  icono?: ReactNode;
 }
 
 export function ChipRow({ chips }: { chips: ChipSpec[] }) {
   return (
     <div style={{ display: "flex", gap: 7, overflowX: "auto", scrollbarWidth: "none" }}>
-      {chips.map((ch) => (
+      {/* La clave va por posición y no por texto: el texto de un chip puede
+          repetirse —una cola podría llamarse igual que un filtro— y React
+          necesita que no choquen. */}
+      {chips.map((ch, i) => (
         <button
-          key={ch.label}
+          key={i}
           onClick={ch.pick}
           style={{
             flex: "0 0 auto",
@@ -128,8 +133,12 @@ export function ChipRow({ chips }: { chips: ChipSpec[] }) {
             background: ch.bg,
             color: ch.fg,
             border: `1px solid ${ch.border}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
+          {ch.icono}
           {ch.label}
         </button>
       ))}

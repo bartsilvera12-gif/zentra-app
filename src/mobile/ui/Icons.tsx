@@ -203,3 +203,32 @@ export function IconActualizar({ size = 18, stroke = "currentColor" }: IconProps
     </svg>
   );
 }
+
+/** Etiqueta, para las colas de atención. */
+export function IconEtiqueta({ size = 13, stroke = "currentColor" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 11.5V4a1 1 0 0 1 1-1h7.5a1 1 0 0 1 .7.3l8.5 8.5a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 12.2a1 1 0 0 1-.3-.7Z"
+        stroke={stroke}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="7.5" cy="7.5" r="1.4" fill={stroke} />
+    </svg>
+  );
+}
+
+/** Globo de conversación, para el filtro que no filtra nada. */
+export function IconBurbuja({ size = 13, stroke = "currentColor" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M20 12a7.5 7.5 0 0 1-10.9 6.7L4 20l1.3-4.1A7.5 7.5 0 1 1 20 12Z"
+        stroke={stroke}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

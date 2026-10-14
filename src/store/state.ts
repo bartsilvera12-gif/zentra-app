@@ -252,9 +252,11 @@ export interface AppState {
   xEnvioError: string;
   /** El menú que se abre al tocar la foto de perfil. */
   menuPerfil: boolean;
+  /**
+   * El filtro del listado de conversaciones: "Todas", "No leídas", "Cerradas"
+   * o el nombre de una cola. Uno solo, no dos cortes cruzados.
+   */
   xFiltro: string;
-  /** La pestaña de cola elegida en el listado de conversaciones. */
-  xCola: string;
   xSel: string | null;
   xTexto: string;
   xEnviados: Record<string, import("@/lib/types").ChatMsg[]>;
@@ -475,7 +477,6 @@ export const initialState: AppState = {
   xEnvioError: "",
   menuPerfil: false,
   xFiltro: "Todas",
-  xCola: "Todas",
   xSel: null,
   xTexto: "",
   xEnviados: {},
