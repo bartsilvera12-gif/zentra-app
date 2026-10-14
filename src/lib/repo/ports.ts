@@ -236,7 +236,17 @@ export interface ChatsRepo {
    * `desde` es cuántas conversaciones ya se tienen, para pedir las siguientes.
    * El ERP responde por tandas: sin esto sólo se ven las más recientes.
    */
-  list(params?: { q?: string; tipo?: Chat["tipo"]; soloNoLeidas?: boolean; desde?: number }): Promise<Chat[]>;
+  list(params?: {
+    q?: string;
+    tipo?: Chat["tipo"];
+    soloNoLeidas?: boolean;
+    desde?: number;
+    /**
+     * Traer también las cerradas. El ERP las excluye por defecto, y una
+     * conversación finalizada desaparecía de la app sin explicación.
+     */
+    incluirCerradas?: boolean;
+  }): Promise<Chat[]>;
   get(id: string): Promise<Chat | null>;
   enviar(chatId: string, msg: Omit<ChatMsg, "hora" | "tick">): Promise<ChatMsg>;
   /**

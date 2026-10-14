@@ -352,9 +352,18 @@ export function ConversacionesScreen() {
   // Las conversaciones salen del ERP: son los chats de WhatsApp asignados a
   // este asesor. Sin ERP quedan las de ejemplo, para poder ver la pantalla.
   const conErp = usaApiDelErp();
+  /**
+   * Las cerradas van en su propio filtro y no mezcladas con el resto.
+   *
+   * El ERP las excluye salvo que se le pidan, y devuelve de a tandas: si
+   * entraran siempre, competirían por los mismos lugares y taparían lo que hay
+   * que atender. Pedirlas cambia la consulta, así que el filtro no es un
+   * colador sobre lo cargado como los otros dos: vuelve a preguntar.
+   */
+  const verCerradas = s.xFiltro === "Cerradas";
   const { datos, cargando, error, recargar, refrescar: refrescarLista } = useRemoto(
-    () => (conErp ? repo.chats.list() : Promise.resolve(CHATS)),
-    [conErp],
+    () => (conErp ? repo.chats.list({ incluirCerradas: verCerradas }) : Promise.resolve(CHATS)),
+    [conErp, verCerradas],
   );
   // No es lo mismo "no tenés conversaciones" que "no atendés chats": a quien no
   // está en ninguna cola hay que decirle eso, no dejarlo mirando una lista
@@ -378,6 +387,13 @@ export function ConversacionesScreen() {
   /** A dónde se fue la última conversación transferida, para decirlo en la lista. */
   const [transferido, setTransferido] = useState<string | null>(null);
 
+  // Cambiar a "Cerradas" (o volver) es otra consulta: lo que se trajo con
+  // "Cargar más" de la anterior no pertenece a esta lista.
+  useEffect(() => {
+    setExtra([]);
+    setFinDeLista(false);
+  }, [verCerradas]);
+
   const CHATS_VIVOS = useMemo(() => {
     // Una conversación puede aparecer en dos tandas si llegó un mensaje nuevo
     // entre una pedida y la otra: se queda con la primera, que es la más fresca.
@@ -395,7 +411,7 @@ export function ConversacionesScreen() {
     if (trayendo) return;
     setTrayendo(true);
     try {
-      const mas = await repo.chats.list({ desde: CHATS_VIVOS.length });
+      const mas = await repo.chats.list({ desde: CHATS_VIVOS.length, incluirCerradas: verCerradas });
       // Un ERP que no entiende `offset` devuelve siempre la misma tanda. Sin
       // esto el botón quedaría para siempre trayendo lo mismo: si nada de lo
       // que llegó es nuevo, se terminó.
@@ -433,6 +449,8 @@ export function ConversacionesScreen() {
   const colaActiva = colas.some((c) => c.nombre === s.xCola) ? s.xCola : TODAS;
 
   const filtrados = CHATS_VIVOS.filter((c) => {
+    // Una cerrada no aparece entre las abiertas aunque el ERP la haya mandado.
+    if (verCerradas ? !c.cerrada : c.cerrada) return false;
     if (!enCola(c, colaActiva)) return false;
     if (s.xFiltro === "No leídas" && noLeidosDe(c, s.xLeidos) === 0) return false;
     return norm(c.nombre + " " + ultimoDe(c, s.xEnviados)).indexOf(xq) >= 0;
@@ -541,7 +559,7 @@ export function ConversacionesScreen() {
   // Sin "Clientes" y "Proveedores": en el chat del ERP todas son conversaciones
   // de WhatsApp y `tipo` era siempre "Cliente", así que un filtro no devolvía
   // nada y el otro no filtraba nada.
-  const chips = ["Todas", "No leídas"].map((k) => {
+  const chips = ["Todas", "No leídas", "Cerradas"].map((k) => {
     const on = s.xFiltro === k;
     return {
       label: k,

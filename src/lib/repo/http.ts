@@ -1355,6 +1355,9 @@ function aChat(c: ConversacionErp): Chat {
     // La vista previa que guarda el ERP para un adjunto es un marcador de
     // texto: "[audio]", "[documento] x.pdf". Se traduce acá, que si no la
     // lista se lee como una columna de corchetes.
+    // El ERP usa "closed"; se mira por prefijo para no atarse a esa palabra
+    // exacta si otro ERP dice "cerrada".
+    cerrada: /^(clos|cerr)/i.test(c.status || ""),
     msgs: c.last_message_preview
       ? [{ de: "ellos", texto: vistaPrevia(c.last_message_preview), hora: horaCorta(c.last_message_at) }]
       : [],
@@ -2078,7 +2081,12 @@ export const httpRepo: Repo = {
       const desde = Math.max(Number(params?.desde) || 0, 0);
       try {
         const r = await request<unknown>("/chat/mobile-inbox", {
-          query: { offset: desde, limit: TANDA_CHATS },
+          query: {
+            offset: desde,
+            limit: TANDA_CHATS,
+            // El ERP excluye las cerradas salvo que se le pidan.
+            ...(params?.incluirCerradas ? { only_open: 0 } : {}),
+          },
         });
         return comoLista<ConversacionErp>(r, "conversations", "/chat/mobile-inbox").map(aChat);
       } catch (e) {

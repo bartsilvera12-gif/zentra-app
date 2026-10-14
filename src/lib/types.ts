@@ -249,6 +249,13 @@ export interface Chat {
    * entonces el listado no se divide en pestañas.
    */
   cola?: string | null;
+  /**
+   * La conversación está cerrada en el ERP: alguien la finalizó y la tipificó.
+   *
+   * No se mezclan con las abiertas en la lista: compiten por los mismos lugares
+   * de cada tanda y taparían lo que hay que atender. Tienen su propio filtro.
+   */
+  cerrada?: boolean;
   msgs: ChatMsg[];
 }
 

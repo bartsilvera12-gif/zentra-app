@@ -275,6 +275,30 @@ hecha desde la app se ve en la web igual que una hecha ahí.
 Y puede transferir tanto el agente asignado como un supervisor que ve la
 conversación por su alcance omnicanal — no sólo el dueño del chat.
 
+### El inbox pagina, y las cerradas se piden aparte
+
+```
+GET /api/chat/mobile-inbox?offset=0&limit=50&only_open=0
+    → { conversations: [...], hay_mas }
+```
+
+`offset` y `limit` (tope 100). **Sin ellos se comporta como antes**: las 50 más
+recientes. Antes los ignoraba, así que la 51 no existía para la app — ni
+buscando, porque el buscador filtra lo que ya está cargado.
+
+`hay_mas` se calcula sobre lo que quedó **después** del alcance omnicanal, no
+sobre el total de la tabla: ofrecer "cargar más" y devolver vacío es peor que no
+ofrecerlo.
+
+`only_open=0` suma las cerradas. La app las pide sólo con el filtro "Cerradas"
+puesto: si entraran siempre competirían por los mismos lugares de cada tanda y
+taparían lo que hay que atender.
+
+**La ventana a la base crece con el offset** (`offset + limit * 4`, tope 1000)
+porque el filtro de alcance corre en el servidor y no en la consulta: hay que
+traer de más para que, después de descartar lo que esa persona no puede ver,
+siga alcanzando para la página pedida.
+
 ### Las colas: el campo que el ERP tiene que mandar
 
 La app divide el listado de conversaciones en pestañas por cola de atención,
