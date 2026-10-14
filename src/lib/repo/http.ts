@@ -660,6 +660,9 @@ interface ConversacionErp {
   /** Quién la está atendiendo, y en qué cola está. Pueden venir vacíos. */
   agente_nombre?: string | null;
   cola_nombre?: string | null;
+  /** Como lo manda /mobile/asesor/conversations. */
+  queue_nombre?: string | null;
+  cola?: string | null;
 }
 
 interface ConversacionesErp {
@@ -925,6 +928,10 @@ function aChat(c: ConversacionErp): Chat {
       "agente_nombre" in c || "cola_nombre" in c
         ? primero(c.agente_nombre, c.cola_nombre) || null
         : undefined,
+    // La cola va aparte del responsable: el responsable es una etiqueta y la
+    // cola divide el listado en pestañas, así que no pueden compartir campo.
+    // Si el ERP no la manda queda `undefined` y no hay pestañas.
+    cola: primero(c.cola_nombre, c.queue_nombre, c.cola) || undefined,
     // El listado trae sólo la vista previa del último mensaje. Los mensajes de
     // verdad llegan al abrir la conversación.
     //

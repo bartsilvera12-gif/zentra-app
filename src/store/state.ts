@@ -229,6 +229,8 @@ export interface AppState {
   /** El menú que se abre al tocar la foto de perfil. */
   menuPerfil: boolean;
   xFiltro: string;
+  /** La pestaña de cola elegida en el listado de conversaciones. */
+  xCola: string;
   xSel: string | null;
   xTexto: string;
   xEnviados: Record<string, import("@/lib/types").ChatMsg[]>;
@@ -435,6 +437,7 @@ export const initialState: AppState = {
   xEnvioError: "",
   menuPerfil: false,
   xFiltro: "Todas",
+  xCola: "Todas",
   xSel: null,
   xTexto: "",
   xEnviados: {},

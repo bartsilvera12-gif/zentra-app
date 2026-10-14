@@ -228,6 +228,12 @@ export interface Chat {
    * `null` cuando no la tomó nadie todavía.
    */
   responsable?: string | null;
+  /**
+   * La cola de atención en la que el ERP puso la conversación ("Ventas",
+   * "Soporte"). `undefined` o `null` es "este ERP no informa la cola", y
+   * entonces el listado no se divide en pestañas.
+   */
+  cola?: string | null;
   msgs: ChatMsg[];
 }
 

@@ -15,6 +15,7 @@ import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
 import { alFinal, debeBajarAlAbrir } from "@/lib/hilo";
+import { TODAS, colasDe, enCola } from "@/lib/colas";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
@@ -409,7 +410,25 @@ export function ConversacionesScreen() {
   const noLeidosTotal = CHATS_VIVOS.reduce((a, c) => a + noLeidosDe(c, s.xLeidos), 0);
   const xq = norm(s.xQuery.trim());
 
+  /**
+   * Las colas de atención, como en el ERP de escritorio.
+   *
+   * Salen de las conversaciones que están en pantalla, no de un catálogo: así
+   * no aparece una pestaña por cada cola que la empresa tiene creada y no usa.
+   * Si el ERP no informa la cola, `colas` queda vacío y la fila no se dibuja.
+   */
+  const colas = useMemo(
+    () => colasDe(CHATS_VIVOS, (c) => noLeidosDe(c, s.xLeidos)),
+    [CHATS_VIVOS, s.xLeidos],
+  );
+
+  // Si la cola elegida se queda sin conversaciones —se cerró la última, o
+  // cambió de empresa— se vuelve a "Todas" en vez de mostrar una lista vacía
+  // sin explicación.
+  const colaActiva = colas.some((c) => c.nombre === s.xCola) ? s.xCola : TODAS;
+
   const filtrados = CHATS_VIVOS.filter((c) => {
+    if (!enCola(c, colaActiva)) return false;
     if (s.xFiltro === "No leídas" && noLeidosDe(c, s.xLeidos) === 0) return false;
     return norm(c.nombre + " " + ultimoDe(c, s.xEnviados)).indexOf(xq) >= 0;
   });
@@ -527,6 +546,27 @@ export function ConversacionesScreen() {
       pick: () => set({ xFiltro: k }),
     };
   });
+
+  /**
+   * Las pestañas de colas. "Todas" primero, y después una por cola con el
+   * número de conversaciones sin leer al lado: es lo que uno mira para decidir
+   * a cuál entrar.
+   */
+  const chipsColas = colas.length
+    ? [
+        { nombre: TODAS, sinLeer: colas.reduce((a, c) => a + c.sinLeer, 0) },
+        ...colas,
+      ].map((c) => {
+        const on = colaActiva === c.nombre;
+        return {
+          label: c.sinLeer > 0 ? `${c.nombre} (${c.sinLeer > 99 ? "99+" : c.sinLeer})` : c.nombre,
+          bg: on ? MARCA.acento : t.card,
+          fg: on ? "#ffffff" : t.ink2,
+          border: on ? MARCA.acento : t.border,
+          pick: () => set({ xCola: c.nombre }),
+        };
+      })
+    : [];
 
   // Los favoritos primero: es para lo que sirve marcarlos.
   const panelLista = ordenarPorFavoritos(s.xPanelTab === "Emojis" ? EMOJIS : STICKERS, favoritos);
@@ -1135,6 +1175,11 @@ export function ConversacionesScreen() {
               placeholder="Buscar conversación…"
             />
             <ChipRow chips={chips} />
+            {/* Las colas van en su propia fila y con el otro color de la marca:
+                son dos cortes distintos —la cola es de quién es el chat, el
+                otro es si está leído— y mezclarlos en una sola fila hacía que
+                tocar "Ventas" pareciera apagar "No leídas". */}
+            {chipsColas.length > 0 && <ChipRow chips={chipsColas} />}
           </div>
 
           {/* Sin separación entre filas y sin margen lateral: la lista es una
@@ -1297,7 +1342,14 @@ export function ConversacionesScreen() {
             })}
             {!cargando && !error && filtrados.length === 0 && (
               <div style={{ padding: "12px 14px" }}>
-                <EmptyState titulo="Sin conversaciones" detalle="Probá con otro término o cambiá el filtro." />
+                <EmptyState
+                  titulo="Sin conversaciones"
+                  detalle={
+                    colaActiva !== TODAS
+                      ? `No hay nada en ${colaActiva} con este filtro. Tocá “Todas” para ver el resto.`
+                      : "Probá con otro término o cambiá el filtro."
+                  }
+                />
               </div>
             )}
 

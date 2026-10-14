@@ -162,6 +162,34 @@ al asesor. Por eso una administradora veía "no hay conversaciones para vos" en
 la app mientras en el ERP las tenía todas delante: no está en ninguna cola, y
 ese endpoint filtra por cola.
 
+### Las colas: el campo que el ERP tiene que mandar
+
+La app divide el listado de conversaciones en pestañas por cola de atención,
+igual que el ERP de escritorio. Las pestañas salen de un solo campo por
+conversación:
+
+```json
+{ "id": "…", "cola_nombre": "Ventas" }
+```
+
+También se acepta `queue_nombre` o `cola`, que es como lo llama
+`/mobile/asesor/conversations`.
+
+**Si el ERP no manda ese campo, la fila de pestañas no se dibuja** y el listado
+queda como antes, en una sola lista. No hay error ni pestaña vacía: es un campo
+opcional y la app se comporta como si la empresa no usara colas.
+
+Hoy `/api/chat/mobile-inbox` —el endpoint que la app usa primero— **no lo
+manda**. La consulta pide:
+
+```ts
+"id, status, last_message_at, last_message_preview, unread_count, contact_id, channel_id"
+```
+
+Falta `queue_id`, y después traducirlo a nombre con `chat_queues`. Es el mismo
+agregado que ya existe en `/api/mobile/asesor/conversations`, que sí devuelve
+`queue_id` por conversación y el catálogo `queues` con `listChatQueues()`.
+
 ### Fotos, audios y documentos
 
 Van por `/send-media`, que recibe **`multipart/form-data`** con `file` y un

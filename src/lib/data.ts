@@ -164,24 +164,24 @@ export const REP_TABLAS: Record<RepTab, RepTablaFila[]> = {
 };
 
 export const CHATS: Chat[] = [
-  { id: "x1", nombre: "Despensa Doña Lucía", tipo: "Cliente", refId: "c1", enLinea: true, hora: "11:38", noLeidos: 2,
+  { id: "x1", nombre: "Despensa Doña Lucía", tipo: "Cliente", refId: "c1", enLinea: true, hora: "11:38", noLeidos: 2, cola: "Ventas",
     msgs: [
       { de: "ellos", texto: "Buen día Ulises, ¿tienen cerveza lata en stock?", hora: "11:30" },
       { de: "yo", texto: "Buen día Lucía. Sí, tenemos 120 unidades disponibles.", hora: "11:33", tick: "✓✓" },
       { de: "ellos", texto: "Perfecto, mandame 48 para hoy a la tarde por favor.", hora: "11:37" },
       { de: "ellos", texto: "¿Me podés pasar el total con el precio mayorista?", hora: "11:38" },
     ] },
-  { id: "x2", nombre: "Bebidas del Sur S.A.", tipo: "Proveedor", refId: "pv1", enLinea: false, hora: "10:02", noLeidos: 0,
+  { id: "x2", nombre: "Bebidas del Sur S.A.", tipo: "Proveedor", refId: "pv1", enLinea: false, hora: "10:02", noLeidos: 0, cola: "Compras",
     msgs: [
       { de: "yo", texto: "Buenas, ¿cuándo llega el pedido de cerveza?", hora: "09:40", tick: "✓✓" },
       { de: "ellos", texto: "Sale mañana temprano, llega antes del mediodía.", hora: "10:02" },
     ] },
-  { id: "x3", nombre: "Almacén San Blas", tipo: "Cliente", refId: "c2", enLinea: false, hora: "Ayer", noLeidos: 0,
+  { id: "x3", nombre: "Almacén San Blas", tipo: "Cliente", refId: "c2", enLinea: false, hora: "Ayer", noLeidos: 0, cola: "Cobranzas",
     msgs: [
       { de: "ellos", texto: "Ya transferí el saldo de la factura anterior.", hora: "17:12" },
       { de: "yo", texto: "Recibido Ramón, gracias. Queda al día.", hora: "17:20", tick: "✓✓" },
     ] },
-  { id: "x4", nombre: "Minimercado Ykuá", tipo: "Cliente", refId: "c3", enLinea: true, hora: "Ayer", noLeidos: 1,
+  { id: "x4", nombre: "Minimercado Ykuá", tipo: "Cliente", refId: "c3", enLinea: true, hora: "Ayer", noLeidos: 1, cola: "Ventas",
     msgs: [
       { de: "yo", texto: "Sofía, te paso el pedido armado para confirmar.", hora: "15:02", tick: "✓✓" },
       { de: "yo", pedido: { tag: "Pedido sugerido", total: 348000, detalle: "24 × Gaseosa cola 2 L · 12 × Soda 1,5 L" }, texto: "Avisame si lo confirmo así.", hora: "15:03", tick: "✓✓" },
