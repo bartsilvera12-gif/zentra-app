@@ -19,6 +19,7 @@
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
 import { norm } from "../format";
+import { citaDe, resolverCitas, type MensajeMapeado } from "../hilo";
 import { buildReport } from "../reportes";
 import { hayTenantActivo, sb, tenantEnUso } from "../supabase/client";
 import type {
@@ -1421,6 +1422,7 @@ function extensionDe(nombre: string): string {
  * vacío. Antes eso caía en un `|| "👍"` y aparecía un pulgar que nadie puso:
  * sacar una reacción dejaba una reacción.
  */
+
 /**
  * Los tildes de un mensaje propio, con los tres estados de WhatsApp.
  *
@@ -1436,7 +1438,10 @@ function marcasDeEntrega(estado: string | null | undefined): { tick: string; lei
   return { tick: "\u2713" };
 }
 
-function aMensaje(m: MensajeErp): ChatMsg | null {
+
+
+
+function aMensaje(m: MensajeErp): MensajeMapeado | null {
   const tipo = (m.message_type || "text").toLowerCase();
   const base = {
     de: (m.from_me ? "yo" : "ellos") as "yo" | "ellos",
@@ -1444,6 +1449,14 @@ function aMensaje(m: MensajeErp): ChatMsg | null {
     // Sin esto no se puede reaccionar: la reacción apunta al mensaje de
     // WhatsApp, no a la fila del ERP.
     ...(primero(m.wa_message_id) ? { wamid: primero(m.wa_message_id) } : {}),
+    ...(() => {
+      const c = citaDe(m.raw_payload);
+      if (!c) return {};
+      if (c.texto) return { cita: { texto: c.texto, mio: c.mio === true } };
+      // Queda marcado para resolverlo contra el hilo, que es donde está el
+      // texto del mensaje citado.
+      return { citaPendiente: c.wamid };
+    })(),
     ...(esReenviado(m.raw_payload) ? { reenviado: true } : {}),
   };
 
@@ -2139,7 +2152,7 @@ export const httpRepo: Repo = {
           enLinea: false,
           hora: "",
           noLeidos: 0,
-          msgs: msgs.map(aMensaje).filter((x): x is ChatMsg => x !== null),
+          msgs: resolverCitas(msgs.map(aMensaje).filter((x): x is MensajeMapeado => x !== null)),
         };
       } catch (e) {
         if (e instanceof ApiError && e.status !== 401 && e.status !== 403 && e.status !== 404) throw e;
@@ -2158,11 +2171,13 @@ export const httpRepo: Repo = {
         enLinea: false,
         hora: "",
         noLeidos: 0,
-        msgs: (r.messages ?? []).map(aMensaje).filter((x): x is ChatMsg => x !== null),
+        msgs: resolverCitas(
+          (r.messages ?? []).map(aMensaje).filter((x): x is MensajeMapeado => x !== null),
+        ),
       };
     },
 
-    async enviar(chatId, msg) {
+    async enviar(chatId, msg, cita) {
       if (!msg.texto) {
         // Fotos, audios y stickers van por otros endpoints del ERP
         // (/send-media, /send-sticker). Mejor decirlo que fallar callado.
@@ -2174,7 +2189,23 @@ export const httpRepo: Repo = {
       }
       await request(`/mobile/asesor/conversations/${encodeURIComponent(chatId)}/send`, {
         method: "POST",
-        body: JSON.stringify({ message: msg.texto }),
+        body: JSON.stringify({
+          message: msg.texto,
+          // La cita de verdad: el wamid va a WhatsApp, que es lo que hace que
+          // del otro lado se vea el mensaje citado arriba de la respuesta. El
+          // contexto es el resumen con el que el ERP la dibuja en su propia
+          // pantalla sin tener que ir a buscar el mensaje.
+          ...(cita
+            ? {
+                reply_to_wamid: cita.wamid,
+                reply_context: {
+                  wa_message_id: cita.wamid,
+                  from_me: cita.mio,
+                  preview: cita.texto.slice(0, 160),
+                },
+              }
+            : {}),
+        }),
       });
       return { ...msg, hora: horaCorta(new Date().toISOString()), tick: "✓" };
     },

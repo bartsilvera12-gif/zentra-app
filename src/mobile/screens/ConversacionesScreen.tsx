@@ -16,7 +16,7 @@ import {
 import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
-import { alFinal, debeBajarAlAbrir, vaSinGlobo } from "@/lib/hilo";
+import { alFinal, debeBajarAlAbrir, resumenDeMensaje, vaSinGlobo } from "@/lib/hilo";
 import { colorAvatar } from "@/lib/avatar";
 import { TODAS, colasDe, enCola } from "@/lib/colas";
 import { FichaChatPanel } from "./FichaChatPanel";
@@ -698,31 +698,42 @@ export function ConversacionesScreen() {
     if (!escrito || !det) return;
 
     /**
-     * La cita va adelante del mensaje, entre comillas.
+     * La cita de verdad: el wamid del mensaje citado viaja aparte y WhatsApp
+     * dibuja la cita del otro lado, igual que cuando uno responde desde el
+     * celular.
      *
-     * El ERP no tiene forma de responder a un mensaje puntual —no hay endpoint
-     * ni campo para eso—, así que la cita viaja como texto. Es lo mismo que
-     * escribe alguien a mano cuando empieza con "sobre lo del contrato:", y del
-     * otro lado, en WhatsApp, se lee igual de bien.
-     *
-     * Se recorta a 120: citar tres párrafos enteros arriba de una respuesta de
-     * dos palabras es ruido.
+     * Si el mensaje no tiene wamid —viejo, o el ERP no lo guardó con id— no hay
+     * a qué apuntar, y ahí sí la cita va como texto adelante de la respuesta,
+     * recortada a 120 porque citar tres párrafos arriba de dos palabras es
+     * ruido. Es lo único que se podía hacer antes, y sigue siendo mejor que
+     * perder la referencia.
      */
-    const cita = s.xCita?.trim();
-    const texto = cita
-      ? `> ${cita.length > 120 ? cita.slice(0, 119) + "\u2026" : cita}\n${escrito}`
-      : escrito;
+    const resumenCita = s.xCita?.trim();
+    const cita =
+      resumenCita && s.xCitaId
+        ? { wamid: s.xCitaId, texto: resumenCita, mio: s.xCitaMio }
+        : undefined;
+    const texto =
+      resumenCita && !cita
+        ? `> ${resumenCita.length > 120 ? resumenCita.slice(0, 119) + "\u2026" : resumenCita}\n${escrito}`
+        : escrito;
 
     // Se muestra enseguida y se manda en paralelo: en la calle la señal va y
     // viene, y esperar la respuesta del servidor para ver lo que uno escribió
     // hace sentir que la app se colgó.
     const hora = new Date().toTimeString().slice(0, 5);
-    pushMsg(det.id, { de: "yo", texto, hora, tick: conErp ? "…" : "✓" });
-    set({ xCita: null });
+    pushMsg(det.id, {
+      de: "yo",
+      texto,
+      hora,
+      tick: conErp ? "…" : "✓",
+      ...(cita ? { cita: { texto: cita.texto, mio: cita.mio } } : {}),
+    });
+    set({ xCita: null, xCitaId: null, xCitaMio: false });
     if (!conErp) return;
 
     repo.chats
-      .enviar(det.id, { de: "yo", texto })
+      .enviar(det.id, { de: "yo", texto }, cita)
       .then(() => set({ xEnvioError: "" }))
       .catch((e: unknown) => {
         // Si no salió hay que decirlo: un mensaje que se ve en la pantalla y
@@ -818,18 +829,6 @@ export function ConversacionesScreen() {
   const topBg = s.xSub === "lista" ? t.card : VIOLETA;
 
   /** One message bubble. Handles text, order cards, stickers, voice notes and files. */
-  /** Una línea que describe el mensaje citado, sea texto o adjunto. */
-  const resumen = (m: ChatMsg): string => {
-    if (m.texto?.trim()) return m.texto.trim();
-    if (m.epigrafe?.trim()) return m.epigrafe.trim();
-    if (m.imagen) return "\u{1F4F7} Foto";
-    if (m.video) return "\u{1F3AC} Video";
-    if (m.audioUrl || m.audio !== undefined) return "\u{1F3A4} Nota de voz";
-    if (m.archivo) return `\u{1F4CE} ${m.archivo.nombre}`;
-    if (m.sticker) return "Sticker";
-    return "Mensaje";
-  };
-
   const burbuja = (m: ChatMsg, i: number) => {
     const mio = m.de === "yo";
     const esSticker = !!m.sticker;
@@ -935,7 +934,9 @@ export function ConversacionesScreen() {
             caja.style.transform = "translateX(0)";
             setTimeout(() => (caja.style.transition = ""), 200);
           }
-          if (Math.abs(dx) >= 44) set({ xCita: resumen(m) });
+          if (Math.abs(dx) >= 44) {
+            set({ xCita: resumenDeMensaje(m), xCitaId: m.wamid ?? null, xCitaMio: m.de === "yo" });
+          }
         }}
       >
         <div
@@ -953,6 +954,53 @@ export function ConversacionesScreen() {
             gap: 6,
           }}
         >
+          {m.cita && (
+            // La cita del mensaje al que este responde. Arriba del contenido,
+            // con la barrita al costado: es como se lee en WhatsApp, y la idea
+            // es que no haya que aprender nada nuevo.
+            <div
+              style={{
+                display: "flex",
+                gap: 7,
+                borderRadius: 7,
+                padding: "6px 8px",
+                background: mio ? "rgba(0,0,0,.06)" : t.bg,
+                maxWidth: "100%",
+              }}
+            >
+              <span
+                style={{
+                  width: 3,
+                  alignSelf: "stretch",
+                  borderRadius: 2,
+                  flex: "0 0 auto",
+                  background: MARCA.acento,
+                }}
+              />
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span
+                  style={{
+                    font: "600 11px/1.1 var(--font-barlow),Barlow,sans-serif",
+                    color: MARCA.acento,
+                  }}
+                >
+                  {m.cita.mio ? "Vos" : det?.nombre || "Cliente"}
+                </span>
+                <span
+                  style={{
+                    font: "400 12.5px/1.3 var(--font-barlow),Barlow,sans-serif",
+                    color: mio ? ch.tintaMia : t.ink2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {m.cita.texto}
+                </span>
+              </span>
+            </div>
+          )}
+
           {m.reenviado && (
             // Dice de dónde viene el mensaje. En oscuro con `t.ink3`, que sale
             // del tema: un gris fijo acá era de los que casi no se leían.
@@ -1926,7 +1974,7 @@ export function ConversacionesScreen() {
                 </span>
               </span>
               <button
-                onClick={() => set({ xCita: null })}
+                onClick={() => set({ xCita: null, xCitaId: null, xCitaMio: false })}
                 aria-label="No responder a ese mensaje"
                 style={{
                   width: 28,

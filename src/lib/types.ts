@@ -239,6 +239,15 @@ export interface ChatMsg {
    * propia igual, así que se marca para dibujarla suelta y no como globo. Antes
    * se veía un globo que decía "[reaction]", que no le dice nada a nadie.
    */
+  /**
+   * A qué mensaje responde este, para dibujar la cita arriba del globo.
+   *
+   * `texto` es el resumen de lo citado y `mio` de qué lado estaba, que es lo
+   * que decide el color de la barrita. Sale de `reply_context` cuando la
+   * respuesta la mandamos nosotros, y del nodo `context` de WhatsApp —resuelto
+   * contra el hilo— cuando responde el cliente.
+   */
+  cita?: { texto: string; mio: boolean };
   reaccion?: string;
   /**
    * De qué lado se dibuja la reacción: la del mensaje al que reacciona, no la

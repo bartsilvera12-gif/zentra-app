@@ -529,8 +529,13 @@ export const mockRepo: Repo = {
       const completo: Chat = { ...c, msgs: msgsDe(c, extra.mensajes) };
       return demora(completo);
     },
-    async enviar(chatId, msg) {
-      const completo: ChatMsg = { ...msg, hora: "11:42", tick: "✓" };
+    async enviar(chatId, msg, cita) {
+      const completo: ChatMsg = {
+        ...msg,
+        hora: "11:42",
+        tick: "✓",
+        ...(cita ? { cita: { texto: cita.texto, mio: cita.mio } } : {}),
+      };
       extra.mensajes[chatId] = (extra.mensajes[chatId] || []).concat([completo]);
       return demora(completo);
     },

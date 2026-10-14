@@ -248,7 +248,15 @@ export interface ChatsRepo {
     incluirCerradas?: boolean;
   }): Promise<Chat[]>;
   get(id: string): Promise<Chat | null>;
-  enviar(chatId: string, msg: Omit<ChatMsg, "hora" | "tick">): Promise<ChatMsg>;
+  /**
+   * `cita` responde a un mensaje puntual, como el "Responder" de WhatsApp. Sin
+   * ella el mensaje sale suelto.
+   */
+  enviar(
+    chatId: string,
+    msg: Omit<ChatMsg, "hora" | "tick">,
+    cita?: { wamid: string; texto: string; mio: boolean },
+  ): Promise<ChatMsg>;
   /**
    * Manda una foto, un audio o un documento. `pie` es el texto que lo acompaña.
    *

@@ -7,7 +7,7 @@
  * todo, y otra cuando el refresco automático empezó a tirar la vista al final
  * mientras alguien leía historial.
  */
-import { alFinal, debeBajarAlAbrir, vaSinGlobo } from "../src/lib/hilo.ts";
+import { alFinal, citaDe, debeBajarAlAbrir, resolverCitas, resumenDeMensaje, vaSinGlobo } from "../src/lib/hilo.ts";
 
 const casos = [];
 const t = (n, f) => casos.push([n, f]);
@@ -91,6 +91,50 @@ t("un sticker va sin globo", () => {
 
 t("un mensaje de texto va con globo", () => {
   if (vaSinGlobo({ de: "ellos", hora: "10:00", texto: "hola" })) throw new Error("el texto lleva globo");
+});
+
+t("una foto citando otro mensaje lleva globo", () => {
+  if (vaSinGlobo({ de: "yo", hora: "10:00", imagen: "https://x/f.jpg", cita: { texto: "hola", mio: false } })) {
+    throw new Error("la cita se dibuja arriba del contenido y necesita el globo");
+  }
+});
+
+t("la cita con resumen del ERP no necesita buscar nada", () => {
+  const c = citaDe({ reply_context: { wa_message_id: "wamid.AAA", from_me: true, preview: "el precio" } });
+  if (c?.texto !== "el precio" || c.mio !== true) throw new Error("no leyó reply_context");
+});
+
+t("la cita de WhatsApp llega sólo con el wamid", () => {
+  const c = citaDe({ context: { id: "wamid.BBB" } });
+  if (c?.wamid !== "wamid.BBB" || c.texto) throw new Error("no leyó el nodo context");
+});
+
+t("un id que no es wamid no arma cita", () => {
+  // Un id de la base no sirve para encontrar el mensaje: dibujaría una cita
+  // vacía, que confunde más que no mostrar ninguna.
+  if (citaDe({ context: { id: "42" } })) throw new Error("aceptó un id que no es de WhatsApp");
+});
+
+t("una foto citada se resume como Foto", () => {
+  if (resumenDeMensaje({ de: "ellos", hora: "10:00", imagen: "https://x/f.jpg" }) !== "\u{1F4F7} Foto") {
+    throw new Error("una foto citada no puede quedar en blanco");
+  }
+});
+
+t("la segunda pasada completa la cita con el mensaje del hilo", () => {
+  const hilo = resolverCitas([
+    { de: "ellos", hora: "10:00", texto: "cuánto sale", wamid: "wamid.CCC" },
+    { de: "yo", hora: "10:01", texto: "120.000", citaPendiente: "wamid.CCC" },
+  ]);
+  if (hilo[1].cita?.texto !== "cuánto sale" || hilo[1].cita.mio !== false) {
+    throw new Error("no encontró el mensaje citado");
+  }
+  if ("citaPendiente" in hilo[1]) throw new Error("quedó el pendiente adentro del mensaje");
+});
+
+t("una cita a un mensaje que no está en el tramo se descarta", () => {
+  const hilo = resolverCitas([{ de: "yo", hora: "10:01", texto: "ok", citaPendiente: "wamid.ZZZ" }]);
+  if (hilo[0].cita) throw new Error("una cita vacía confunde más que ninguna");
 });
 
 let malas = 0;

@@ -215,12 +215,16 @@ export interface AppState {
   /**
    * El mensaje que se está citando para responder, resumido en una línea.
    *
-   * Es sólo lo que se muestra arriba del campo de escritura: el ERP no tiene
-   * endpoint para responder a un mensaje puntual, así que la cita viaja como
-   * texto adelante de la respuesta. Es lo mismo que hace alguien a mano cuando
-   * escribe "sobre lo del contrato:".
+   * Es lo que se muestra arriba del campo de escritura. `xCitaId` es el wamid
+   * del mensaje citado, que es lo que hace la cita de verdad: va al proveedor
+   * y del otro lado, en WhatsApp, se ve el mensaje citado arriba de la
+   * respuesta. Sin wamid —un mensaje viejo que el ERP no guardó con id— queda
+   * sólo el resumen y la cita viaja como texto, que es lo que había antes.
    */
   xCita: string | null;
+  xCitaId: string | null;
+  /** De qué lado estaba el mensaje citado, para dibujar la cita igual que el ERP. */
+  xCitaMio: boolean;
   xGrab: boolean;
   xSeg: number;
   xSub: "lista" | "chat" | "nuevo";
@@ -473,6 +477,8 @@ export const initialState: AppState = {
   xPanel: "none",
   xPanelTab: "Emojis",
   xCita: null,
+  xCitaId: null,
+  xCitaMio: false,
   xGrab: false,
   xSeg: 0,
   xSub: "lista",
