@@ -758,6 +758,12 @@ const SELECT_COMPRA =
   "id, numero, proveedor_id, fecha, condicion, plazo_dias, cuotas, estado, factura, timbrado, compra_lineas(producto_id, nombre, unidad, cantidad, costo, iva)";
 
 export const comprasRepo: ComprasRepo = {
+  // Zentra no lleva contabilidad por partida doble: la compra no se asienta en
+  // ningún libro, así que no hay plan de cuentas que ofrecer. La pantalla ve la
+  // lista vacía y no pide la cuenta.
+  async cuentas() {
+    return [];
+  },
   async list(params) {
     let q = sb().from("compras").select(SELECT_COMPRA).order("fecha", { ascending: false });
     if (params?.estado) q = q.eq("estado", params.estado);

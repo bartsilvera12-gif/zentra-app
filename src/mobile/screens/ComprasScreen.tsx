@@ -2,13 +2,13 @@
 
 import { MARCA } from "@/lib/theme";
 import { IVA_RATE, PASOS_COMPRA } from "@/lib/data";
-import { repo } from "@/lib/repo";
+import { repo, usaApiDelErp } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { lineasDeCompra, stockDe, totalCompra } from "@/lib/calc";
 import { gs, norm } from "@/lib/format";
-import type { Compra, CompraLinea, Iva } from "@/lib/types";
+import type { Compra, CompraLinea, CuentaContable, Iva, ThemeTokens } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { motivoBloqueo } from "@/lib/planes";
 import { nombreValido, nuevoProveedor } from "@/lib/proveedor";
@@ -40,7 +40,19 @@ export function ComprasScreen() {
 
   // Las tres listas salen del ERP. Las compras son lo que se muestra; los
   // proveedores y el catálogo hacen falta para cargar una nueva.
+  const conErp = usaApiDelErp();
   const { datos: comprasErp, cargando, error, recargar } = useRemoto(() => repo.compras.list(), []);
+  /**
+   * El plan de cuentas. Sólo con ERP: es el ERP el que lleva los libros, y sin
+   * cuenta contable no acepta la compra.
+   *
+   * Si falla, la lista queda vacía y el aviso del paso de condiciones lo dice.
+   * No se bloquea la pantalla de compras por esto.
+   */
+  const { datos: cuentas } = useRemoto(
+    () => (conErp ? repo.compras.cuentas().catch(() => []) : Promise.resolve([])),
+    [conErp],
+  );
   const { datos: provsErp } = useRemoto(() => repo.proveedores.list(), []);
   const { datos: prodsErp } = useRemoto(() => repo.inventario.list(), []);
   const provs = s.vwExtra.concat(provsErp);
@@ -80,13 +92,33 @@ export function ComprasScreen() {
   const unidades = s.kLineas.reduce((a, l) => a + l.cantidad, 0);
   const cuotasNum = Number(s.kCuotas) || 0;
 
+  /**
+   * Lo que el ERP exige para asentar la compra.
+   *
+   * El timbrado es obligatorio en el ERP (lo valida y rechaza sin él), la
+   * cuenta contable también, y la cuenta de pago sólo al contado — a crédito el
+   * ERP usa su cuenta de proveedores. Sin ERP no aplica nada de esto: no hay
+   * libros que cuadrar.
+   */
+  const faltaParaElErp = !conErp
+    ? ""
+    : !s.kTimbrado.trim()
+      ? "Falta el timbrado de la factura: tu ERP no acepta la compra sin él."
+      : cuentas.length === 0
+        ? "No se pudieron cargar las cuentas contables de tu ERP. Probá volver a entrar."
+        : !s.kCuenta
+          ? "Elegí en qué cuenta contable se asienta la compra."
+          : s.kPago === "Contado" && !s.kCuentaPago
+            ? "Elegí de qué cuenta sale el pago."
+            : "";
+
   const puede =
     s.kPaso === "proveedor"
       ? !!s.kProv
       : s.kPaso === "producto"
         ? s.kLineas.length > 0
         : s.kPaso === "condiciones"
-          ? s.kPago === "Contado" || (Number(s.kPlazo) > 0 && cuotasNum > 0)
+          ? (s.kPago === "Contado" || (Number(s.kPlazo) > 0 && cuotasNum > 0)) && !faltaParaElErp
           : true;
 
   const chips = ["Todas", "Pendientes", "Pagadas"].map((k) => {
@@ -118,6 +150,10 @@ export function ComprasScreen() {
       kPlazo: "30",
       kCuotas: "1",
       kNroFac: "",
+      kCuenta: "",
+      kCuentaPago: "",
+      kErrorAlta: "",
+      kGuardando: false,
       kTimbrado: "",
       kAdjunto: false,
       kMargen: 30,
@@ -199,9 +235,52 @@ export function ComprasScreen() {
     set({ kPaso: PASOS_COMPRA[Math.max(0, kIdx - 1)]!.id as typeof s.kPaso });
   };
 
+  /**
+   * Registra la compra.
+   *
+   * Con ERP conectado va al ERP, que en el mismo movimiento aumenta el stock,
+   * arma el asiento contable y la hace aparecer en el libro de compras. Antes
+   * la compra se guardaba sólo en la memoria del teléfono: el stock nunca subía
+   * y la compra no existía para nadie más.
+   *
+   * Si el ERP la rechaza —falta configurar la cuenta de IVA crédito, el
+   * proveedor no existe— el mensaje viene escrito para una persona y se muestra
+   * tal cual, con el paso de condiciones intacto para corregir y reintentar.
+   * Reintentar es seguro: el repo manda clave de intento y el ERP devuelve la
+   * misma compra en vez de duplicar el stock.
+   */
+  const registrar = async () => {
+    if (s.kGuardando) return;
+    set({ kGuardando: true, kErrorAlta: "" });
+    try {
+      const compra = await repo.compras.create({
+        provId: s.kProv!,
+        lineas: s.kLineas,
+        pago:
+          s.kPago === "Crédito"
+            ? { tipo: "credito", plazoDias: Number(s.kPlazo) || 0, cuotas: cuotasNum || 1 }
+            : { tipo: "contado" },
+        comprobante: { numero: s.kNroFac.trim(), timbrado: s.kTimbrado.trim() },
+        moneda: s.kMoneda,
+        tipoCambio: s.kMoneda === "USD" ? Number(s.kCambio) || 1 : undefined,
+        cuentaContableId: s.kCuenta,
+        cuentaPagoId: s.kPago === "Contado" ? s.kCuentaPago : s.kCuentaPago || null,
+      });
+      set({ kPaso: "listo", kUltimo: compra.numero, kGuardando: false });
+      recargar();
+    } catch (e) {
+      set({
+        kGuardando: false,
+        kErrorAlta: e instanceof Error ? e.message : "No se pudo registrar la compra.",
+      });
+    }
+  };
+
   const next = () => {
     if (!puede) return;
     if (s.kPaso === "condiciones") {
+      if (conErp) return void registrar();
+
       const seq = 148 + s.kExtra.length;
       const numero = "COMP-000" + seq;
       const nuevaCompra: Compra = {
@@ -216,7 +295,7 @@ export function ComprasScreen() {
         pago: s.kPago,
         plazo: Number(s.kPlazo) || 0,
         cuotas: cuotasNum || 1,
-        // Cash purchases settle immediately; credit ones stay open.
+        // Al contado se cierra en el acto; a crédito queda abierta.
         estado: s.kPago === "Crédito" ? "Pendiente" : "Pagada",
         fecha: "30 sep 2026",
         factura: s.kNroFac || "—",
@@ -1037,6 +1116,40 @@ export function ComprasScreen() {
                   </button>
                 </Card>
 
+                {/* Las cuentas contables, sólo con ERP conectado.
+                    No es un trámite que agregamos nosotros: el ERP arma el
+                    asiento en el mismo movimiento que registra la compra, y sin
+                    saber en qué cuenta va el gasto y de dónde sale la plata no
+                    puede. Elegirlas por nuestra cuenta sería escribir en los
+                    libros de otro. Es lo mismo que pide el ERP en la web. */}
+                {conErp && (
+                  <Card gap={12}>
+                    <SectionLabel>Contabilidad</SectionLabel>
+                    <SelectorCuenta
+                      t={t}
+                      etiqueta="Cuenta contable de la compra"
+                      cuentas={cuentas}
+                      valor={s.kCuenta}
+                      onPick={(v) => set({ kCuenta: v })}
+                    />
+                    <SelectorCuenta
+                      t={t}
+                      etiqueta={s.kPago === "Contado" ? "Cuenta de pago" : "Cuenta a pagar (opcional)"}
+                      cuentas={cuentas}
+                      valor={s.kCuentaPago}
+                      onPick={(v) => set({ kCuentaPago: v })}
+                      vacio={
+                        s.kPago === "Contado" ? "Elegí una cuenta…" : "La que tenga configurada el ERP"
+                      }
+                    />
+                    <span style={{ font: "400 11px/1.35 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                      {s.kPago === "Contado"
+                        ? "De dónde sale la plata: caja, banco."
+                        : "Si la dejás vacía, el ERP usa su cuenta de proveedores."}
+                    </span>
+                  </Card>
+                )}
+
                 <Card gap={12}>
                   <SectionLabel>Precio de venta sugerido</SectionLabel>
                   <div style={{ display: "flex", gap: 7 }}>
@@ -1207,22 +1320,46 @@ export function ComprasScreen() {
                 >
                   {s.kPaso === "producto"
                     ? "Agregá al menos un producto a la compra."
-                    : "Para crédito hace falta el plazo y al menos una cuota."}
+                    : faltaParaElErp ||
+                      "Para crédito hace falta el plazo y al menos una cuota."}
+                </div>
+              )}
+              {/* El motivo del ERP, tal cual: "Configurá la cuenta de IVA
+                  Crédito 10%", "Proveedor o producto inválido". Está escrito
+                  para una persona y dice qué hacer. */}
+              {s.kErrorAlta && (
+                <div
+                  style={{
+                    borderRadius: 10,
+                    background: "#FBE9E7",
+                    border: "1px solid #E8B4AE",
+                    padding: "9px 11px",
+                    font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif",
+                    color: "#8C2F2B",
+                  }}
+                >
+                  {s.kErrorAlta}
                 </div>
               )}
               <button
                 onClick={next}
+                disabled={s.kGuardando}
                 style={{
                   height: 50,
                   border: 0,
                   borderRadius: 13,
                   color: "#fff",
                   font: "600 15px/1 var(--font-barlow),Barlow,sans-serif",
-                  cursor: "pointer",
+                  cursor: s.kGuardando ? "default" : "pointer",
+                  opacity: s.kGuardando ? 0.6 : 1,
                   background: puede ? ORO : "#8A7A52",
                 }}
               >
-                {s.kPaso === "condiciones" ? "Registrar compra" : "Continuar"}
+                {s.kGuardando
+                  ? "Registrando…"
+                  : s.kPaso === "condiciones"
+                    ? "Registrar compra"
+                    : "Continuar"}
               </button>
             </div>
           )}
@@ -1231,5 +1368,59 @@ export function ComprasScreen() {
 
       {s.kSub === "lista" && <BottomNav />}
     </div>
+  );
+}
+
+/**
+ * Un selector de cuenta contable.
+ *
+ * Nativo a propósito: en un teléfono el `select` del sistema abre una rueda que
+ * se maneja con el pulgar, y un plan de cuentas tiene cientos de filas. Una
+ * lista propia obligaría a desplazarse con el dedo por todas.
+ *
+ * Se muestra el número y la denominación juntos, que es como contabilidad
+ * nombra una cuenta: "5.1.01.001 · Mercaderías".
+ */
+function SelectorCuenta({
+  t,
+  etiqueta,
+  cuentas,
+  valor,
+  onPick,
+  vacio = "Elegí una cuenta…",
+}: {
+  t: ThemeTokens;
+  etiqueta: string;
+  cuentas: CuentaContable[];
+  valor: string;
+  onPick: (id: string) => void;
+  vacio?: string;
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+        {etiqueta}
+      </span>
+      <select
+        value={valor}
+        onChange={(e) => onPick(e.target.value)}
+        style={{
+          width: "100%",
+          borderRadius: 12,
+          border: `1px solid ${t.border}`,
+          background: t.card,
+          color: valor ? t.ink : t.ink3,
+          padding: "12px 11px",
+          font: "500 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+        }}
+      >
+        <option value="">{vacio}</option>
+        {cuentas.map((c) => (
+          <option key={c.id} value={c.id}>
+            {[c.codigo, c.nombre].filter(Boolean).join(" · ")}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

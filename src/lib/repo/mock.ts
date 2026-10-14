@@ -463,6 +463,15 @@ export const mockRepo: Repo = {
   },
 
   compras: {
+    // Tres cuentas de ejemplo con la forma real del plan de cuentas, para poder
+    // recorrer el alta de compra sin un ERP conectado.
+    async cuentas() {
+      return demora([
+        { id: "pc1", codigo: "1.1.03.001", nombre: "Mercaderías" },
+        { id: "pc2", codigo: "1.1.01.001", nombre: "Caja" },
+        { id: "pc3", codigo: "2.1.01.001", nombre: "Proveedores" },
+      ]);
+    },
     async list(params) {
       const q = norm(params?.q?.trim() ?? "");
       const provs = extra.proveedores.concat(PROVEEDORES);

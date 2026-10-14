@@ -144,6 +144,15 @@ export interface AppState {
   kCuotas: string;
   kNroFac: string;
   kTimbrado: string;
+  /**
+   * Las dos cuentas contables de la compra: dónde se asienta y de dónde sale la
+   * plata. Sólo se piden con ERP conectado, que es el que lleva los libros.
+   */
+  kCuenta: string;
+  kCuentaPago: string;
+  /** La compra se está registrando contra el ERP, y por qué falló si falló. */
+  kGuardando: boolean;
+  kErrorAlta: string;
   kAdjunto: boolean;
   kMargen: number;
   /**
@@ -390,6 +399,10 @@ export const initialState: AppState = {
   kCuotas: "1",
   kNroFac: "",
   kTimbrado: "",
+  kCuenta: "",
+  kCuentaPago: "",
+  kGuardando: false,
+  kErrorAlta: "",
   kAdjunto: false,
   kMargen: 30,
   kProvNuevo: false,

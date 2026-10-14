@@ -18,6 +18,7 @@ import type {
   Cliente,
   Compra,
   CompraLinea,
+  CuentaContable,
   InvProducto,
   Iva,
   MovTipo,
@@ -205,12 +206,27 @@ export interface CompraInput {
   moneda: "PYG" | "USD";
   /** Cotización usada si la moneda es USD. */
   tipoCambio?: number;
+  /**
+   * En qué cuenta contable va la compra, y de dónde sale la plata.
+   *
+   * No son opcionales por gusto: con ERP conectado son obligatorias, porque el
+   * ERP arma el asiento en el mismo movimiento. Sin ERP no aplican —no hay
+   * libros que cuadrar— y por eso el tipo las deja ausentes.
+   *
+   * `cuentaPagoId` es la contrapartida: la cuenta de caja o banco en una compra
+   * al contado. A crédito puede ir vacía y el ERP usa la cuenta de proveedores
+   * que tenga configurada.
+   */
+  cuentaContableId?: string | null;
+  cuentaPagoId?: string | null;
 }
 
 export interface ComprasRepo {
   list(params?: { q?: string; estado?: Compra["estado"] }): Promise<Compra[]>;
   get(id: string): Promise<Compra | null>;
   create(input: CompraInput): Promise<Compra>;
+  /** El plan de cuentas, para que la compra pueda decir dónde se asienta. */
+  cuentas(): Promise<CuentaContable[]>;
 }
 
 /* ---------- conversaciones ---------- */

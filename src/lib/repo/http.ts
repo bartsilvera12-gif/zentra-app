@@ -475,6 +475,19 @@ function aIva(v?: string | null): Iva {
   return "10%";
 }
 
+/**
+ * El IVA de una línea de compra, como lo quiere el ERP: `"exenta" | "5" | "10"`.
+ *
+ * No es el mismo formato que en la venta, que espera `"EXENTA"` en mayúscula.
+ * El ERP rechaza cualquier otra cosa sin coerción, que está bien: una compra
+ * asentada con el IVA equivocado se arrastra a todo el libro.
+ */
+function ivaDeCompra(iva: Iva): "exenta" | "5" | "10" {
+  if (iva === "5%") return "5";
+  if (iva === "Exenta") return "exenta";
+  return "10";
+}
+
 /** Y de vuelta, para mandar una venta: el ERP espera EXENTA en mayúscula. */
 function ivaParaErp(iva: Iva): "10%" | "5%" | "EXENTA" {
   if (iva === "5%") return "5%";
@@ -694,12 +707,17 @@ function aMovimiento(m: MovimientoErp): Movimiento {
  * corrigió, y `origen` dice el resto.
  */
 function aTipoDeMovimiento(t: string | null | undefined, cantidad: number): MovTipo {
-  const v = (t || "").toLowerCase();
+  // "inventario" contiene "venta" —inVENTArio—, así que `inventario_inicial`
+  // se leía como una salida y el stock inicial aparecía en rojo, restando.
+  // La palabra se saca antes de buscar.
+  const v = (t || "").toLowerCase().replace(/inventario/g, "");
   if (v.includes("ajuste")) return "AJUSTE";
-  if (v.includes("salida") || v.includes("venta") || v.includes("egreso")) return "SALIDA";
-  if (v.includes("entrada") || v.includes("compra") || v.includes("inicial") || v.includes("ingreso")) {
+  // Lo que suma primero: así `devolucion` o `compra` no caen en la rama de
+  // abajo por contener otra palabra.
+  if (v.includes("inicial") || v.includes("ingreso") || v.includes("entrada") || v.includes("compra") || v.includes("recepcion")) {
     return "ENTRADA";
   }
+  if (v.includes("salida") || v.includes("venta") || v.includes("egreso")) return "SALIDA";
   // Sin nombre reconocible manda el signo de la cantidad, que es el dato duro.
   return cantidad < 0 ? "SALIDA" : "ENTRADA";
 }
@@ -1942,7 +1960,97 @@ export const httpRepo: Repo = {
       const c = comoLista<CompraErp>(r, "compras", "/compras").find((x) => String(x.id) === id);
       return c ? aCompra(c) : null;
     },
-    create: () => pendiente("compras.create"),
+    async cuentas() {
+      const r = await request<unknown>("/plan-cuentas/opciones");
+      const filas = comoLista<{ id?: unknown; cuenta?: string | null; denominacion?: string | null }>(
+        r,
+        "cuentas",
+        "/plan-cuentas/opciones",
+      );
+      return filas
+        .map((c) => ({
+          id: String(c.id ?? ""),
+          codigo: primero(c.cuenta),
+          nombre: primero(c.denominacion) || "(sin denominación)",
+        }))
+        .filter((c) => c.id);
+    },
+
+    /**
+     * Registra la compra.
+     *
+     * Va por el camino multilínea del ERP (`items`), incluso con una sola
+     * línea. Dos razones: la app permite varias, y el camino de una sola línea
+     * exige `precio_venta` mayor a cero —el nuevo precio de venta del
+     * producto—, que la app no pregunta. Mandar un precio inventado ahí le
+     * cambiaría el precio al producto sin que nadie lo haya decidido.
+     *
+     * La cuenta contable es obligatoria y viaja en cada línea; el ERP toma la
+     * de la primera para la cabecera. La contrapartida es obligatoria al
+     * contado y opcional a crédito, donde el ERP usa su cuenta de proveedores.
+     *
+     * El IVA va CONTENIDO en el costo, igual que en la venta: el ERP recalcula
+     * los montos de su lado y no confía en lo que mande la app. De ₲100.000 al
+     * 10%, el impuesto son ₲9.091.
+     *
+     * Y va con clave de intento: alguien pierde señal después de registrar la
+     * compra, vuelve a tocar el botón, y el ERP devuelve la misma compra en vez
+     * de duplicar el stock y el asiento.
+     */
+    async create(input) {
+      const cuenta = (input.cuentaContableId || "").trim();
+      if (!cuenta) {
+        throw new ApiError(
+          "Elegí la cuenta contable de la compra: tu ERP la necesita para asentarla.",
+          400,
+          "/compras",
+        );
+      }
+      const aCredito = input.pago.tipo === "credito" ? input.pago : null;
+      const pago = (input.cuentaPagoId || "").trim();
+      if (!aCredito && !pago) {
+        throw new ApiError(
+          "Elegí la cuenta de pago: una compra al contado tiene que decir de dónde salió la plata.",
+          400,
+          "/compras",
+        );
+      }
+
+      const prov = await httpRepo.proveedores.get(input.provId);
+
+      const r = await request<{ compra?: CompraErp } | null>("/compras", {
+        method: "POST",
+        body: JSON.stringify({
+          proveedor_id: input.provId,
+          proveedor_nombre: prov?.nombre ?? "",
+          origen_compra: "directa",
+          moneda: input.moneda,
+          tipo_cambio: input.moneda === "USD" ? input.tipoCambio || 1 : 1,
+          tipo_pago: aCredito ? "credito" : "contado",
+          plazo_dias: aCredito ? aCredito.plazoDias : null,
+          cuotas: aCredito ? aCredito.cuotas : null,
+          nro_timbrado: input.comprobante.timbrado,
+          numero_comprobante: input.comprobante.numero || null,
+          tipo_comprobante: "Factura",
+          cuenta_contrapartida_id: pago || null,
+          items: input.lineas.map((l) => ({
+            producto_id: l.prodId,
+            producto_nombre: l.nombre,
+            descripcion: l.nombre,
+            cantidad: l.cantidad,
+            costo_unitario: l.costo,
+            iva_tipo: ivaDeCompra(l.iva),
+            cuenta_contable_id: cuenta,
+          })),
+          idempotency_key: claveDeIntento(),
+        }),
+      });
+      const creada = r?.compra;
+      if (!creada) {
+        throw new ApiError("El ERP no devolvió la compra registrada.", 200, "/compras");
+      }
+      return aCompra(creada);
+    },
   },
 
   chats: {

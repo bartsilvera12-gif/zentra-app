@@ -20,6 +20,10 @@ let fueraDeCola = false;
 /** Lo pone en true la prueba que simula el ERP sin el arreglo de una línea. */
 let inboxCaido = false;
 const ventasPorClave = new Map();
+const comprasPorClave = new Map();
+/** Catálogos del ERP: arrancan con una categoría ya creada, en mayúsculas. */
+const catsProducto = [{ id: "cat1", nombre: "BEBIDAS" }];
+const catsProveedor = [{ id: "pcat1", nombre: "BEBIDAS" }];
 
 const server = createServer((req, res) => {
   let cuerpo = "";
@@ -70,7 +74,7 @@ const server = createServer((req, res) => {
         tipo_cliente: "Mayorista", baja_operativa_at: null, created_at: "2024-03-15T00:00:00Z",
       }]);
     }
-    if (ruta === "/productos") {
+    if (ruta === "/productos" && req.method === "GET") {
       return ok([
         { id: "p1", nombre: "MUSLO PAQUETE CONG. POR KG", sku: "73", precio_venta: 10650.6,
           costo_promedio: 8800.4, stock_actual: 0.5, stock_minimo: 0, tipo_iva: "5%", unidad_medida: "KG" },
@@ -120,7 +124,7 @@ const server = createServer((req, res) => {
       ] });
     }
     // Estos dos sí traducen del lado del ERP, y van en su propio sobre.
-    if (ruta === "/proveedores") {
+    if (ruta === "/proveedores" && req.method === "GET") {
       return ok({ proveedores: [{
         id: "pr1", nombre: "Distribuidora del Este", ruc: "80011222-3",
         telefono: "0981 111 222", email: null, direccion: "Ciudad del Este",
@@ -129,7 +133,7 @@ const server = createServer((req, res) => {
         categorias: [{ nombre: "Bebidas" }],
       }] });
     }
-    if (ruta === "/compras") {
+    if (ruta === "/compras" && req.method === "GET") {
       return ok({ compras: [{
         id: "k1", numero_control: "CMP-000045", proveedor_id: "pr1",
         producto_nombre: "GASEOSA 2L", cantidad: 24, costo_unitario: 48000.4,
@@ -217,6 +221,107 @@ const server = createServer((req, res) => {
       const o = JSON.parse(cuerpo || "{}");
       if (!o.sticker_url) return json(400, { ok: false, error: "Se requiere sticker_url" });
       return json(200, { ok: true });
+    }
+    // ── Catálogos de inventario: el ERP los guarda por id, no por nombre ──
+    if (ruta === "/inventario/categorias" && req.method === "GET") {
+      return ok({ categorias: catsProducto });
+    }
+    if (ruta === "/inventario/categorias" && req.method === "POST") {
+      const o = JSON.parse(cuerpo || "{}");
+      if (!o.nombre) return json(400, { success: false, error: "El nombre es obligatorio." });
+      // El ERP normaliza a mayúsculas, como hace de verdad.
+      const row = { id: "cat" + (catsProducto.length + 1), nombre: String(o.nombre).toUpperCase() };
+      catsProducto.push(row);
+      return ok({ categoria: row });
+    }
+    if (ruta === "/inventario/ubicaciones" && req.method === "GET") {
+      return ok({ ubicaciones: [{ id: "ubi1", nombre: "DEPOSITO CENTRAL" }] });
+    }
+    if (ruta === "/proveedores/categorias" && req.method === "GET") {
+      return ok({ categorias: catsProveedor });
+    }
+    if (ruta === "/proveedores/categorias" && req.method === "POST") {
+      const o = JSON.parse(cuerpo || "{}");
+      const row = { id: "pcat" + (catsProveedor.length + 1), nombre: String(o.nombre).toUpperCase() };
+      catsProveedor.push(row);
+      return ok({ categoria: row });
+    }
+    // ── Alta y corrección de producto ──
+    if (ruta === "/productos" && req.method === "POST") {
+      const o = JSON.parse(cuerpo || "{}");
+      if (!o.nombre) return json(400, { success: false, error: "El nombre es obligatorio." });
+      if (!o.sku) return json(400, { success: false, error: "El SKU es obligatorio." });
+      return ok({ producto: { ...o, id: "pnuevo" }, warning: null });
+    }
+    if (ruta === "/productos/p1" && req.method === "PATCH") {
+      const o = JSON.parse(cuerpo || "{}");
+      return ok({ producto: { id: "p1", nombre: "MUSLO", sku: "73", ...o } });
+    }
+    // ── Alta y corrección de proveedor ──
+    if (ruta === "/proveedores" && req.method === "POST") {
+      const o = JSON.parse(cuerpo || "{}");
+      if (!o.nombre) return json(400, { success: false, error: "La razón social es obligatoria." });
+      if (o.ruc === "80011222-3") {
+        return json(409, { success: false, error: 'Ya existe un proveedor con el mismo RUC ("Distribuidora del Este").' });
+      }
+      return ok({ proveedor: { ...o, id: "prnuevo", estado: "activo", categorias: catsProveedor.filter((c) => (o.categoria_ids || []).includes(c.id)) } });
+    }
+    if (ruta === "/proveedores/pr1" && req.method === "PATCH") {
+      const o = JSON.parse(cuerpo || "{}");
+      return ok({ proveedor: { id: "pr1", nombre: "Distribuidora del Este", ...o } });
+    }
+    // ── Movimientos de inventario ──
+    if (ruta === "/inventario/movimientos") {
+      return ok({ movimientos: [
+        { id: "mv1", producto_id: "p1", tipo: "inventario_inicial", cantidad: 10,
+          origen: "Alta de producto", referencia: "INI-1", fecha: "2026-10-01T08:00:00Z", usuario_nombre: "Karen" },
+        // El ERP guarda las salidas en negativo; la app muestra el signo por el tipo.
+        { id: "mv2", producto_id: "p1", tipo: "venta", cantidad: -3,
+          origen: "Venta VTA-000100", referencia: "VTA-000100", fecha: "2026-10-02T08:00:00Z" },
+        { id: "mv3", producto_id: "p2", tipo: "ajuste_negativo", cantidad: -1,
+          origen: "Ajuste", referencia: "AJ-1", fecha: "2026-10-03T08:00:00Z" },
+        // Un tipo que la app no conoce: manda el signo de la cantidad.
+        { id: "mv4", producto_id: "p2", tipo: "transferencia_entre_depositos", cantidad: 5,
+          origen: "Traslado", referencia: "TR-1", fecha: "2026-10-04T08:00:00Z" },
+      ] });
+    }
+    // ── Plan de cuentas y alta de compra ──
+    if (ruta === "/plan-cuentas/opciones") {
+      return ok({ cuentas: [
+        { id: "pc1", cuenta: "1.1.03.001", denominacion: "Mercaderías" },
+        { id: "pc2", cuenta: "1.1.01.001", denominacion: "Caja" },
+      ] });
+    }
+    if (ruta === "/compras" && req.method === "POST") {
+      const o = JSON.parse(cuerpo || "{}");
+      if (!o.nro_timbrado) return json(400, { success: false, error: "Falta el N° de timbrado." });
+      if (!Array.isArray(o.items) || o.items.length === 0) {
+        return json(400, { success: false, error: "Falta el producto." });
+      }
+      for (const [i, it] of o.items.entries()) {
+        if (!it.cuenta_contable_id) {
+          return json(400, { success: false, error: `Línea ${i + 1}: seleccioná la cuenta contable.` });
+        }
+        if (!["exenta", "5", "10"].includes(it.iva_tipo)) {
+          return json(400, { success: false, error: `Línea ${i + 1}: tipo de IVA inválido.` });
+        }
+      }
+      // Misma clave, misma compra: el reintento no duplica el stock.
+      if (o.idempotency_key && comprasPorClave.has(o.idempotency_key)) {
+        return ok({ compra: comprasPorClave.get(o.idempotency_key) });
+      }
+      const total = o.items.reduce((a, it) => a + it.cantidad * it.costo_unitario, 0);
+      const compra = {
+        id: "knuevo", numero_control: "CMP-000046", proveedor_id: o.proveedor_id,
+        producto_nombre: o.items[0].producto_nombre, cantidad: o.items.reduce((a, it) => a + it.cantidad, 0),
+        costo_unitario: o.items[0].costo_unitario, iva_tipo: o.items[0].iva_tipo === "exenta" ? "EXENTA" : o.items[0].iva_tipo + "%",
+        tipo_pago: o.tipo_pago, plazo_dias: o.plazo_dias, cuotas: o.cuotas,
+        estado: o.tipo_pago === "credito" ? "pendiente" : "pagada",
+        fecha: "2026-10-14T00:00:00Z", total,
+        numero_comprobante: o.numero_comprobante, nro_timbrado: o.nro_timbrado,
+      };
+      if (o.idempotency_key) comprasPorClave.set(o.idempotency_key, compra);
+      return ok({ compra });
     }
     if (ruta === "/falla") return json(500, { success: false, error: "La caja no esta abierta." });
     return json(404, { success: false, error: "no existe" });
@@ -608,9 +713,163 @@ t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
 
 t("lo que no está implementado lo dice, no inventa datos", async () => {
   let msg = "";
-  // Los chats ya existen; compras.create sigue sin implementar.
-  try { await httpRepo.compras.create(); } catch (e) { msg = e.message; }
+  // Queda el ajuste de stock: el ERP no tiene POST de movimientos.
+  try { await httpRepo.inventario.ajustar({ prodId: "p1", tipo: "AJUSTE", cantidad: 1, motivo: "x" }); }
+  catch (e) { msg = e.message; }
   if (!/no está implementado/.test(msg)) throw new Error("mensaje poco claro: " + msg);
+});
+
+/* ─────────────── escrituras al ERP ─────────────── */
+
+t("el alta de producto manda lo que el ERP pide y resuelve la categoría por nombre", async () => {
+  const p = await httpRepo.inventario.create({
+    nombre: "Gaseosa 2L", sku: "G2L", barras: "7790001", unidad: "UNIDAD",
+    // Escrita en minúsculas y con otro acento: tiene que encontrar la que ya existe.
+    categoria: "bebidas", deposito: "",
+    costo: 10000, precio: 15000, iva: "10%", stockInicial: 12, minimo: 2, metodo: "CPP",
+  });
+  const env = recibido.filter((r) => r.ruta === "/productos" && r.metodo === "POST").at(-1);
+  if (!env) throw new Error("no se mandó el alta");
+  if (env.cuerpo.categoria_principal_id !== "cat1") {
+    throw new Error("no reusó la categoría existente: " + env.cuerpo.categoria_principal_id);
+  }
+  if (env.cuerpo.stock_actual !== 12) throw new Error("no mandó el stock inicial");
+  if (env.cuerpo.ubicacion_principal_id !== null) throw new Error("inventó un depósito");
+  if (p.id !== "pnuevo") throw new Error("no devolvió el producto del ERP");
+  // La categoría vuelve por nombre, no por id: es lo que se muestra en pantalla.
+  if (p.categoria !== "BEBIDAS") throw new Error("categoría sin resolver: " + p.categoria);
+});
+
+t("una categoría que no existe se da de alta", async () => {
+  await httpRepo.inventario.create({
+    nombre: "Pan", sku: "PAN", barras: "", unidad: "UNIDAD",
+    categoria: "Panificados", deposito: "",
+    costo: 1000, precio: 2000, iva: "10%", stockInicial: 0, minimo: 0, metodo: "CPP",
+  });
+  const alta = recibido.find((r) => r.ruta === "/inventario/categorias" && r.metodo === "POST");
+  if (!alta) throw new Error("no creó la categoría nueva");
+  const env = recibido.filter((r) => r.ruta === "/productos" && r.metodo === "POST").at(-1);
+  if (!env.cuerpo.categoria_principal_id) throw new Error("mandó el producto sin la categoría nueva");
+});
+
+t("la corrección manda sólo lo que cambió, y nunca el stock", async () => {
+  await httpRepo.inventario.update("p1", { precio: 11000, minimo: 3 });
+  const env = recibido.filter((r) => r.ruta === "/productos/p1" && r.metodo === "PATCH").at(-1);
+  const claves = Object.keys(env.cuerpo).sort().join(",");
+  if (claves !== "precio_venta,stock_minimo") throw new Error("mandó de más: " + claves);
+  // El stock se mueve con un ajuste, que deja rastro. Pisarlo acá lo borraría.
+  if ("stock_actual" in env.cuerpo) throw new Error("pisó el stock");
+});
+
+t("los movimientos vienen del ERP, en positivo y con el tipo traducido", async () => {
+  const todos = await httpRepo.inventario.movimientos();
+  if (todos.length !== 4) throw new Error("se perdieron movimientos: " + todos.length);
+  const venta = todos.find((m) => m.id === "mv2");
+  if (venta.tipo !== "SALIDA") throw new Error("una venta es una salida");
+  if (venta.cant !== 3) throw new Error("la cantidad va en positivo: " + venta.cant);
+  if (todos.find((m) => m.id === "mv1").tipo !== "ENTRADA") throw new Error("el inicial es entrada");
+  if (todos.find((m) => m.id === "mv3").tipo !== "AJUSTE") throw new Error("el ajuste es ajuste");
+  // Tipo desconocido: manda el signo, que es el dato duro.
+  if (todos.find((m) => m.id === "mv4").tipo !== "ENTRADA") throw new Error("sin tipo, decide el signo");
+  const deP1 = await httpRepo.inventario.movimientos({ prodId: "p1" });
+  if (deP1.length !== 2) throw new Error("no filtró por producto");
+  const salidas = await httpRepo.inventario.movimientos({ tipo: "SALIDA" });
+  if (salidas.length !== 1) throw new Error("no filtró por tipo");
+});
+
+t("el alta de proveedor traduce ciudad, crédito y rubro", async () => {
+  const pr = await httpRepo.proveedores.create({
+    nombre: "Lacteos del Sur", doc: "80099888-1", rubro: "Bebidas, Lácteos",
+    ciudad: "Encarnación", contacto: "Ana", tel: "0981 777 888", email: "ana@sur.com.py",
+    credito: { plazoDias: 45 }, entregaDias: 3,
+  });
+  const env = recibido.filter((r) => r.ruta === "/proveedores" && r.metodo === "POST").at(-1);
+  // El ERP no tiene columna de ciudad: es `direccion`, y es de donde la lee la app.
+  if (env.cuerpo.direccion !== "Encarnación") throw new Error("perdió la ciudad");
+  if (env.cuerpo.condicion_pago !== "credito" || env.cuerpo.plazo_pago_dias !== 45) {
+    throw new Error("perdió el crédito");
+  }
+  // Dos rubros: uno ya existía, el otro se creó.
+  if (env.cuerpo.categoria_ids.length !== 2) {
+    throw new Error("rubros: " + JSON.stringify(env.cuerpo.categoria_ids));
+  }
+  if (pr.id !== "prnuevo") throw new Error("no devolvió el proveedor del ERP");
+});
+
+t("un RUC repetido se cuenta con las palabras del ERP", async () => {
+  let msg = "";
+  try {
+    await httpRepo.proveedores.create({
+      nombre: "Otro", doc: "80011222-3", rubro: "", ciudad: "", contacto: "", tel: "", email: "",
+      credito: null, entregaDias: 1,
+    });
+  } catch (e) { msg = e.message; }
+  if (!/mismo RUC/.test(msg)) throw new Error("mensaje perdido: " + msg);
+});
+
+t("la compra sin cuenta contable se frena antes de llegar al ERP", async () => {
+  const antes = recibido.filter((r) => r.ruta === "/compras" && r.metodo === "POST").length;
+  let msg = "";
+  try {
+    await httpRepo.compras.create({
+      provId: "pr1", lineas: [{ prodId: "p1", nombre: "X", unidad: "UN", cantidad: 1, costo: 1000, iva: "10%" }],
+      pago: { tipo: "contado" }, comprobante: { numero: "001", timbrado: "123" }, moneda: "PYG",
+    });
+  } catch (e) { msg = e.message; }
+  if (!/cuenta contable/.test(msg)) throw new Error("mensaje poco claro: " + msg);
+  const despues = recibido.filter((r) => r.ruta === "/compras" && r.metodo === "POST").length;
+  if (despues !== antes) throw new Error("le pegó al ERP igual");
+});
+
+t("una compra al contado sin cuenta de pago tampoco sale", async () => {
+  let msg = "";
+  try {
+    await httpRepo.compras.create({
+      provId: "pr1", lineas: [{ prodId: "p1", nombre: "X", unidad: "UN", cantidad: 1, costo: 1000, iva: "10%" }],
+      pago: { tipo: "contado" }, comprobante: { numero: "001", timbrado: "123" }, moneda: "PYG",
+      cuentaContableId: "pc1",
+    });
+  } catch (e) { msg = e.message; }
+  if (!/cuenta de pago/.test(msg)) throw new Error("mensaje poco claro: " + msg);
+});
+
+t("la compra va por el camino multilínea, con el IVA como lo quiere el ERP", async () => {
+  const c = await httpRepo.compras.create({
+    provId: "pr1",
+    lineas: [
+      { prodId: "p1", nombre: "Gaseosa", unidad: "UN", cantidad: 24, costo: 48000, iva: "10%" },
+      { prodId: "p3", nombre: "Libro", unidad: "UN", cantidad: 2, costo: 20000, iva: "Exenta" },
+      { prodId: "p2", nombre: "Papas", unidad: "KG", cantidad: 1, costo: 13100, iva: "5%" },
+    ],
+    pago: { tipo: "credito", plazoDias: 30, cuotas: 3 },
+    comprobante: { numero: "001-001-0000046", timbrado: "16512345" },
+    moneda: "PYG",
+    cuentaContableId: "pc1",
+    cuentaPagoId: "",
+  });
+  const env = recibido.filter((r) => r.ruta === "/compras" && r.metodo === "POST").at(-1);
+  // Siempre `items`, aunque sea una sola línea: el camino de una exige el nuevo
+  // precio de venta del producto, que la app no pregunta.
+  if (!Array.isArray(env.cuerpo.items)) throw new Error("no usó el camino multilínea");
+  const ivas = env.cuerpo.items.map((i) => i.iva_tipo).join(",");
+  if (ivas !== "10,exenta,5") throw new Error("IVA mal traducido: " + ivas);
+  if (env.cuerpo.items.some((i) => i.cuenta_contable_id !== "pc1")) {
+    throw new Error("la cuenta no viaja en cada línea");
+  }
+  // A crédito la contrapartida puede ir vacía: el ERP usa su cuenta de proveedores.
+  if (env.cuerpo.cuenta_contrapartida_id !== null) throw new Error("inventó una contrapartida");
+  if (env.cuerpo.cuotas !== 3 || env.cuerpo.plazo_dias !== 30) throw new Error("perdió el crédito");
+  if (!env.cuerpo.idempotency_key) throw new Error("sin clave de intento, un reintento duplica el stock");
+  if (c.numero !== "CMP-000046") throw new Error("no devolvió la compra del ERP");
+  if (c.pago !== "Crédito" || c.estado !== "Pendiente") throw new Error("mapeo de la compra: " + JSON.stringify(c));
+});
+
+t("el plan de cuentas se lee con el número y la denominación juntos", async () => {
+  const cuentas = await httpRepo.compras.cuentas();
+  if (cuentas.length !== 2) throw new Error("no leyó las cuentas");
+  if (cuentas[0].codigo !== "1.1.03.001" || cuentas[0].nombre !== "Mercaderías") {
+    throw new Error("mapeo: " + JSON.stringify(cuentas[0]));
+  }
 });
 
 let malas = 0;

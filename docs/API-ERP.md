@@ -162,6 +162,84 @@ al asesor. Por eso una administradora veía "no hay conversaciones para vos" en
 la app mientras en el ERP las tenía todas delante: no está en ninguna cola, y
 ese endpoint filtra por cola.
 
+### Escrituras: productos, proveedores y compras
+
+```
+POST  /api/productos                 alta            → { producto, warning }
+PATCH /api/productos/<id>            corrección      → { producto }
+GET   /api/inventario/categorias     catálogo        → { categorias }
+POST  /api/inventario/categorias     alta            → { categoria }
+GET   /api/inventario/ubicaciones    catálogo        → { ubicaciones }
+GET   /api/inventario/movimientos    historial       → { movimientos }
+POST  /api/proveedores               alta            → { proveedor }
+PATCH /api/proveedores/<id>          corrección      → { proveedor }
+GET   /api/proveedores/categorias    rubros          → { categorias }
+GET   /api/plan-cuentas/opciones     plan de cuentas → { cuentas }
+POST  /api/compras                   alta            → { compra, movimiento_id, warning }
+```
+
+**Los catálogos van por id, la app habla por nombre.** La categoría, el
+depósito y el rubro se escriben a mano en el formulario. La app resuelve el
+nombre contra el catálogo (sin distinguir mayúsculas ni acentos) y, si no
+existe, lo da de alta. El ERP normaliza todo a mayúsculas.
+
+**Lo que este ERP no guarda de un producto**, porque no tiene la columna:
+
+| Campo de la app | Qué pasa |
+|---|---|
+| IVA por producto | No existe. Todo se factura al **10%**. El formulario lo avisa. |
+| Precio mayorista | Es de Max; vive en el Supabase de Zentra. |
+| Vencimiento | Ídem. |
+| Días de entrega del proveedor | No existe. `aProveedor` devuelve `entrega: 0`. |
+
+Y dos traducciones que no se ven venir: la **ciudad** de un proveedor va a
+`direccion` (el ERP no tiene columna de ciudad), y el **rubro** son sus
+categorías, que viajan como `categoria_ids`.
+
+**El stock no se edita.** `PATCH /api/productos/<id>` acepta `stock_actual`, y
+la app **no lo manda nunca**. El stock se mueve con un movimiento, que deja
+rastro; pisar el número a mano dejaría un inventario que no se puede explicar.
+
+**La compra necesita contabilidad.** El ERP arma el asiento en el mismo
+movimiento que registra la compra, así que exige:
+
+- `nro_timbrado`
+- `cuenta_contable_id` en **cada** línea (toma la de la primera para la cabecera)
+- `cuenta_contrapartida_id` si es al contado; a crédito puede ir `null` y usa la
+  cuenta de proveedores configurada en el ERP
+- que la empresa tenga configuradas las cuentas de **IVA crédito 5% y 10%**; si
+  no, contesta "Configurá la cuenta de IVA Crédito 10% en Configuración
+  Contable" y la compra no entra
+
+Por eso el alta de compra en la app pide dos cuentas cuando hay ERP. No es un
+trámite nuestro: elegirlas automáticamente sería escribir en los libros de otro.
+
+La app siempre usa el camino **multilínea** (`items`), incluso con una sola
+línea: el camino de una línea exige `precio_venta` mayor a cero —el nuevo precio
+de venta del producto— y la app no lo pregunta. Mandar uno inventado le
+cambiaría el precio al producto sin que nadie lo decida.
+
+**El historial de movimientos** devuelve los últimos 500 de la empresa y no
+acepta filtros, así que el filtrado por producto y por tipo es del lado de la
+app. Para un producto con movimientos viejos puede quedar corto.
+
+Cuidado con el tipo: `inventario_inicial` **contiene la palabra "venta"**
+(inVENTArio). Al traducirlo hay que sacar "inventario" primero, o el stock
+inicial se lee como una salida.
+
+### Lo único que falta del lado del ERP: ajustar stock
+
+```
+POST /api/inventario/movimientos    ← { producto_id, tipo, cantidad, motivo }
+```
+
+No existe: la ruta sólo tiene `GET`. Es lo que necesita el ajuste de stock de la
+app (`inventario.ajustar`), que hoy avisa que no está implementado.
+
+**No se puede resolver con `PATCH /api/productos/<id>`.** Cambiaría el número
+sin dejar movimiento, y un inventario que cambia sin que se pueda explicar por
+qué es peor que uno desactualizado.
+
 ### La ficha del contacto y transferir: ya están, no hay que tocar nada
 
 Dos endpoints que el ERP ya expone con `Authorization: Bearer` y que la app usa

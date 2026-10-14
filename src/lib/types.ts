@@ -146,6 +146,21 @@ export interface CompraLinea {
   iva: Iva;
 }
 
+/**
+ * Una cuenta del plan de cuentas del ERP.
+ *
+ * La compra no se puede registrar sin esto: el ERP arma el asiento contable en
+ * el mismo movimiento, y el asiento necesita saber en qué cuenta va el gasto y
+ * de dónde sale la plata. Elegirlas automáticamente sería escribir en los
+ * libros de otro.
+ */
+export interface CuentaContable {
+  id: string;
+  /** El número de cuenta, como lo usa contabilidad ("5.1.01.001"). */
+  codigo: string;
+  nombre: string;
+}
+
 export interface Compra {
   id: string;
   numero: string;
