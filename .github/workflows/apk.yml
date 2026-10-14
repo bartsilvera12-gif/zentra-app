@@ -211,6 +211,33 @@ jobs:
           print("OK: el APK lleva el icono adaptativo.")
           PY
 
+      # Que esté firmado con NUESTRA llave y no con una que Gradle invente.
+      #
+      # Android no deja instalar un APK encima de otro del mismo paquete firmado
+      # distinto: contesta "conflicto con un paquete existente". Gradle, si no
+      # encuentra una llave de depuración, genera una nueva — y en un servidor
+      # esa carpeta arranca vacía en cada corrida. Así, cada APK salía con una
+      # llave distinta y había que desinstalar la app para probar un cambio.
+      - name: Verificar que el APK lleva nuestra firma
+        run: |
+          set -e
+          apk="android/app/build/outputs/apk/debug/app-debug.apk"
+          firmador=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort | tail -1)
+          # keytool imprime "AA:BB:..."; apksigner, "aabb..." pegado. Se comparan
+          # en el mismo formato.
+          esperado=$(keytool -list -v -keystore firma/debug.keystore -storepass android \
+            -alias androiddebugkey | grep -i "SHA256:" | head -1 | tr -d ' ' | cut -d: -f2- | tr -d ':' | tr 'A-F' 'a-f')
+          real=$("$firmador" verify --print-certs "$apk" | grep -i "SHA-256 digest" | head -1 | awk '{print $NF}' | tr 'A-F' 'a-f')
+          echo "esperado: $esperado"
+          echo "real:     $real"
+          if [ -z "$real" ] || [ "$esperado" != "$real" ]; then
+            echo "ERROR: el APK no está firmado con firma/debug.keystore."
+            echo "Nadie va a poder instalarlo encima del anterior: Android lo rechaza"
+            echo "por conflicto de paquete. Ver firma/README.md."
+            exit 1
+          fi
+          echo "OK: firmado con la llave de siempre; se instala encima del anterior."
+
       - uses: actions/upload-artifact@v4
         with:
           name: zentra-movil-${{ github.sha }}

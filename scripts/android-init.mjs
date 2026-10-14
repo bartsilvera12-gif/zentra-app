@@ -13,6 +13,7 @@
  */
 import { existsSync, mkdirSync, copyFileSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { conFirma } from "./firma.mjs";
 import { homedir, platform } from "node:os";
 import { join, resolve, sep } from "node:path";
 
@@ -375,6 +376,38 @@ function agregarPermisos() {
 }
 
 agregarPermisos();
+
+/**
+ * Firmar siempre con la misma llave.
+ *
+ * Android identifica una app por su paquete Y por la llave que la firmó. Dos
+ * APK del mismo paquete firmados distinto no se pueden instalar uno encima del
+ * otro: el sistema contesta "conflicto con un paquete existente" y hay que
+ * desinstalar.
+ *
+ * Gradle, si no encuentra una llave de depuración, genera una nueva. En un
+ * servidor de GitHub Actions esa carpeta arranca vacía en cada corrida, así que
+ * cada APK salía con una llave distinta y ninguno actualizaba al anterior.
+ * Alcanzaba con cambiar una coma para que hubiera que desinstalar la app.
+ */
+function firmaEstable() {
+  const RUTA = "android/app/build.gradle";
+  const LLAVE = "firma/debug.keystore";
+  if (!existsSync(RUTA)) return;
+  if (!existsSync(LLAVE)) {
+    console.log(`\nAVISO: falta ${LLAVE}. El APK se va a firmar con una llave al azar y`);
+    console.log("no se va a poder instalar encima del anterior. Ver firma/README.md.");
+    return;
+  }
+
+  const antes = readFileSync(RUTA, "utf8");
+  const despues = conFirma(antes);
+  if (despues === antes) return;
+  writeFileSync(RUTA, despues);
+  console.log("\nFirma: el APK va a usar firma/debug.keystore, la misma en cada build.");
+}
+
+firmaEstable();
 
 /**
  * Que los íconos generados sean los nuestros y no los de la plantilla.
