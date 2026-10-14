@@ -18,6 +18,8 @@
  */
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
+import { norm } from "../format";
+import { buildReport } from "../reportes";
 import { hayTenantActivo, sb, tenantEnUso } from "../supabase/client";
 import type {
   AgenteDestino,
@@ -33,6 +35,8 @@ import type {
   FichaProyectoChat,
   InvProducto,
   Iva,
+  MovTipo,
+  Movimiento,
   Proveedor,
   Venta,
 } from "../types";
@@ -490,17 +494,154 @@ interface ProductoErp {
   stock_actual?: number | null;
   stock_minimo?: number | null;
   metodo_valuacion?: string | null;
+  /**
+   * Los catálogos viajan por id, no por nombre. El nombre se resuelve con
+   * `cargarCatalogo`: sin eso la app mostraba la categoría y el depósito
+   * vacíos aunque el producto los tuviera cargados en el ERP.
+   */
+  categoria_principal_id?: string | null;
+  ubicacion_principal_id?: string | null;
+  proveedor_principal_id?: string | null;
 }
 
-function aProducto(p: ProductoErp): InvProducto {
+/**
+ * El rubro de la app son las categorías de proveedor del ERP, que viajan por
+ * id. Se escriben separadas por coma, igual que las devuelve `aProveedor`.
+ */
+async function idsDeCategoriasDeProveedor(rubro: string): Promise<string[]> {
+  const nombres = (rubro || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (nombres.length === 0) return [];
+
+  let catalogo: Map<string, string>;
+  try {
+    const r = await request<unknown>("/proveedores/categorias");
+    const filas = comoLista<{ id?: unknown; nombre?: string | null }>(
+      r,
+      "categorias",
+      "/proveedores/categorias",
+    );
+    catalogo = new Map(filas.map((f) => [String(f.id ?? ""), primero(f.nombre)]));
+  } catch {
+    // Sin catálogo, el proveedor se guarda sin rubro. El rubro es un dato de
+    // orden; no guardar el proveedor por eso sería peor.
+    return [];
+  }
+
+  const ids: string[] = [];
+  for (const nombre of nombres) {
+    const buscado = norm(nombre);
+    let id = "";
+    for (const [k, v] of catalogo) if (norm(v) === buscado) id = k;
+    if (!id) {
+      try {
+        const r = await request<{ categoria?: { id?: unknown } } | null>("/proveedores/categorias", {
+          method: "POST",
+          body: JSON.stringify({ nombre }),
+        });
+        id = r?.categoria?.id == null ? "" : String(r.categoria.id);
+        if (id) catalogo.set(id, nombre);
+      } catch {
+        continue;
+      }
+    }
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+/* ---------- catálogos de inventario (categorías y ubicaciones) ---------- */
+
+/**
+ * El ERP guarda la categoría y el depósito de un producto por id, y la app los
+ * muestra y los pide por nombre, que es lo que escribe una persona.
+ *
+ * Se cachean por sesión: son dos listas cortas que no cambian mientras alguien
+ * carga productos, y se pedían una vez por producto listado.
+ *
+ * Sólo se cachea el éxito. Un ERP puede no tener el módulo de catálogos, y
+ * guardar ese fallo dejaría la categoría vacía para siempre en esa sesión.
+ */
+const CATALOGOS = {
+  categorias: { ruta: "/inventario/categorias", clave: "categorias", singular: "categoria" },
+  ubicaciones: { ruta: "/inventario/ubicaciones", clave: "ubicaciones", singular: "ubicacion" },
+} as const;
+
+type Catalogo = keyof typeof CATALOGOS;
+
+const catalogoEnMemoria: Partial<Record<Catalogo, Map<string, string>>> = {};
+
+async function cargarCatalogo(cual: Catalogo): Promise<Map<string, string>> {
+  const ya = catalogoEnMemoria[cual];
+  if (ya) return ya;
+  const { ruta, clave } = CATALOGOS[cual];
+  try {
+    const r = await request<unknown>(ruta);
+    const filas = comoLista<{ id?: unknown; nombre?: string | null }>(r, clave, ruta);
+    const m = new Map<string, string>();
+    for (const f of filas) {
+      const id = f.id == null ? "" : String(f.id);
+      if (id) m.set(id, primero(f.nombre));
+    }
+    catalogoEnMemoria[cual] = m;
+    return m;
+  } catch {
+    // Sin catálogo el producto se muestra sin categoría —como antes— en vez de
+    // caerse la pantalla de inventario entera.
+    return new Map();
+  }
+}
+
+/**
+ * El id de una categoría o ubicación a partir del nombre escrito.
+ *
+ * Con `crear`, si no existe la da de alta. Es lo que espera alguien que
+ * escribió una categoría nueva en el formulario: el campo es libre y ofrece las
+ * que ya hay, así que un nombre que no está en la lista es uno nuevo a propósito.
+ * Sin `crear` devuelve `null` y el producto queda sin categoría.
+ */
+async function idDeCatalogo(cual: Catalogo, nombre: string, crear = false): Promise<string | null> {
+  const buscado = norm(nombre.trim());
+  if (!buscado) return null;
+  const m = await cargarCatalogo(cual);
+  for (const [id, n] of m) if (norm(n) === buscado) return id;
+  if (!crear) return null;
+
+  const { ruta, singular } = CATALOGOS[cual];
+  try {
+    const r = await request<Record<string, { id?: unknown; nombre?: string | null } | undefined>>(ruta, {
+      method: "POST",
+      body: JSON.stringify({ nombre: nombre.trim() }),
+    });
+    const creada = r?.[singular];
+    const id = creada?.id == null ? "" : String(creada.id);
+    if (!id) return null;
+    m.set(id, primero(creada?.nombre) || nombre.trim());
+    return id;
+  } catch {
+    // No poder crear la categoría no tiene que impedir guardar el producto: se
+    // guarda sin ella, que es un dato de orden y no el producto en sí.
+    return null;
+  }
+}
+
+function aProducto(
+  p: ProductoErp,
+  cats?: Map<string, string>,
+  ubis?: Map<string, string>,
+): InvProducto {
   return {
     id: String(p.id),
     nombre: p.nombre || "(sin nombre)",
     sku: p.sku || "",
     barras: p.codigo_barras || "",
     unidad: p.unidad_medida || "UN",
-    categoria: "",
-    deposito: "",
+    // Vacío cuando el ERP no informa el catálogo: mejor en blanco que un
+    // "Sin categoría" que no se sabe si es el dato o la falta del dato.
+    categoria: (p.categoria_principal_id && cats?.get(String(p.categoria_principal_id))) || "",
+    deposito: (p.ubicacion_principal_id && ubis?.get(String(p.ubicacion_principal_id))) || "",
     // Enteros: el guaraní no tiene centavos.
     costo: entero(p.costo_promedio),
     precio: entero(p.precio_venta),
@@ -510,6 +651,57 @@ function aProducto(p: ProductoErp): InvProducto {
     minimo: Number(p.stock_minimo) || 0,
     metodo: (p.metodo_valuacion as InvProducto["metodo"]) || "CPP",
   };
+}
+
+/** Una fila de `movimientos_inventario`, con los nombres del ERP. */
+interface MovimientoErp {
+  id: string;
+  producto_id?: string | null;
+  producto_nombre?: string | null;
+  producto_sku?: string | null;
+  tipo?: string | null;
+  cantidad?: number | string | null;
+  costo_unitario?: number | string | null;
+  origen?: string | null;
+  referencia?: string | null;
+  fecha?: string | null;
+  created_at?: string | null;
+  usuario_nombre?: string | null;
+}
+
+function aMovimiento(m: MovimientoErp): Movimiento {
+  const cant = Number(m.cantidad) || 0;
+  return {
+    id: String(m.id),
+    prodId: String(m.producto_id ?? ""),
+    tipo: aTipoDeMovimiento(m.tipo, cant),
+    // La cantidad siempre positiva: el signo lo dice el tipo. El ERP guarda
+    // las salidas en negativo y la pantalla ya pone el signo según el tipo,
+    // así que dejarlo negativo mostraba "−−12".
+    cant: Math.abs(cant),
+    origen: primero(m.origen) || "ERP",
+    ref: primero(m.referencia),
+    fecha: (primero(m.fecha, m.created_at) || "").slice(0, 10),
+    usuario: primero(m.usuario_nombre),
+  };
+}
+
+/**
+ * El tipo de movimiento, de los nombres del ERP a los tres de la app.
+ *
+ * El ERP tiene muchos más (`inventario_inicial`, `compra`, `venta`,
+ * `ajuste_positivo`…). Lo que la app muestra es si el stock subió, bajó o se
+ * corrigió, y `origen` dice el resto.
+ */
+function aTipoDeMovimiento(t: string | null | undefined, cantidad: number): MovTipo {
+  const v = (t || "").toLowerCase();
+  if (v.includes("ajuste")) return "AJUSTE";
+  if (v.includes("salida") || v.includes("venta") || v.includes("egreso")) return "SALIDA";
+  if (v.includes("entrada") || v.includes("compra") || v.includes("inicial") || v.includes("ingreso")) {
+    return "ENTRADA";
+  }
+  // Sin nombre reconocible manda el signo de la cantidad, que es el dato duro.
+  return cantidad < 0 ? "SALIDA" : "ENTRADA";
 }
 
 interface VentaErp {
@@ -1410,24 +1602,227 @@ export const httpRepo: Repo = {
       const p = comoLista<ProveedorErp>(r, "proveedores", "/proveedores").find((x) => String(x.id) === id);
       return p ? aProveedor(p) : null;
     },
-    create: () => pendiente("proveedores.create"),
-    update: () => pendiente("proveedores.update"),
-    deuda: () => pendiente("proveedores.deuda"),
+    /**
+     * Alta de proveedor.
+     *
+     * Dos traducciones que no son obvias:
+     *
+     *   - `ciudad` de la app va a `direccion` del ERP. El ERP no tiene columna
+     *     de ciudad, y es lo que ya hace `aProveedor` al leer, así que lo que
+     *     se escribe vuelve en el mismo campo.
+     *   - `rubro` son las categorías de proveedor del ERP, que viajan por id.
+     *     Se resuelven por nombre y se dan de alta si no existen, igual que las
+     *     categorías de producto.
+     *
+     * `entregaDias` no se guarda: el ERP no tiene dónde. Por eso `aProveedor`
+     * devuelve `entrega: 0` al leer — no es que se pierda al guardar, es que no
+     * existe en este ERP.
+     */
+    async create(input) {
+      const categoriaIds = await idsDeCategoriasDeProveedor(input.rubro);
+      const r = await request<{ proveedor?: ProveedorErp } | null>("/proveedores", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre: input.nombre,
+          ruc: input.doc || null,
+          telefono: input.tel || null,
+          email: input.email || null,
+          direccion: input.ciudad || null,
+          contacto: input.contacto || null,
+          condicion_pago: input.credito ? "credito" : "contado",
+          plazo_pago_dias: input.credito ? input.credito.plazoDias : null,
+          categoria_ids: categoriaIds,
+        }),
+      });
+      const creado = r?.proveedor;
+      if (!creado) {
+        throw new ApiError("El ERP no devolvió el proveedor creado.", 200, "/proveedores");
+      }
+      return aProveedor(creado);
+    },
+
+    /** Corrige una ficha. Sólo viaja lo que cambió, por lo mismo que en productos. */
+    async update(id, cambios) {
+      const cuerpo: Record<string, unknown> = {};
+      if (cambios.nombre !== undefined) cuerpo.nombre = cambios.nombre;
+      if (cambios.doc !== undefined) cuerpo.ruc = cambios.doc || null;
+      if (cambios.tel !== undefined) cuerpo.telefono = cambios.tel || null;
+      if (cambios.email !== undefined) cuerpo.email = cambios.email || null;
+      if (cambios.ciudad !== undefined) cuerpo.direccion = cambios.ciudad || null;
+      if (cambios.contacto !== undefined) cuerpo.contacto = cambios.contacto || null;
+      if (cambios.credito !== undefined) {
+        cuerpo.condicion_pago = cambios.credito ? "credito" : "contado";
+        cuerpo.plazo_pago_dias = cambios.credito ? cambios.credito.plazoDias : null;
+      }
+      if (cambios.rubro !== undefined) {
+        cuerpo.categoria_ids = await idsDeCategoriasDeProveedor(cambios.rubro);
+      }
+
+      const r = await request<{ proveedor?: ProveedorErp } | null>(
+        `/proveedores/${encodeURIComponent(id)}`,
+        { method: "PATCH", body: JSON.stringify(cuerpo) },
+      );
+      const prov = r?.proveedor;
+      if (!prov) {
+        throw new ApiError("El ERP no devolvió el proveedor actualizado.", 200, "/proveedores");
+      }
+      return aProveedor(prov);
+    },
+
+    /**
+     * La deuda con un proveedor.
+     *
+     * Sale del reporte de cuentas por pagar del ERP, que es la misma cifra que
+     * ve contabilidad. Ese reporte pide permiso de contabilidad: un vendedor
+     * recibe 403, y entonces esto devuelve 0 en vez de romper la pantalla.
+     *
+     * No es la única fuente: la pantalla de proveedores suma las compras
+     * pendientes, que ya funciona sin permisos especiales.
+     */
+    async deuda(id) {
+      try {
+        const r = await request<{ totals?: { total?: number | null } } | null>(
+          "/reportes/cuentas-por-pagar",
+          { query: { proveedor_id: id } },
+        );
+        return entero(r?.totals?.total);
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) return 0;
+        throw e;
+      }
+    },
+
     consultarSet: () => pendiente("proveedores.consultarSet"),
   },
 
   inventario: {
     async list(params) {
-      const r = await request<unknown>("/productos", { query: { q: params?.q, filtro: params?.filtro } });
-      return comoLista<ProductoErp>(r, "productos", "/productos").map(aProducto);
+      // Los tres pedidos van juntos: los catálogos son dos listas cortas y
+      // cacheadas, y esperarlas en serie agregaba dos viajes a cada apertura
+      // del inventario.
+      const [r, cats, ubis] = await Promise.all([
+        request<unknown>("/productos", { query: { q: params?.q, filtro: params?.filtro } }),
+        cargarCatalogo("categorias"),
+        cargarCatalogo("ubicaciones"),
+      ]);
+      return comoLista<ProductoErp>(r, "productos", "/productos").map((p) => aProducto(p, cats, ubis));
     },
     async get(id) {
-      const p = await request<ProductoErp | null>(`/productos/${encodeURIComponent(id)}`);
-      return p ? aProducto(p) : null;
+      const [p, cats, ubis] = await Promise.all([
+        request<ProductoErp | null>(`/productos/${encodeURIComponent(id)}`),
+        cargarCatalogo("categorias"),
+        cargarCatalogo("ubicaciones"),
+      ]);
+      return p ? aProducto(p, cats, ubis) : null;
     },
-    create: () => pendiente("inventario.create"),
-    update: () => pendiente("inventario.update"),
-    movimientos: () => pendiente("inventario.movimientos"),
+
+    /**
+     * Alta de producto.
+     *
+     * Dos cosas de este ERP que conviene saber, porque no son un olvido mío:
+     *
+     *   - **No guarda el IVA por producto.** No existe la columna. Todo se
+     *     factura al 10%, que es lo que `aIva` devuelve al leerlo. El selector
+     *     de IVA del formulario lo dice en pantalla en modo ERP; mandarlo acá
+     *     y que se pierda en silencio sería peor.
+     *   - **No guarda precio mayorista ni vencimiento.** Son campos de Max que
+     *     viven en el Supabase de Zentra, no en el ERP de un cliente.
+     *
+     * El movimiento de inventario inicial lo graba el ERP solo, si el stock
+     * inicial es mayor a cero.
+     */
+    async create(input) {
+      // Las dos altas de catálogo van antes del producto: si el ERP rechaza el
+      // producto, no quedan una categoría y un depósito nuevos colgando.
+      const [categoriaId, ubicacionId] = await Promise.all([
+        idDeCatalogo("categorias", input.categoria, true),
+        idDeCatalogo("ubicaciones", input.deposito, true),
+      ]);
+
+      const r = await request<{ producto?: ProductoErp; warning?: string | null } | null>("/productos", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre: input.nombre,
+          sku: input.sku,
+          codigo_barras: input.barras || null,
+          unidad_medida: input.unidad || "UNIDAD",
+          costo_promedio: input.costo,
+          precio_venta: input.precio,
+          stock_actual: input.stockInicial,
+          stock_minimo: input.minimo,
+          metodo_valuacion: input.metodo,
+          categoria_principal_id: categoriaId,
+          ubicacion_principal_id: ubicacionId,
+        }),
+      });
+      const creado = r?.producto;
+      if (!creado) {
+        throw new ApiError("El ERP no devolvió el producto creado.", 200, "/productos");
+      }
+      const [cats, ubis] = await Promise.all([
+        cargarCatalogo("categorias"),
+        cargarCatalogo("ubicaciones"),
+      ]);
+      return aProducto(creado, cats, ubis);
+    },
+
+    /**
+     * Corrige un producto ya cargado. Sólo viaja lo que cambió: el ERP toma el
+     * campo como "cambialo" por el hecho de estar presente, así que mandar todo
+     * pisaría con lo que tiene la app lo que alguien editó en la web.
+     *
+     * El stock no se toca acá —se mueve con `ajustar`, que deja rastro—, ni
+     * siquiera cuando viene en `cambios`.
+     */
+    async update(id, cambios) {
+      const cuerpo: Record<string, unknown> = {};
+      if (cambios.nombre !== undefined) cuerpo.nombre = cambios.nombre;
+      if (cambios.sku !== undefined) cuerpo.sku = cambios.sku;
+      if (cambios.barras !== undefined) cuerpo.codigo_barras = cambios.barras || null;
+      if (cambios.unidad !== undefined) cuerpo.unidad_medida = cambios.unidad || "UNIDAD";
+      if (cambios.costo !== undefined) cuerpo.costo_promedio = cambios.costo;
+      if (cambios.precio !== undefined) cuerpo.precio_venta = cambios.precio;
+      if (cambios.minimo !== undefined) cuerpo.stock_minimo = cambios.minimo;
+      if (cambios.metodo !== undefined) cuerpo.metodo_valuacion = cambios.metodo;
+      if (cambios.categoria !== undefined) {
+        cuerpo.categoria_principal_id = await idDeCatalogo("categorias", cambios.categoria, true);
+      }
+      if (cambios.deposito !== undefined) {
+        cuerpo.ubicacion_principal_id = await idDeCatalogo("ubicaciones", cambios.deposito, true);
+      }
+
+      const r = await request<{ producto?: ProductoErp } | null>(
+        `/productos/${encodeURIComponent(id)}`,
+        { method: "PATCH", body: JSON.stringify(cuerpo) },
+      );
+      const prod = r?.producto;
+      if (!prod) {
+        throw new ApiError("El ERP no devolvió el producto actualizado.", 200, "/productos");
+      }
+      const [cats, ubis] = await Promise.all([
+        cargarCatalogo("categorias"),
+        cargarCatalogo("ubicaciones"),
+      ]);
+      return aProducto(prod, cats, ubis);
+    },
+
+    /**
+     * Los movimientos de inventario.
+     *
+     * El ERP devuelve los últimos 500 de la empresa y no acepta filtros, así
+     * que el filtrado por producto y por tipo es acá. Para un producto puntual
+     * eso puede devolver pocos o ninguno si tiene movimientos más viejos que
+     * esos 500; es una limitación del endpoint, no un error de la app.
+     */
+    async movimientos(params) {
+      const r = await request<unknown>("/inventario/movimientos");
+      const filas = comoLista<MovimientoErp>(r, "movimientos", "/inventario/movimientos");
+      return filas
+        .map(aMovimiento)
+        .filter((m) => (params?.prodId ? m.prodId === params.prodId : true))
+        .filter((m) => (params?.tipo ? m.tipo === params.tipo : true));
+    },
+
     ajustar: () => pendiente("inventario.ajustar"),
   },
 
@@ -1729,8 +2124,39 @@ export const httpRepo: Repo = {
     },
   },
 
+  /**
+   * Los reportes se arman en la app, con los datos del ERP.
+   *
+   * El ERP tiene reportes propios —libro de ventas, de compras, cuentas por
+   * pagar— pero ninguno devuelve lo que esta pantalla muestra: una serie por
+   * día, los KPI con su variación, la dona y el ranking. Y los que hay piden
+   * permiso de contabilidad, que un vendedor no tiene.
+   *
+   * Así que se traen las listas y se calcula con `buildReport`, exactamente la
+   * misma función que usa el modo de ejemplo. Un número que no coincida entre
+   * los dos modos sería un error de datos, no de cuentas.
+   *
+   * Las tres listas se piden juntas y cada pestaña usa la que le toca; traerlas
+   * siempre es lo que permite que cambiar de pestaña no espere otra vuelta.
+   */
   reportes: {
-    resumen: () => pendiente("reportes.resumen"),
+    async resumen(tab, desde, hasta) {
+      const [ventas, compras, productos] = await Promise.all([
+        httpRepo.ventas.list({ desde, hasta }).catch(() => []),
+        httpRepo.compras.list().catch(() => []),
+        httpRepo.inventario.list().catch(() => []),
+      ]);
+
+      const m = buildReport(tab, desde, hasta, { ventas, compras, productos });
+      return {
+        serie: m.buckets.map((b) => ({ fecha: b.dia, valor: b.v })),
+        total: m.total,
+        kpis: m.kpis.map((k) => ({ label: k.label, valor: k.valor, delta: k.delta, up: null })),
+        dona: m.dona,
+        ranking: m.rank.map((r) => ({ label: r.label, valor: r.v, sub: r.sub })),
+        tabla: m.tabla,
+      };
+    },
   },
 
   /**

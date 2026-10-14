@@ -1,7 +1,7 @@
 "use client";
 
 import { MARCA } from "@/lib/theme";
-import { repo } from "@/lib/repo";
+import { repo, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { totalCompra } from "@/lib/calc";
@@ -36,6 +36,9 @@ const ORO = MARCA.header;
 export function ProveedoresScreen() {
   const { s, t, set, abrirChat, plan } = useApp();
 
+  // Con ERP el alta va al ERP; sin ERP queda en pantalla, que es lo único que
+  // se puede hacer con datos de ejemplo.
+  const conErp = usaApiDelErp();
   const { datos, cargando, error, recargar } = useRemoto(() => repo.proveedores.list(), []);
   // Las compras dan la deuda de cada proveedor; si fallan, se muestra el
   // proveedor sin deuda antes que no mostrarlo.
@@ -180,27 +183,65 @@ export function ProveedoresScreen() {
     }
   };
 
-  const guardar = () => {
+  /**
+   * Da de alta el proveedor.
+   *
+   * Con ERP conectado va al ERP. Antes no: el proveedor se guardaba sólo en la
+   * memoria del teléfono, se veía en la lista como si estuviera cargado, y al
+   * cerrar la app no quedaba nada. El que lo cargó se enteraba al otro día.
+   *
+   * Si el ERP lo rechaza —un RUC repetido, por ejemplo— el formulario queda
+   * como está, con el mensaje del ERP, para corregir y reintentar.
+   */
+  const guardar = async () => {
     if (!nombreValido(s.pfNombre)) {
       set({ pfError: true });
       return;
     }
-    const nuevo = nuevoProveedor(
-      {
-        nombre: s.pfNombre,
-        doc: s.pfDoc,
-        rubro: s.pfRubro,
-        ciudad: s.pfCiudad,
-        contacto: s.pfContacto,
-        tel: s.pfTel,
-        email: s.pfEmail,
-        credito: s.pfCredito,
-        plazo: s.pfPlazo,
-        entrega: s.pfEntrega,
-      },
-      s.vwExtra,
-    );
-    set({ vwExtra: [nuevo].concat(s.vwExtra), vwSub: "detalle", vwSel: nuevo.id });
+
+    if (!conErp) {
+      const nuevo = nuevoProveedor(
+        {
+          nombre: s.pfNombre,
+          doc: s.pfDoc,
+          rubro: s.pfRubro,
+          ciudad: s.pfCiudad,
+          contacto: s.pfContacto,
+          tel: s.pfTel,
+          email: s.pfEmail,
+          credito: s.pfCredito,
+          plazo: s.pfPlazo,
+          entrega: s.pfEntrega,
+        },
+        s.vwExtra,
+      );
+      set({ vwExtra: [nuevo].concat(s.vwExtra), vwSub: "detalle", vwSel: nuevo.id });
+      return;
+    }
+
+    set({ pfGuardando: true, pfErrorTexto: "" });
+    try {
+      const creado = await repo.proveedores.create({
+        nombre: s.pfNombre.trim(),
+        doc: s.pfDoc.trim(),
+        rubro: s.pfRubro.trim(),
+        ciudad: s.pfCiudad.trim(),
+        contacto: s.pfContacto.trim() || s.pfNombre.trim(),
+        tel: s.pfTel.trim(),
+        email: s.pfEmail.trim(),
+        credito: s.pfCredito ? { plazoDias: s.pfPlazo } : null,
+        entregaDias: Number(s.pfEntrega) || 1,
+      });
+      // Se abre la ficha del que devolvió el ERP, no la de un id inventado
+      // acá: el id del ERP es el que sirve para todo lo que venga después.
+      set({ vwSub: "detalle", vwSel: creado.id, pfGuardando: false });
+      recargar();
+    } catch (e) {
+      set({
+        pfGuardando: false,
+        pfErrorTexto: e instanceof Error ? e.message : "No se pudo guardar el proveedor.",
+      });
+    }
   };
 
   const topBg = s.vwSub === "lista" ? t.card : HEADER;
@@ -711,11 +752,20 @@ export function ProveedoresScreen() {
                 La razón social tiene que tener al menos 2 letras.
               </Notice>
             )}
+            {/* El motivo del ERP, tal cual lo manda: está escrito para una
+                persona ("Ya existe un proveedor con el mismo RUC"). Se guardaba
+                en el estado y no se dibujaba en ninguna parte: al fallar, el
+                botón dejaba de decir "Guardando…" y nada más. */}
+            {s.pfErrorTexto && (
+              <Notice bg="#FBE9E7" ink="#8C2F2B" border="#E8B4AE">
+                {s.pfErrorTexto}
+              </Notice>
+            )}
           </ScrollBody>
 
           <div style={{ padding: "11px 14px 13px", background: t.card, borderTop: `1px solid ${t.border}` }}>
             <button
-              onClick={editandoProv ? guardarEdicionProv : guardar}
+              onClick={() => void (editandoProv ? guardarEdicionProv() : guardar())}
               disabled={s.pfGuardando}
               style={{
                 width: "100%",

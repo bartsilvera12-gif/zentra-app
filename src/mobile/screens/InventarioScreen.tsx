@@ -41,7 +41,22 @@ export function InventarioScreen() {
   const { s, t, set, plan } = useApp();
 
   // El catálogo sale del ERP.
+  const conErp = usaApiDelErp();
   const { datos, cargando, error, recargar } = useRemoto(() => repo.inventario.list(), []);
+  /**
+   * Los movimientos de stock, ahora sí del ERP.
+   *
+   * Antes con ERP se mostraban sólo los hechos desde la app, porque la API no
+   * los exponía. Ya los expone (`/inventario/movimientos`), así que se ve el
+   * historial completo: la entrada de una compra cargada en la web también.
+   *
+   * Si el endpoint falla se muestra lo que hizo la app y nada más, que es como
+   * estaba. No se corta la pantalla por el historial.
+   */
+  const { datos: movsErp } = useRemoto(
+    () => (conErp ? repo.inventario.movimientos().catch(() => []) : Promise.resolve([])),
+    [conErp],
+  );
   const prods = s.iExtra.concat(datos);
   const stock = (p: InvProducto) => stockDe(p, s.iDelta);
   const unidades = prods.reduce((a, p) => a + stock(p), 0);
@@ -57,10 +72,9 @@ export function InventarioScreen() {
   });
 
   const det = prods.find((p) => p.id === s.iSel) ?? null;
-  // Los movimientos de stock no los expone la API de estos ERPs. Con ERP se
-  // muestran sólo los que se hicieron desde la app: inventar entradas y
-  // salidas de un depósito ajeno sería grave.
-  const allMovs = usaApiDelErp() ? s.iMovExtra : s.iMovExtra.concat(MOVS);
+  // Los de ejemplo sólo sin ERP: inventar entradas y salidas de un depósito
+  // ajeno sería grave.
+  const allMovs = conErp ? s.iMovExtra.concat(movsErp) : s.iMovExtra.concat(MOVS);
   const prodName = (id: string) => prods.find((p) => p.id === id)?.nombre ?? "—";
   const prodUnidad = (id: string) => prods.find((p) => p.id === id)?.unidad ?? "";
 
@@ -139,13 +153,65 @@ export function InventarioScreen() {
       ? `${prods.length} productos · ${num(unidades)} unidades`
       : `${datos.length} de ${tope} productos · ${num(unidades)} unidades`;
 
-  const guardarProducto = () => {
+  /**
+   * Da de alta el producto.
+   *
+   * Con ERP conectado va al ERP. Antes no iba a ninguna parte: el producto se
+   * guardaba en la memoria del teléfono, aparecía en la lista como si estuviera
+   * cargado, y al cerrar la app desaparecía. Quien lo cargó se enteraba cuando
+   * fue a venderlo.
+   *
+   * Tres campos del formulario no los guarda este ERP, porque no tiene dónde:
+   * el IVA por producto (todo se factura al 10%), el precio mayorista y el
+   * vencimiento. Los dos últimos son de Max y viven en el Supabase de Zentra.
+   * El formulario lo avisa en pantalla; perderlos en silencio sería peor.
+   *
+   * El movimiento de inventario inicial lo graba el ERP solo cuando el stock
+   * inicial es mayor a cero, así que acá no se arma a mano como en el modo de
+   * ejemplo: se vuelve a pedir la lista y el historial sale del ERP.
+   */
+  const guardarProducto = async () => {
     if (!npPuede) {
       set({ npError: true });
       return;
     }
-    const id = "np" + (s.iExtra.length + 1);
     const stockIni = Number(s.npStock) || 0;
+
+    if (conErp) {
+      set({ npGuardando: true, npErrorTexto: "" });
+      try {
+        const creado = await repo.inventario.create({
+          nombre: s.npNombre.trim(),
+          sku: (s.npSku || npSkuSugerido).toUpperCase(),
+          barras: s.npBarras.trim(),
+          unidad: s.npUnidad,
+          categoria: s.npCategoria.trim(),
+          // Depósito, método y código de barras no se preguntan en el alta
+          // desde el celular: son decisiones del ERP. Va vacío para que el ERP
+          // ponga lo que corresponda, en vez de inventar un depósito que
+          // quizás no existe.
+          deposito: "",
+          costo: npCostoNum,
+          precio: Math.round(npPrecioNum),
+          iva: s.npIva,
+          stockInicial: stockIni,
+          minimo: Number(s.npMinimo) || 0,
+          metodo: "CPP",
+          precioMayorista: s.npMayorista.trim() ? Number(s.npMayorista) : null,
+          vencimiento: s.npVencimiento.trim() || null,
+        });
+        set({ iSub: "detalle", iSel: creado.id, npGuardando: false });
+        recargar();
+      } catch (e) {
+        set({
+          npGuardando: false,
+          npErrorTexto: e instanceof Error ? e.message : "No se pudo guardar el producto.",
+        });
+      }
+      return;
+    }
+
+    const id = "np" + (s.iExtra.length + 1);
     const nuevo: InvProducto = {
       id,
       nombre: s.npNombre.trim(),
@@ -156,16 +222,12 @@ export function InventarioScreen() {
       precio: Math.round(npPrecioNum),
       unidad: s.npUnidad,
       categoria: s.npCategoria.trim() || "Sin categoría",
-      // Depósito, método de valuación y código de barras ya no se preguntan:
-      // son decisiones del ERP, no de quien carga un producto desde el
-      // celular. Van vacíos para que el ERP ponga lo que corresponda, en vez
-      // de que la app invente un "Depósito central" que quizás no existe.
       deposito: "",
       iva: s.npIva,
       metodo: "CPP",
       barras: s.npBarras.trim(),
     };
-    // Opening stock is recorded as an ENTRADA so the ledger stays complete.
+    // El stock inicial queda como ENTRADA para que el historial cierre.
     const movs =
       stockIni > 0
         ? ([
@@ -955,6 +1017,14 @@ export function InventarioScreen() {
                   />
                 </div>
               )}
+              {/* Igual que el IVA: con ERP propio estos dos no tienen dónde
+                  guardarse. Son campos nuestros, del Supabase de Zentra. */}
+              {!sinMax && conErp && (s.npMayorista.trim() || s.npVencimiento.trim()) && (
+                <span style={{ font: "400 11px/1.35 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                  El precio mayorista y el vencimiento no se guardan en tu ERP: no tiene esos
+                  campos. Quedan sólo en esta pantalla.
+                </span>
+              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
                   Markup sobre el costo
@@ -995,6 +1065,16 @@ export function InventarioScreen() {
                   activo={s.npIva}
                   onPick={(k) => set({ npIva: k as typeof s.npIva })}
                 />
+                {/* Este ERP no tiene columna de IVA por producto: factura todo
+                    al 10%. El campo se deja —la app sirve para varios ERP— pero
+                    se avisa, porque elegir "Exenta" y que se guarde al 10% sin
+                    decir nada es lo que termina en una factura mal emitida. */}
+                {conErp && s.npIva !== "10%" && (
+                  <span style={{ font: "400 11px/1.35 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                    Tu ERP no guarda el IVA por producto: lo va a facturar al 10%. Para cambiarlo,
+                    hay que hacerlo en el ERP.
+                  </span>
+                )}
               </div>
             </Card>
 
@@ -1040,7 +1120,7 @@ export function InventarioScreen() {
 
           <div style={{ padding: "11px 14px 13px", background: t.card, borderTop: `1px solid ${t.border}` }}>
             <button
-              onClick={editando ? guardarEdicion : guardarProducto}
+              onClick={() => void (editando ? guardarEdicion() : guardarProducto())}
               disabled={s.npGuardando}
               style={{
                 width: "100%",
