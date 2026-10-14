@@ -507,7 +507,9 @@ async function verificarIcono() {
     if (data[i + 3] > 10) { n++; r += data[i]; g += data[i + 1]; b += data[i + 2]; }
   }
   const medio = [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
-  const MARCA = [28, 140, 132]; // #1C8C84
+  // #119F9F, el verde azulado del archivo del ícono. No es el acento de la app
+  // (#1C8C84): el ícono vino con su propio tono y se respeta tal cual.
+  const MARCA = [17, 159, 159];
   if (medio.some((c, i) => Math.abs(c - MARCA[i]) > 12)) {
     console.log(`\nERROR: el ícono generado es ${medio}, se esperaba ${MARCA}.`);
     console.log("Probablemente quedó el genérico de Capacitor. Revisá assets/.");
