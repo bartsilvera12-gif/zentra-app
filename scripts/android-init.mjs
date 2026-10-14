@@ -362,6 +362,78 @@ function borrarIconosDePlantilla() {
 
 borrarIconosDePlantilla();
 
+/**
+ * El ícono de la barra de estado.
+ *
+ * Android NO usa el ícono de la app para la notificación: usa un dibujo aparte
+ * del que sólo mira la silueta —el color lo pone el sistema—. Si no se le da
+ * ninguno, agarra el de la app, lo aplasta a una silueta y queda un cuadrado
+ * blanco macizo, que es lo que se ve en la barra cuando alguien no configuró
+ * esto.
+ *
+ * Los PNG ya están hechos, uno por densidad, en assets/notificacion/. Se copian
+ * y no se generan acá a propósito: generarlos pediría una librería de imágenes
+ * en el momento de compilar, y esto corre en la máquina de cualquiera.
+ */
+function iconoDeNotificacion() {
+  const ORIGEN = "assets/notificacion";
+  const RES = "android/app/src/main/res";
+  if (!existsSync(ORIGEN) || !existsSync(RES)) return;
+
+  const densidades = ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"];
+  let puestos = 0;
+  for (const d of densidades) {
+    const de = `${ORIGEN}/ic_stat_zentra-${d}.png`;
+    if (!existsSync(de)) continue;
+    const carpeta = `${RES}/drawable-${d}`;
+    mkdirSync(carpeta, { recursive: true });
+    copyFileSync(de, `${carpeta}/ic_stat_zentra.png`);
+    puestos++;
+  }
+  if (puestos === 0) return;
+
+  // Y decirle a Firebase que use ese, con el verde de la marca de tinte.
+  const MANIFIESTO = `${RES}/../AndroidManifest.xml`;
+  if (!existsSync(MANIFIESTO)) return;
+  let xml = readFileSync(MANIFIESTO, "utf8");
+  if (!xml.includes("default_notification_icon")) {
+    const meta = [
+      '        <meta-data',
+      '            android:name="com.google.firebase.messaging.default_notification_icon"',
+      '            android:resource="@drawable/ic_stat_zentra" />',
+      '        <meta-data',
+      '            android:name="com.google.firebase.messaging.default_notification_color"',
+      '            android:resource="@color/zentra_notificacion" />',
+      "",
+    ].join("\n");
+    xml = xml.replace("</application>", `${meta}    </application>`);
+    writeFileSync(MANIFIESTO, xml);
+  }
+
+  // El color tiene que existir como recurso o el build falla.
+  const COLORES = `${RES}/values/colors.xml`;
+  mkdirSync(`${RES}/values`, { recursive: true });
+  if (!existsSync(COLORES)) {
+    writeFileSync(
+      COLORES,
+      '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n' +
+        '    <color name="zentra_notificacion">#1C8C84</color>\n</resources>\n',
+    );
+  } else {
+    let xmlc = readFileSync(COLORES, "utf8");
+    if (!xmlc.includes("zentra_notificacion")) {
+      xmlc = xmlc.replace(
+        "</resources>",
+        '    <color name="zentra_notificacion">#1C8C84</color>\n</resources>',
+      );
+      writeFileSync(COLORES, xmlc);
+    }
+  }
+  console.log(`\nÍcono de notificación puesto en ${puestos} densidades.`);
+}
+
+iconoDeNotificacion();
+
 function agregarPermisos() {
   const RUTA = "android/app/src/main/AndroidManifest.xml";
   if (!existsSync(RUTA)) return;

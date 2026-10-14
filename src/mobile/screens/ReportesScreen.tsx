@@ -1,7 +1,7 @@
 "use client";
 
 import { MARCA } from "@/lib/theme";
-import { fmtIso, gs, haceDias, hoyIso, inicioDeMes } from "@/lib/format";
+import { fmtIso, gs, haceDias, hoyIso, inicioDeAnio, inicioDeMes } from "@/lib/format";
 import { buildReport } from "@/lib/reportes";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
@@ -11,7 +11,7 @@ import { useApp } from "@/store/AppContext";
 import { motivoBloqueo } from "@/lib/planes";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
-import { Card, ScrollBody, SectionLabel } from "../ui/primitives";
+import { Card, EmptyState, ScrollBody, SectionLabel } from "../ui/primitives";
 
 const AZUL = MARCA.header;
 const VIOLETA = MARCA.headerSuave;
@@ -38,27 +38,44 @@ export function ReportesScreen() {
   const recargar = s.rTab === "ventas" ? rV : s.rTab === "compras" ? rC : rI;
 
   const m = buildReport(s.rTab, s.rDesde, s.rHasta, { ventas, compras, productos });
-  const hayDatos = true;
+
+  /**
+   * Si el rango elegido tiene algo que mostrar.
+   *
+   * Esto era `true` fijo. Con un rango sin ventas se dibujaba el reporte
+   * entero en cero: barras vacías, total ₲0, ranking en blanco. Y queda igual
+   * que un reporte roto, así que lo primero que uno piensa es que la app falla
+   * —no que no hubo ventas en esos días—. Ahora se dice cuál de las dos cosas
+   * es.
+   *
+   * Para inventario el corte es distinto: no depende del rango, depende de que
+   * haya productos cargados.
+   */
+  const hayDatos = s.rTab === "inventario" ? productos.length > 0 : m.total > 0;
 
   const trackBg = s.theme === "oscuro" ? "#242c40" : "#E7ECF2";
   const tabla = m.tabla;
 
-  const presets: [string, number][] = [
-    ["Hoy", 1],
-    ["7 días", 7],
-    ["30 días", 30],
-    ["Este mes", 0],
+  /**
+   * Los rangos rápidos.
+   *
+   * Eran Hoy / 7 días / 30 días / Este mes, y "30 días" y "Este mes" se pisan:
+   * a mitad de mes son casi lo mismo, y los dos juntos ocupaban el lugar del
+   * que falta de verdad, que es el año. Ahora va de lo chico a lo grande sin
+   * repetirse.
+   */
+  const presets: { label: string; desde: () => string }[] = [
+    { label: "Hoy", desde: hoyIso },
+    { label: "7 días", desde: () => haceDias(7) },
+    { label: "Este mes", desde: inicioDeMes },
+    { label: "Este año", desde: inicioDeAnio },
   ];
 
-  const aplicarPreset = (label: string, dias: number) => {
+  const aplicarPreset = (p: { label: string; desde: () => string }) => {
     // Contado desde hoy. Estaba clavado al 30 de septiembre de 2026, de cuando
     // los datos eran de ejemplo: "Hoy" mostraba un día de hace meses y el
     // reporte salía vacío sin que se entendiera por qué.
-    set({
-      rPreset: label,
-      rDesde: label === "Este mes" ? inicioDeMes() : haceDias(dias),
-      rHasta: hoyIso(),
-    });
+    set({ rPreset: p.label, rDesde: p.desde(), rHasta: hoyIso() });
   };
 
   /** El rango aplicado, en palabras. Dos fechas ISO no se leen de un vistazo. */
@@ -222,12 +239,13 @@ export function ReportesScreen() {
         ) : (
           <>
         <div className="zt-no-scrollbar" style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-          {presets.map(([label, dias]) => {
+          {presets.map((p) => {
+            const { label } = p;
             const on = s.rPreset === label;
             return (
               <button
                 key={label}
-                onClick={() => aplicarPreset(label, dias)}
+                onClick={() => aplicarPreset(p)}
                 style={{
                   flex: "0 0 auto",
                   borderRadius: 999,
@@ -288,8 +306,28 @@ export function ReportesScreen() {
       </div>
 
       <ScrollBody padding="14px" gap={12}>
-        {hayDatos && cargando && <Cargando t={t} que="el reporte" />}
-        {hayDatos && !cargando && error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+        {cargando && <Cargando t={t} que="el reporte" />}
+        {!cargando && error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
+
+        {/* Ni cargando ni roto: simplemente no hubo movimiento. Se nombra el
+            rango para que se entienda qué se preguntó, que es justo lo que
+            falta cuando uno mira un reporte en cero. */}
+        {!cargando && !error && !hayDatos && (
+          <EmptyState
+            titulo={
+              s.rTab === "inventario"
+                ? "Todavía no hay productos"
+                : s.rTab === "ventas"
+                  ? "No hubo ventas en este período"
+                  : "No hubo compras en este período"
+            }
+            detalle={
+              s.rTab === "inventario"
+                ? "Cargá productos en Inventario y el reporte se arma solo."
+                : `${rangoEnPalabras}. Probá con un rango más amplio: tocá “Este mes” o “Este año”.`
+            }
+          />
+        )}
 
         {hayDatos && !cargando && !error && (
           <>

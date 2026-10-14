@@ -214,6 +214,25 @@ jobs:
           print("OK: el APK lleva el icono adaptativo.")
           PY
 
+      # El ícono de la barra de estado. Sin él, Android aplasta el ícono de la
+      # app a una silueta y en la barra queda un cuadrado blanco macizo.
+      - name: Verificar que el APK lleva el icono de notificacion
+        run: |
+          python3 - <<'PY'
+          import sys, zipfile
+          apk = "android/app/build/outputs/apk/debug/app-debug.apk"
+          with zipfile.ZipFile(apk) as z:
+              nombres = z.namelist()
+          hay = [n for n in nombres if "ic_stat_zentra" in n]
+          if not hay:
+              sys.exit(
+                  "ERROR: el APK no lleva ic_stat_zentra.\n"
+                  "Las notificaciones van a salir con un cuadrado blanco en la barra.\n"
+                  "Mirá iconoDeNotificacion() en scripts/android-init.mjs."
+              )
+          print("OK: el APK lleva el icono de notificacion (" + str(len(hay)) + " densidades).")
+          PY
+
       # Que esté firmado con NUESTRA llave y no con una que Gradle invente.
       #
       # Android no deja instalar un APK encima de otro del mismo paquete firmado

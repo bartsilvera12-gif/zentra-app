@@ -58,6 +58,11 @@ export function inicioDeMes(): string {
   return isoOf(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
+/** El 1 de enero del año en curso. */
+export function inicioDeAnio(): string {
+  return isoOf(new Date(new Date().getFullYear(), 0, 1));
+}
+
 /** Seconds → `m:ss`, for the voice-note timer. */
 export function fmtSeg(n: number): string {
   return Math.floor(n / 60) + ":" + String(n % 60).padStart(2, "0");
