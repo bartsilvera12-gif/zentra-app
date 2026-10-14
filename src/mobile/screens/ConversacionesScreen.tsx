@@ -16,7 +16,7 @@ import {
 import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
-import { alFinal, debeBajarAlAbrir, resumenDeMensaje, vaSinGlobo } from "@/lib/hilo";
+import { alFinal, debeBajarAlAbrir, marcaLocal, resumenDeMensaje, vaSinGlobo } from "@/lib/hilo";
 import { colorAvatar } from "@/lib/avatar";
 import { TODAS, colasDe, enCola } from "@/lib/colas";
 import { FichaChatPanel } from "./FichaChatPanel";
@@ -356,7 +356,7 @@ const ICONO_ADJUNTO: Record<string, React.ReactNode> = {
 };
 
 export function ConversacionesScreen() {
-  const { s, t, set, abrirChat, pushMsg, startGrab, stopGrab } = useApp();
+  const { s, t, set, abrirChat, pushMsg, quitarMsg, startGrab, stopGrab } = useApp();
   // El chat tiene su propio juego de colores: acá el fondo del globo dice de
   // qué lado está el mensaje, así que no sale del tema general.
   const ch = s.theme === "oscuro" ? CHAT.oscuro : CHAT.claro;
@@ -764,7 +764,9 @@ export function ConversacionesScreen() {
         return;
       }
       await repo.chats.enviar(det.id, { de: "yo", texto });
-      pushMsg(det.id, { de: "yo", texto, hora: new Date().toTimeString().slice(0, 5), tick: "✓" });
+      // Sin globo propio: el envío ya terminó, así que el del ERP llega
+      // enseguida con su hora y su tilde.
+      await refrescarChat();
     } catch (e) {
       set({ xEnvioError: e instanceof Error ? e.message : "No pudimos tomar tu ubicación." });
     }
@@ -799,10 +801,13 @@ export function ConversacionesScreen() {
     // viene, y esperar la respuesta del servidor para ver lo que uno escribió
     // hace sentir que la app se colgó.
     const hora = new Date().toTimeString().slice(0, 5);
-    pushMsg(det.id, {
+    const chatId = det.id;
+    const localId = marcaLocal();
+    pushMsg(chatId, {
       de: "yo",
       texto,
       hora,
+      localId,
       tick: conErp ? "…" : "✓",
       ...(cita ? { cita: { texto: cita.texto, mio: cita.mio } } : {}),
     });
@@ -810,8 +815,14 @@ export function ConversacionesScreen() {
     if (!conErp) return;
 
     repo.chats
-      .enviar(det.id, { de: "yo", texto }, cita)
-      .then(() => set({ xEnvioError: "" }))
+      .enviar(chatId, { de: "yo", texto }, cita)
+      .then(async () => {
+        set({ xEnvioError: "" });
+        // El del ERP viene con su hora y su tilde de verdad; el provisorio se
+        // saca recién después, para que no parpadee.
+        await refrescarChat();
+        quitarMsg(chatId, localId);
+      })
       .catch((e: unknown) => {
         // Si no salió hay que decirlo: un mensaje que se ve en la pantalla y
         // nunca llegó es peor que un error, porque el vendedor se queda
@@ -826,16 +837,38 @@ export function ConversacionesScreen() {
    * Se muestra enseguida y se sube en paralelo, igual que el texto: una foto
    * puede tardar varios segundos y la pantalla no puede quedarse quieta.
    */
-  const subir = (archivo: File | Blob, nombre: string, vistaPrevia: ChatMsg) => {
+  /**
+   * Manda el archivo y limpia el globo provisorio cuando llega el de verdad.
+   *
+   * El provisorio existe para que algo aparezca en el acto: una foto de 3 MB
+   * tarda en subir y una pantalla que no cambia parece colgada. Pero antes no
+   * se iba nunca —nada lo borraba— así que al volver el del ERP el mensaje
+   * quedaba dos veces: la tarjeta gris y abajo la miniatura.
+   *
+   * Se saca DESPUÉS de refrescar, no antes: si se sacara al recibir el "ok",
+   * el hilo todavía no tendría el mensaje del servidor y el globo
+   * parpadearía.
+   */
+  const subir = async (archivo: File | Blob, nombre: string, vistaPrevia: ChatMsg) => {
     if (!det) return;
-    pushMsg(det.id, { ...vistaPrevia, tick: conErp ? "…" : "✓" });
+    const chatId = det.id;
+    const localId = marcaLocal();
+    pushMsg(chatId, { ...vistaPrevia, localId, tick: conErp ? "…" : "✓" });
     if (!conErp) return;
-    repo.chats
-      .enviarArchivo(det.id, archivo, nombre)
-      .then(() => set({ xEnvioError: "" }))
-      .catch((e: unknown) =>
-        set({ xEnvioError: e instanceof Error ? e.message : "No se pudo enviar el archivo." }),
-      );
+    try {
+      // Las fotos van achicadas: lo que sale del teléfono pesa 3 o 4 MB y el
+      // camino nativo le suma un tercio al codificarlo.
+      const { achicarImagen } = await import("@/lib/imagen");
+      const liviano = await achicarImagen(archivo, nombre);
+      await repo.chats.enviarArchivo(chatId, liviano.archivo, liviano.nombre);
+      set({ xEnvioError: "" });
+      // Enseguida y no en el próximo latido: ocho segundos mirando una
+      // tarjeta gris cuando el mensaje ya salió se sienten eternos.
+      await refrescarChat();
+      quitarMsg(chatId, localId);
+    } catch (e) {
+      set({ xEnvioError: e instanceof Error ? e.message : "No se pudo enviar el archivo." });
+    }
   };
 
   /** Abre el selector del celular. `captura` usa la cámara directo. */
@@ -848,15 +881,23 @@ export function ConversacionesScreen() {
       const f = input.files?.[0];
       if (!f) return;
       const esImagen = /^image\//.test(f.type);
-      subir(f, f.name, {
+      // Una foto se muestra como foto desde el primer momento. Antes se veía
+      // la tarjeta gris con el nombre del archivo hasta que volvía del ERP, y
+      // recién ahí aparecía la miniatura: parecía que se había mandado otra
+      // cosa. La URL es local, del archivo que está en el teléfono.
+      void subir(f, f.name, {
         de: "yo",
         hora: new Date().toTimeString().slice(0, 5),
         texto: "",
-        archivo: {
-          tag: esImagen ? "IMG" : (f.name.split(".").pop() || "DOC").toUpperCase().slice(0, 4),
-          nombre: f.name,
-          peso: `${esImagen ? "Imagen" : "Archivo"} · ${Math.max(1, Math.round(f.size / 1024))} KB`,
-        },
+        ...(esImagen
+          ? { imagen: URL.createObjectURL(f) }
+          : {
+              archivo: {
+                tag: (f.name.split(".").pop() || "DOC").toUpperCase().slice(0, 4),
+                nombre: f.name,
+                peso: `Archivo · ${Math.max(1, Math.round(f.size / 1024))} KB`,
+              },
+            }),
       });
     };
     input.click();
@@ -888,7 +929,7 @@ export function ConversacionesScreen() {
     const grabado = await g.detener();
     // Un toque sin querer no manda un audio vacío.
     if (!grabado) return;
-    subir(grabado.blob, grabado.nombre, {
+    void subir(grabado.blob, grabado.nombre, {
       de: "yo",
       hora: new Date().toTimeString().slice(0, 5),
       texto: "",
@@ -915,7 +956,11 @@ export function ConversacionesScreen() {
 
     // La reacción no es un mensaje: es un emoji suelto, chico, del lado de
     // quien reaccionó. Antes se veía un globo que decía "[reaction]".
-    if (m.reaccion) {
+    // Una reacción que no se pudo colgar de su mensaje —el reaccionado quedó
+    // fuera del tramo que trajo el ERP— se dibuja suelta, como antes. Y la
+    // retirada, que viaja con el emoji vacío, no se dibuja.
+    if (m.reaccion !== undefined) {
+      if (!m.reaccion) return null;
       // De qué lado va: del mensaje reaccionado, no de quien reaccionó. Ese era
       // el descuadre — un pulgar que un cliente le ponía a mi mensaje aparecía
       // a la izquierda, lejos del globo del que cuelga.
@@ -1294,6 +1339,34 @@ export function ConversacionesScreen() {
             </span>
           )}
         </div>
+
+        {/* Las reacciones cuelgan del globo, mordiéndole el borde de abajo:
+            es como se ven en WhatsApp y es lo que dice a qué le reaccionaron.
+            Antes iban en una fila propia al final del hilo y encima del lado
+            de quien reaccionó, así que un corazón mío a un mensaje del cliente
+            aparecía a la derecha, lejos del mensaje. */}
+        {!!m.reacciones?.length && (
+          <span
+            style={{
+              display: "flex",
+              gap: 3,
+              marginTop: -9,
+              marginRight: mio ? 10 : 0,
+              marginLeft: mio ? 0 : 10,
+              padding: "3px 6px",
+              borderRadius: 999,
+              background: t.card,
+              border: `1px solid ${t.border}`,
+              boxShadow: "0 1px 3px rgba(0,0,0,.18)",
+              font: "400 14px/1 var(--font-barlow),Barlow,sans-serif",
+              zIndex: 1,
+            }}
+          >
+            {m.reacciones.map((e, j) => (
+              <span key={j}>{e}</span>
+            ))}
+          </span>
+        )}
       </div>
     );
   };

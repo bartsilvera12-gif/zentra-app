@@ -7,7 +7,7 @@
  * todo, y otra cuando el refresco automático empezó a tirar la vista al final
  * mientras alguien leía historial.
  */
-import { alFinal, citaDe, debeBajarAlAbrir, resolverCitas, resumenDeMensaje, vaSinGlobo } from "../src/lib/hilo.ts";
+import { alFinal, citaDe, debeBajarAlAbrir, marcaLocal, pegarReacciones, resolverCitas, resumenDeMensaje, vaSinGlobo } from "../src/lib/hilo.ts";
 
 const casos = [];
 const t = (n, f) => casos.push([n, f]);
@@ -135,6 +135,58 @@ t("la segunda pasada completa la cita con el mensaje del hilo", () => {
 t("una cita a un mensaje que no está en el tramo se descarta", () => {
   const hilo = resolverCitas([{ de: "yo", hora: "10:01", texto: "ok", citaPendiente: "wamid.ZZZ" }]);
   if (hilo[0].cita) throw new Error("una cita vacía confunde más que ninguna");
+});
+
+t("dos globos provisorios del mismo instante no comparten marca", () => {
+  // Una foto y su pie salen en el mismo milisegundo: si compartieran marca,
+  // sacar uno sacaría el otro.
+  if (marcaLocal() === marcaLocal()) throw new Error("la marca se repite");
+});
+
+t("la reaccion se cuelga del mensaje reaccionado y la fila suelta se va", () => {
+  const hilo = pegarReacciones([
+    { de: "ellos", hora: "13:52", texto: "muchisimas gracias", wamid: "wamid.A" },
+    { de: "yo", hora: "13:53", reaccion: "\u2764\uFE0F", reaccionSobre: "wamid.A" },
+  ]);
+  if (hilo.length !== 1) throw new Error("quedó la fila suelta de la reacción");
+  if (hilo[0].reacciones?.[0] !== "\u2764\uFE0F") throw new Error("la reacción no quedó en el mensaje");
+});
+
+t("sacar la reaccion la saca de la app", () => {
+  // WhatsApp avisa con una fila de reacción con el emoji vacío.
+  const hilo = pegarReacciones([
+    { de: "ellos", hora: "13:52", texto: "gracias", wamid: "wamid.A" },
+    { de: "yo", hora: "13:53", reaccion: "\u2764\uFE0F", reaccionSobre: "wamid.A" },
+    { de: "yo", hora: "13:54", reaccion: "", reaccionSobre: "wamid.A" },
+  ]);
+  if (hilo.length !== 1) throw new Error("quedaron filas sueltas");
+  if (hilo[0].reacciones) throw new Error("la reacción retirada sigue puesta");
+});
+
+t("cambiar de emoji no deja los dos", () => {
+  const hilo = pegarReacciones([
+    { de: "ellos", hora: "13:52", texto: "gracias", wamid: "wamid.A" },
+    { de: "yo", hora: "13:53", reaccion: "\u{1F44D}", reaccionSobre: "wamid.A" },
+    { de: "yo", hora: "13:54", reaccion: "\u2764\uFE0F", reaccionSobre: "wamid.A" },
+  ]);
+  if (hilo[0].reacciones?.length !== 1) throw new Error("quedaron dos emojis del mismo lado");
+  if (hilo[0].reacciones[0] !== "\u2764\uFE0F") throw new Error("se quedó con el viejo");
+});
+
+t("cada lado tiene la suya", () => {
+  const hilo = pegarReacciones([
+    { de: "ellos", hora: "13:52", texto: "gracias", wamid: "wamid.A" },
+    { de: "yo", hora: "13:53", reaccion: "\u2764\uFE0F", reaccionSobre: "wamid.A" },
+    { de: "ellos", hora: "13:54", reaccion: "\u{1F44D}", reaccionSobre: "wamid.A" },
+  ]);
+  if (hilo[0].reacciones?.length !== 2) throw new Error("se pisaron entre lados");
+});
+
+t("si el mensaje reaccionado no esta, la reaccion se sigue viendo", () => {
+  // Quedó fuera del tramo que trajo el ERP: mostrarla suelta es menos malo
+  // que perderla.
+  const hilo = pegarReacciones([{ de: "yo", hora: "13:53", reaccion: "\u2764\uFE0F", reaccionSobre: "wamid.NOESTA" }]);
+  if (hilo.length !== 1 || !hilo[0].reaccion) throw new Error("se perdió la reacción");
 });
 
 let malas = 0;

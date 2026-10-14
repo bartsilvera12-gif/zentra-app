@@ -174,3 +174,69 @@ export function resolverCitas(msgs: MensajeMapeado[]): ChatMsg[] {
  * lo único que tiene ese texto, y para eso hacen falta todos los mensajes.
  */
 export type MensajeMapeado = ChatMsg & { citaPendiente?: string };
+
+let nLocal = 0;
+
+/**
+ * Una marca para el globo que la app dibuja antes de que el ERP conteste.
+ *
+ * Es lo único que permite sacarlo después, cuando el mensaje vuelve del
+ * servidor: sin marca no hay forma de saber cuál de los globos del hilo era el
+ * provisorio, y quedaban los dos.
+ *
+ * Lleva el reloj y un contador porque dos mensajes seguidos pueden salir en el
+ * mismo milisegundo —una foto y su pie, por ejemplo—.
+ */
+export function marcaLocal(): string {
+  nLocal += 1;
+  return `local-${Date.now()}-${nLocal}`;
+}
+
+/**
+ * Cuelga cada reacción del mensaje al que reacciona.
+ *
+ * WhatsApp manda la reacción como una fila más del hilo, así que la app la
+ * dibujaba como una fila más: un emoji suelto al final de la conversación,
+ * alineado por quien reaccionó. Si yo le ponía un corazón a lo que escribió el
+ * cliente, el corazón aparecía a la derecha —mi lado— y lejos del mensaje. No
+ * se entendía a qué le había reaccionado.
+ *
+ * Ahora la reacción entra adentro del mensaje reaccionado, que es donde se
+ * dibuja, y la fila suelta desaparece.
+ *
+ * Una reacción por persona, la última: así funciona WhatsApp, y así llegan
+ * —cambiar de emoji manda otra fila, y sacarla manda una con el emoji vacío—.
+ * Si el mensaje reaccionado no está en el tramo que trajo el ERP, la fila se
+ * deja como estaba: mostrar el emoji suelto es menos malo que perderlo.
+ */
+export function pegarReacciones(msgs: ChatMsg[]): ChatMsg[] {
+  // De cada mensaje, qué puso cada lado. Map para conservar el orden en que
+  // llegaron.
+  const porMensaje = new Map<string, Map<string, string>>();
+  for (const m of msgs) {
+    if (m.reaccion === undefined || !m.reaccionSobre) continue;
+    const quien = m.de;
+    const suyas = porMensaje.get(m.reaccionSobre) ?? new Map<string, string>();
+    if (m.reaccion) suyas.set(quien, m.reaccion);
+    else suyas.delete(quien);
+    porMensaje.set(m.reaccionSobre, suyas);
+  }
+
+  // Qué mensajes están de verdad en el tramo: una reacción a uno que quedó
+  // afuera no se puede colgar de ningún lado.
+  const presentes = new Set<string>();
+  for (const m of msgs) if (m.wamid && m.reaccion === undefined) presentes.add(m.wamid);
+
+  const salida: ChatMsg[] = [];
+  for (const m of msgs) {
+    // La fila de reacción se va, salvo que no se haya podido ubicar.
+    if (m.reaccion !== undefined && m.reaccionSobre) {
+      if (presentes.has(m.reaccionSobre)) continue;
+      // Sin mensaje del que colgar: si era una retirada, no se dibuja nada.
+      if (!m.reaccion) continue;
+    }
+    const puestas = m.wamid ? [...(porMensaje.get(m.wamid)?.values() ?? [])] : [];
+    salida.push(puestas.length ? { ...m, reacciones: puestas } : m);
+  }
+  return salida;
+}

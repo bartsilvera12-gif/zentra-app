@@ -203,6 +203,15 @@ export interface ChatMsg {
    * los mensajes que todavía no salieron (los que están "enviando").
    */
   wamid?: string;
+  /**
+   * Marca del globo que la app dibujó por su cuenta, antes de que el ERP
+   * confirmara el envío. No existe en los mensajes del ERP.
+   *
+   * Sirve para sacarlo cuando llega el de verdad: sin esto el mensaje quedaba
+   * dos veces en el hilo —el provisorio y el del servidor— y el provisorio no
+   * se iba más, porque nada lo borraba.
+   */
+  localId?: string;
   texto?: string;
   hora: string;
   /** `"✓"` salió, `"✓✓"` llegó. Sólo en los míos. */
@@ -249,6 +258,16 @@ export interface ChatMsg {
    */
   cita?: { texto: string; mio: boolean };
   reaccion?: string;
+  /**
+   * El mensaje al que reacciona, por su id de WhatsApp.
+   *
+   * Con esto la reacción se pega al globo que corresponde. Sin esto quedaba
+   * suelta abajo de todo y, peor, del lado equivocado: se alineaba por quien
+   * reaccionó y no por de quién era el mensaje reaccionado.
+   */
+  reaccionSobre?: string;
+  /** Las reacciones que cuelgan de ESTE mensaje, ya resueltas contra el hilo. */
+  reacciones?: string[];
   /**
    * De qué lado se dibuja la reacción: la del mensaje al que reacciona, no la
    * de quien reaccionó. Si un cliente le pone un pulgar a algo que escribí yo,

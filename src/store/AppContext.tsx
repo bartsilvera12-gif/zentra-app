@@ -50,6 +50,8 @@ interface AppApi {
   kRotarIva: (i: number) => void;
   abrirChat: (id: string) => void;
   pushMsg: (id: string, msg: ChatMsg) => void;
+  /** Saca el globo provisorio, cuando el del ERP ya está en el hilo. */
+  quitarMsg: (id: string, localId: string) => void;
   /** El contexto para `motivoBloqueo`, ya con el plan y si hay ERP. */
   plan: (extra?: Partial<Contexto>) => Contexto;
   /** Replay the dashboard's grow-in animation. */
@@ -322,6 +324,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  /**
+   * Saca un globo provisorio del hilo.
+   *
+   * Se llama cuando el mensaje ya volvió del ERP: si no, quedaban los dos, el
+   * dibujado a mano y el de verdad, y el primero no se iba nunca porque nadie
+   * lo borraba. Una foto se veía dos veces: la tarjeta gris y abajo la
+   * miniatura.
+   */
+  const quitarMsg = useCallback((id: string, localId: string) => {
+    setS((prev) => {
+      const hay = prev.xEnviados[id];
+      if (!hay?.some((m) => m.localId === localId)) return prev;
+      return {
+        ...prev,
+        xEnviados: { ...prev.xEnviados, [id]: hay.filter((m) => m.localId !== localId) },
+      };
+    });
+  }, []);
+
   const go = useCallback((k: ModuleKey) => {
     // Only "venta" has a real screen of its own; the rest fall back to the
     // placeholder module screen unless they have a dedicated entry point.
@@ -362,6 +383,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       kRotarIva,
       abrirChat,
       pushMsg,
+      quitarMsg,
       runDash,
       cerrarSesion,
       startGrab,
@@ -369,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       go,
       elegirInstalacion,
     }),
-    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, runDash, cerrarSesion, startGrab, stopGrab, go, elegirInstalacion, plan],
+    [s, set, qty, rotarIva, kQty, kRotarIva, abrirChat, pushMsg, quitarMsg, runDash, cerrarSesion, startGrab, stopGrab, go, elegirInstalacion, plan],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

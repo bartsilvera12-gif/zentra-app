@@ -19,7 +19,7 @@
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
 import { norm } from "../format";
-import { citaDe, resolverCitas, type MensajeMapeado } from "../hilo";
+import { citaDe, pegarReacciones, resolverCitas, type MensajeMapeado } from "../hilo";
 import { buildReport } from "../reportes";
 import { hayTenantActivo, sb, tenantEnUso } from "../supabase/client";
 import type {
@@ -1084,7 +1084,7 @@ function urlEnElTexto(texto: string | null | undefined): string | null {
  */
 function datosDeReaccion(
   raw: Record<string, unknown> | null | undefined,
-): { emoji: string; sobreMio: boolean | null } | null {
+): { emoji: string; sobreMio: boolean | null; sobre: string } | null {
   for (const r of raicesDelSobre(raw)) {
     const reaccion = r.reaction;
     if (!reaccion || typeof reaccion !== "object" || Array.isArray(reaccion)) continue;
@@ -1096,12 +1096,26 @@ function datosDeReaccion(
     // había antes: peor que esto, pero es lo único que queda.
     const key = obj.key;
     let sobreMio: boolean | null = null;
+    let sobre = "";
     if (key && typeof key === "object" && !Array.isArray(key)) {
-      const k = key as { fromMe?: unknown; from_me?: unknown };
+      const k = key as { fromMe?: unknown; from_me?: unknown; id?: unknown; message_id?: unknown };
       const v = typeof k.fromMe === "boolean" ? k.fromMe : typeof k.from_me === "boolean" ? k.from_me : null;
       if (v !== null) sobreMio = v;
+      // El id del mensaje reaccionado: con esto la reacción se cuelga del globo
+      // que corresponde en vez de quedar suelta al final del hilo.
+      sobre = primero(
+        typeof k.id === "string" ? k.id : null,
+        typeof k.message_id === "string" ? k.message_id : null,
+      );
     }
-    return { emoji: crudo.trim(), sobreMio };
+    if (!sobre) {
+      const o = obj as { message_id?: unknown; wa_message_id?: unknown };
+      sobre = primero(
+        typeof o.message_id === "string" ? o.message_id : null,
+        typeof o.wa_message_id === "string" ? o.wa_message_id : null,
+      );
+    }
+    return { emoji: crudo.trim(), sobreMio, sobre };
   }
   return null;
 }
@@ -1490,14 +1504,17 @@ function aMensaje(m: MensajeErp): MensajeMapeado | null {
   if (tipo.includes("reaction")) {
     const datos = datosDeReaccion(m.raw_payload);
     const emoji = (datos?.emoji || sinMarcador(m.content) || "").trim();
-    // Reacción retirada: no se dibuja nada.
-    if (!emoji) return null;
+    // Reacción retirada: WhatsApp la manda con el emoji vacío. Antes se
+    // descartaba acá, y por eso sacar una reacción del teléfono no la sacaba de
+    // la app: la fila que avisa es justamente esta. Viaja vacía y la segunda
+    // pasada la usa para borrar la que estaba puesta.
     return {
       ...base,
       reaccion: emoji,
       // De qué lado va: del mensaje reaccionado. Si el sobre no lo dice, del
       // lado de quien reaccionó, que es lo único que se sabe.
       reaccionSobreMio: datos?.sobreMio ?? base.de === "yo",
+      ...(datos?.sobre ? { reaccionSobre: datos.sobre } : {}),
     };
   }
 
@@ -2171,7 +2188,7 @@ export const httpRepo: Repo = {
           enLinea: false,
           hora: "",
           noLeidos: 0,
-          msgs: resolverCitas(msgs.map(aMensaje).filter((x): x is MensajeMapeado => x !== null)),
+          msgs: pegarReacciones(resolverCitas(msgs.map(aMensaje).filter((x): x is MensajeMapeado => x !== null))),
         };
       } catch (e) {
         if (e instanceof ApiError && e.status !== 401 && e.status !== 403 && e.status !== 404) throw e;
@@ -2190,8 +2207,8 @@ export const httpRepo: Repo = {
         enLinea: false,
         hora: "",
         noLeidos: 0,
-        msgs: resolverCitas(
-          (r.messages ?? []).map(aMensaje).filter((x): x is MensajeMapeado => x !== null),
+        msgs: pegarReacciones(
+          resolverCitas((r.messages ?? []).map(aMensaje).filter((x): x is MensajeMapeado => x !== null)),
         ),
       };
     },
