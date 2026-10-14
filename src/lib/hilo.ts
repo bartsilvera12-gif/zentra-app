@@ -1,9 +1,10 @@
 /**
- * Cuándo mover la vista del hilo de mensajes.
+ * Decisiones chicas del hilo de mensajes.
  *
- * Son dos decisiones chicas y las dos ya fallaron una vez, así que viven acá
- * afuera donde se pueden probar sin navegador.
+ * Todas ya fallaron alguna vez en el teléfono, así que viven acá afuera donde
+ * se pueden probar sin navegador.
  */
+import type { ChatMsg } from "./types";
 
 /** Lo que hace falta saber de la caja que scrollea. */
 export interface Caja {
@@ -41,4 +42,24 @@ export function debeBajarAlAbrir(
   if (!chatId) return false;
   if (bajadoPara === chatId) return false;
   return mensajes > 0;
+}
+
+/**
+ * Si el mensaje va SIN globo alrededor.
+ *
+ * Una foto sola, o un sticker: el marco no agrega nada y le roba ancho, que en
+ * un celular es lo que falta.
+ *
+ * Pero una foto CON texto sí lleva globo, y ese era el error: el pie de una
+ * foto de WhatsApp no viaja en `texto` sino en `epigrafe`, así que una foto con
+ * mensaje seguía contando como "foto sola". Resultado: la imagen y abajo el
+ * texto suelto sobre el fondo del hilo, sin globo, sin color, sin hora y sin
+ * tilde — se veía como si la app se hubiera roto a la mitad del chat.
+ */
+export function vaSinGlobo(m: ChatMsg): boolean {
+  if (m.sticker) return true;
+  const hayMedio = !!(m.imagen || m.video);
+  if (!hayMedio) return false;
+  const hayAlgoMas = !!(m.texto || m.epigrafe || m.archivo || m.audio || m.audioUrl || m.pedido);
+  return !hayAlgoMas;
 }

@@ -16,7 +16,7 @@ import {
 import { repo, SinCola, TANDA_CHATS, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
-import { alFinal, debeBajarAlAbrir } from "@/lib/hilo";
+import { alFinal, debeBajarAlAbrir, vaSinGlobo } from "@/lib/hilo";
 import { colorAvatar } from "@/lib/avatar";
 import { TODAS, colasDe, enCola } from "@/lib/colas";
 import { FichaChatPanel } from "./FichaChatPanel";
@@ -771,10 +771,9 @@ export function ConversacionesScreen() {
   const burbuja = (m: ChatMsg, i: number) => {
     const mio = m.de === "yo";
     const esSticker = !!m.sticker;
-    // Una foto sola va sin globo: el marco alrededor de una imagen no agrega
-    // nada y le roba ancho, que en un celular es lo que falta.
-    const soloFoto = !!(m.imagen || m.video) && !m.texto && !m.archivo && !m.audio && !m.pedido;
-    const desnudo = esSticker || soloFoto;
+    // Una foto sola va sin globo; una foto con pie, no. La regla está en
+    // lib/hilo con sus pruebas: acá adentro ya se escribió mal una vez.
+    const desnudo = vaSinGlobo(m);
 
     // La reacción no es un mensaje: es un emoji suelto, chico, del lado de
     // quien reaccionó. Antes se veía un globo que decía "[reaction]".
