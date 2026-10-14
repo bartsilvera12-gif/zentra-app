@@ -37,6 +37,12 @@ export function decidirAtras(s: AppState): Parche | "fondo" {
   // visor queda encima de la lista.
   if (s.xVisor) return { xVisor: null };
 
+  // La hoja de transferir se abre encima de la ficha, así que cierra primero.
+  // Las dos tapan el chat: sin esto, "atrás" volvía a la lista y el panel
+  // quedaba flotando sobre una conversación que ya no era la de abajo.
+  if (s.xTransferir) return { xTransferir: null };
+  if (s.xFicha) return { xFicha: null };
+
   // Citar un mensaje para responder es lo último que se abrió después del
   // visor: "atrás" lo cancela antes de salir del chat.
   if (s.xCita) return { xCita: null };

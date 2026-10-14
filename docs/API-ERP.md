@@ -162,6 +162,41 @@ al asesor. Por eso una administradora veía "no hay conversaciones para vos" en
 la app mientras en el ERP las tenía todas delante: no está en ninguna cola, y
 ese endpoint filtra por cola.
 
+### La ficha del contacto y transferir: ya están, no hay que tocar nada
+
+Dos endpoints que el ERP ya expone con `Authorization: Bearer` y que la app usa
+tal cual:
+
+```
+GET  /api/chat/contactos/ficha?conversation_id=<uuid>
+     → { ok, ficha: { contacto, cliente, proyectos, ultima_tipificacion,
+                      conversaciones, linea_tiempo, notas } }
+
+GET  /api/mobile/asesor/conversations/<id>/transfer
+     → { ok, queues, agents }
+POST /api/mobile/asesor/conversations/<id>/transfer
+     ← { queue_id } | { agent_id }
+```
+
+Tres cosas que conviene saber antes de tocar la ficha:
+
+1. **Se entra por conversación, no por contacto.** El permiso se valida contra
+   un chat que la persona ya está viendo; no hay endpoint por contacto suelto.
+2. **`proyectos: null` no es "no tiene proyectos".** Es "esta persona no tiene
+   acceso al módulo de proyectos", y entonces la sección no se dibuja. El vacío
+   de verdad es `[]`. La app respeta esa diferencia.
+3. **El sobre es una cuarta forma**: `{ ok, ficha }`. Ni el array pelado de
+   `/clientes`, ni el `{ success, data }` del resto, ni el `{ ok, is_agent,
+   conversations }` de las conversaciones.
+
+La transferencia corre las **mismas acciones** que el ERP de escritorio
+(`assignConversationToAgent`, `changeConversationQueue`), así que el reparto,
+los eventos de ruteo y los avisos salen del mismo lugar: una transferencia
+hecha desde la app se ve en la web igual que una hecha ahí.
+
+Y puede transferir tanto el agente asignado como un supervisor que ve la
+conversación por su alcance omnicanal — no sólo el dueño del chat.
+
 ### Las colas: el campo que el ERP tiene que mandar
 
 La app divide el listado de conversaciones en pestañas por cola de atención,

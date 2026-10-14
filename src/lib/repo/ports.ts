@@ -10,8 +10,11 @@
  * forma que tenga el backend. El adaptador traduce de la API a estos tipos.
  */
 import type {
+  AgenteDestino,
   Chat,
   ChatMsg,
+  ColaDestino,
+  FichaChat,
   Cliente,
   Compra,
   CompraLinea,
@@ -230,6 +233,18 @@ export interface ChatsRepo {
   /** Manda un sticker de verdad, por su URL. Un emoji va como texto. */
   enviarSticker(chatId: string, url: string): Promise<ChatMsg>;
   marcarLeido(chatId: string): Promise<void>;
+  /**
+   * Quién es el contacto: cliente, proyectos, cierres anteriores y recorrido.
+   *
+   * `null` cuando el ERP no tiene ficha para esa conversación. Un error de
+   * permisos o de red se lanza: la pantalla lo dice, no lo esconde detrás de
+   * una ficha vacía.
+   */
+  ficha(chatId: string): Promise<FichaChat | null>;
+  /** A dónde se puede transferir: las colas y los agentes que esta persona alcanza. */
+  destinos(chatId: string): Promise<{ colas: ColaDestino[]; agentes: AgenteDestino[] }>;
+  /** Transferir: a una cola, o a un agente concreto. Uno de los dos. */
+  transferir(chatId: string, a: { colaId?: string; agenteId?: string }): Promise<void>;
 }
 
 /* ---------- dispositivos (notificaciones push) ---------- */

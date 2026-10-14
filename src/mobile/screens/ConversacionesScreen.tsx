@@ -16,6 +16,8 @@ import { useRemoto } from "./useRemoto";
 import { useLatido } from "./useLatido";
 import { alFinal, debeBajarAlAbrir } from "@/lib/hilo";
 import { TODAS, colasDe, enCola } from "@/lib/colas";
+import { FichaChatPanel } from "./FichaChatPanel";
+import { TransferirPanel } from "./TransferirPanel";
 import { Cargando, Falla } from "../ui/Estado";
 import { msgsDe, noLeidosDe, ondaArr, ultimoDe } from "@/lib/calc";
 import { fmtSeg, gs, norm } from "@/lib/format";
@@ -372,6 +374,9 @@ export function ConversacionesScreen() {
   const [extra, setExtra] = useState<Chat[]>([]);
   const [trayendo, setTrayendo] = useState(false);
   const [finDeLista, setFinDeLista] = useState(false);
+
+  /** A dónde se fue la última conversación transferida, para decirlo en la lista. */
+  const [transferido, setTransferido] = useState<string | null>(null);
 
   const CHATS_VIVOS = useMemo(() => {
     // Una conversación puede aparecer en dos tandas si llegó un mensaje nuevo
@@ -1180,6 +1185,39 @@ export function ConversacionesScreen() {
                 otro es si está leído— y mezclarlos en una sola fila hacía que
                 tocar "Ventas" pareciera apagar "No leídas". */}
             {chipsColas.length > 0 && <ChipRow chips={chipsColas} />}
+            {/* Una transferencia no deja rastro en pantalla: la conversación
+                desaparece de la lista y listo. Sin esto parece que se perdió. */}
+            {transferido && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  borderRadius: 11,
+                  background: `${MARCA.acento}14`,
+                  border: `1px solid ${MARCA.acento}3D`,
+                  padding: "9px 11px",
+                  font: "500 12px/1.35 var(--font-barlow),Barlow,sans-serif",
+                  color: t.ink,
+                }}
+              >
+                <span style={{ flex: 1, minWidth: 0 }}>Conversación transferida a {transferido}.</span>
+                <button
+                  onClick={() => setTransferido(null)}
+                  aria-label="Entendido"
+                  style={{
+                    flex: "0 0 auto",
+                    border: 0,
+                    background: "transparent",
+                    color: t.ink2,
+                    cursor: "pointer",
+                    font: "600 13px/1 var(--font-barlow),Barlow,sans-serif",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Sin separación entre filas y sin margen lateral: la lista es una
@@ -1431,11 +1469,28 @@ export function ConversacionesScreen() {
                 {(det.enLinea ? "En línea" : `Últ. vez ${det.hora}`) + " · " + det.tipo}
               </span>
             </div>
+            {/* Transferir y ver la ficha, los dos sobre el encabezado.
+                Transferir va sólo con el símbolo: en un teléfono dos botones
+                con texto no entran al lado de un nombre largo. */}
             <button
-              onClick={() => {
-                if (det.tipo === "Cliente") return set({ screen: "clientes", cSub: "detalle", cSel: det.refId });
-                set({ screen: "compras", kSub: "lista", kQuery: "" });
+              onClick={() => set({ xTransferir: det.id })}
+              aria-label="Transferir conversación"
+              style={{
+                flex: "0 0 auto",
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.3)",
+                background: "transparent",
+                color: "#fff",
+                cursor: "pointer",
+                font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
               }}
+            >
+              ⇄
+            </button>
+            <button
+              onClick={() => set({ xFicha: det.id })}
               style={{
                 flex: "0 0 auto",
                 borderRadius: 999,
@@ -1448,7 +1503,7 @@ export function ConversacionesScreen() {
                 whiteSpace: "nowrap",
               }}
             >
-              {det.tipo === "Cliente" ? "Ver ficha" : "Ver compras"}
+              Ficha
             </button>
           </div>
 
@@ -2016,6 +2071,31 @@ export function ConversacionesScreen() {
       {s.xSub === "lista" && <BottomNav />}
 
       {s.xVisor && <Visor src={s.xVisor.src} tipo={s.xVisor.tipo} onCerrar={() => set({ xVisor: null })} />}
+
+      {s.xFicha && (
+        <FichaChatPanel
+          chatId={s.xFicha}
+          onCerrar={() => set({ xFicha: null })}
+          onAbrirCliente={(clienteId) =>
+            set({ xFicha: null, screen: "clientes", cSub: "detalle", cSel: clienteId })
+          }
+        />
+      )}
+
+      {s.xTransferir && (
+        <TransferirPanel
+          chatId={s.xTransferir}
+          onCerrar={() => set({ xTransferir: null })}
+          onTransferido={(aDonde) => {
+            // La conversación ya no es de quien la tenía: quedarse adentro del
+            // chat sería mirar algo que dejó de ser suyo. Se vuelve a la lista
+            // y se la vuelve a pedir, que es lo que decide qué sigue visible.
+            setTransferido(aDonde);
+            set({ xTransferir: null, xFicha: null, xSub: "lista", xSel: null });
+            actualizar();
+          }}
+        />
+      )}
     </div>
   );
 }

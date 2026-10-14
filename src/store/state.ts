@@ -216,6 +216,13 @@ export interface AppState {
    */
   xVisor: { src: string; tipo: "foto" | "video" } | null;
   /**
+   * La conversación cuya ficha de contacto está abierta, y la que se está
+   * transfiriendo. Por el mismo motivo que `xVisor`: son paneles que tapan el
+   * chat, y "atrás" tiene que cerrarlos antes de salir de la conversación.
+   */
+  xFicha: string | null;
+  xTransferir: string | null;
+  /**
    * El motivo por el que algo no se puede, para mostrarlo arriba de todo.
    *
    * Vive en el estado y no en cada pantalla porque lo levantan varias: el
@@ -432,6 +439,8 @@ export const initialState: AppState = {
   xSeg: 0,
   xSub: "lista",
   xVisor: null,
+  xFicha: null,
+  xTransferir: null,
   avisoPlan: null,
   xQuery: "",
   xEnvioError: "",

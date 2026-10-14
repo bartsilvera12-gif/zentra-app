@@ -19,7 +19,23 @@
 import { config } from "../config";
 import { ivaContenido, rateOf } from "../calc";
 import { hayTenantActivo, sb, tenantEnUso } from "../supabase/client";
-import type { Chat, ChatMsg, Cliente, Compra, InvProducto, Iva, Proveedor, Venta } from "../types";
+import type {
+  AgenteDestino,
+  Chat,
+  ChatMsg,
+  Cliente,
+  ColaDestino,
+  Compra,
+  FichaChat,
+  FichaCierreChat,
+  FichaConversacionChat,
+  FichaPasoChat,
+  FichaProyectoChat,
+  InvProducto,
+  Iva,
+  Proveedor,
+  Venta,
+} from "../types";
 import type { Repo } from "./ports";
 
 export class ApiError extends Error {
@@ -909,6 +925,197 @@ function cuantosSinLeer(c: ConversacionErp): number {
   return 0;
 }
 
+/* ---------- la ficha del contacto, como la manda el ERP ---------- */
+
+/**
+ * El sobre de la ficha es una cuarta forma: `{ ok, ficha }`. Y adentro los
+ * nombres son los del ERP. Se traduce todo acá, de una vez, para que la
+ * pantalla no tenga que saber que `es_final` quiere decir "terminado" ni que
+ * `linea_tiempo` es el recorrido.
+ */
+interface FichaErp {
+  contacto?: {
+    nombre?: string | null;
+    telefono?: string | null;
+    telefono_real?: string | null;
+    es_lid?: boolean | null;
+    creado_en?: string | null;
+  } | null;
+  cliente?: {
+    id?: string | null;
+    nombre?: string | null;
+    ruc?: string | null;
+    email?: string | null;
+    telefono?: string | null;
+    ciudad?: string | null;
+    direccion?: string | null;
+  } | null;
+  proyectos?: Array<{
+    id?: string | null;
+    nombre?: string | null;
+    tipo?: string | null;
+    estado?: string | null;
+    estado_color?: string | null;
+    es_final?: boolean | null;
+    archivado?: boolean | null;
+    project_manager?: string | null;
+    responsable_tecnico?: string | null;
+  }> | null;
+  ultima_tipificacion?: {
+    estado?: string | null;
+    subestado?: string | null;
+    comentario?: string | null;
+    fecha?: string | null;
+    por?: string | null;
+    reabierta?: boolean | null;
+    es_de_esta_conversacion?: boolean | null;
+  } | null;
+  conversaciones?: Array<{
+    id?: string | null;
+    canal?: string | null;
+    cola?: string | null;
+    agente?: string | null;
+    estado?: string | null;
+    ultimo_mensaje_at?: string | null;
+    actual?: boolean | null;
+  }> | null;
+  linea_tiempo?: Array<{
+    id?: string | null;
+    fecha?: string | null;
+    tipo?: string | null;
+    accion?: string | null;
+    linea?: string | null;
+    usuario?: string | null;
+    destino?: string | null;
+  }> | null;
+  notas?: string[] | null;
+}
+
+const TIPOS_PASO: FichaPasoChat["tipo"][] = [
+  "ingreso",
+  "asignado",
+  "tomado",
+  "transferido",
+  "cola",
+  "cerrado",
+  "sistema",
+];
+
+function aFicha(f: FichaErp): FichaChat {
+  const c = f.contacto ?? {};
+  const cl = f.cliente ?? null;
+  const tip = f.ultima_tipificacion ?? null;
+
+  // El estado y el subestado se leen como una sola cosa ("Perdido · Precio"),
+  // que es como lo dice el ERP en la web. El "—" que manda cuando no hay
+  // subestado no se muestra: es un relleno de tabla, no un dato.
+  const cierre: FichaCierreChat | null = tip
+    ? {
+        estado: [primero(tip.estado) || "Cerrada", primero(tip.subestado)]
+          .filter((x) => x && x !== "—")
+          .join(" · "),
+        comentario: primero(tip.comentario) || null,
+        fecha: primero(tip.fecha) || null,
+        por: primero(tip.por) || null,
+        reabierta: tip.reabierta === true,
+        deOtraConversacion: tip.es_de_esta_conversacion === false,
+      }
+    : null;
+
+  const proyectos: FichaProyectoChat[] | null = Array.isArray(f.proyectos)
+    ? f.proyectos.map((p) => ({
+        id: String(p.id ?? ""),
+        nombre: primero(p.nombre) || "Proyecto sin nombre",
+        tipo: primero(p.tipo) || null,
+        estado: primero(p.estado) || null,
+        estadoColor: primero(p.estado_color) || null,
+        cerrado: p.archivado === true || p.es_final === true,
+        responsables:
+          [
+            primero(p.project_manager) ? `PM: ${primero(p.project_manager)}` : "",
+            primero(p.responsable_tecnico) ? `Técnico: ${primero(p.responsable_tecnico)}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+      }))
+    : null;
+
+  const conversaciones: FichaConversacionChat[] = (f.conversaciones ?? []).map((v) => ({
+    id: String(v.id ?? ""),
+    canal: primero(v.canal) || null,
+    cola: primero(v.cola) || null,
+    agente: primero(v.agente) || null,
+    abierta: v.estado !== "closed",
+    fecha: primero(v.ultimo_mensaje_at) || null,
+    actual: v.actual === true,
+  }));
+
+  const recorrido: FichaPasoChat[] = (f.linea_tiempo ?? []).map((e, i) => {
+    const tipo = TIPOS_PASO.find((x) => x === e.tipo) ?? "sistema";
+    return {
+      id: String(e.id ?? i),
+      fecha: primero(e.fecha),
+      tipo,
+      accion: primero(e.accion) || "Movimiento",
+      linea: primero(e.linea) || null,
+      usuario: primero(e.usuario) || null,
+      destino: primero(e.destino) || null,
+    };
+  });
+
+  return {
+    contacto: {
+      // El nombre no siempre está: WhatsApp manda el número y nada más hasta
+      // que alguien lo carga.
+      nombre: primero(c.nombre) || "Sin nombre",
+      telefono: primero(c.telefono),
+      esCodigoInterno: c.es_lid === true && !primero(c.telefono_real),
+      primerContacto: primero(c.creado_en) || null,
+    },
+    cliente: cl
+      ? {
+          id: String(cl.id ?? ""),
+          nombre: primero(cl.nombre) || "Cliente sin nombre",
+          ruc: primero(cl.ruc) || null,
+          email: primero(cl.email) || null,
+          telefono: primero(cl.telefono) || null,
+          ciudad: primero(cl.ciudad) || null,
+          direccion: primero(cl.direccion) || null,
+        }
+      : null,
+    proyectos,
+    cierre,
+    conversaciones,
+    recorrido,
+    notas: (f.notas ?? []).filter((n): n is string => typeof n === "string" && !!n.trim()),
+  };
+}
+
+/** Un agente destino, como lo manda el ERP. */
+interface AgenteErp {
+  id?: string | null;
+  nombre?: string | null;
+  queue_id?: string | null;
+  queue_nombre?: string | null;
+  operational_status?: string | null;
+  is_online?: boolean | null;
+  active_conversations?: number | null;
+}
+
+function aAgente(a: AgenteErp): AgenteDestino {
+  return {
+    id: String(a.id ?? ""),
+    nombre: primero(a.nombre) || "Sin nombre",
+    colaId: String(a.queue_id ?? ""),
+    colaNombre: primero(a.queue_nombre) || "Sin cola",
+    // `ready` es el único estado en el que le entran chats. Cualquier otro
+    // —`offline`, o uno nuevo que el ERP agregue— se muestra como en pausa.
+    disponible: a.operational_status === "ready",
+    enLinea: a.is_online === true,
+    activas: Number(a.active_conversations ?? 0) || 0,
+  };
+}
+
 function aChat(c: ConversacionErp): Chat {
   return {
     id: String(c.id),
@@ -1470,6 +1677,56 @@ export const httpRepo: Repo = {
 
     // El ERP marca leído solo al abrir la conversación; no hay endpoint aparte.
     async marcarLeido() {},
+
+    /**
+     * La ficha del contacto: la misma que el ERP muestra al costado del chat.
+     *
+     * Se pide por conversación y no por contacto porque así lo decidió el ERP:
+     * el permiso se valida contra un chat que la persona ya está viendo.
+     *
+     * Un 403 no es un error a mostrar en rojo: es "esta persona no puede ver
+     * esta ficha", y la pantalla lo dice con palabras. Un 404 es que el ERP no
+     * tiene ficha para esa conversación.
+     */
+    async ficha(chatId) {
+      try {
+        const r = await request<{ ok?: boolean; ficha?: unknown } | null>(
+          "/chat/contactos/ficha",
+          { query: { conversation_id: chatId } },
+        );
+        const cruda = r?.ficha;
+        if (!cruda || typeof cruda !== "object") return null;
+        return aFicha(cruda as FichaErp);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+
+    async destinos(chatId) {
+      const r = await request<{ queues?: unknown; agents?: unknown } | null>(
+        `/mobile/asesor/conversations/${encodeURIComponent(chatId)}/transfer`,
+      );
+      const colas = Array.isArray(r?.queues) ? (r.queues as Array<Record<string, unknown>>) : [];
+      const agentes = Array.isArray(r?.agents) ? (r.agents as AgenteErp[]) : [];
+      return {
+        // Una cola apagada sigue existiendo en el ERP pero no recibe nada:
+        // ofrecerla sería mandar la conversación a un lugar sin nadie.
+        colas: colas
+          .filter((q) => q.is_active !== false)
+          .map((q): ColaDestino => ({ id: String(q.id ?? ""), nombre: primero(q.nombre as string) || "Sin nombre" }))
+          .filter((q) => q.id),
+        agentes: agentes.map(aAgente).filter((a) => a.id),
+      };
+    },
+
+    async transferir(chatId, a) {
+      const cuerpo = a.agenteId ? { agent_id: a.agenteId } : { queue_id: a.colaId };
+      await request(`/mobile/asesor/conversations/${encodeURIComponent(chatId)}/transfer`, {
+        method: "POST",
+        body: JSON.stringify(cuerpo),
+      });
+    },
   },
 
   reportes: {

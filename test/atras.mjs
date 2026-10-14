@@ -83,6 +83,19 @@ t("con un mensaje citado, atrás cancela la cita y no sale del chat", () => {
   if (r.xSub !== undefined) throw new Error("además salió del chat");
 });
 
+t("con la ficha abierta, atrás cierra la ficha y no sale del chat", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", xSub: "chat", xFicha: "x1" }));
+  if (r === "fondo") throw new Error("se salió de la app");
+  if (r.xFicha !== null) throw new Error("no cerró la ficha");
+  if (r.xSub !== undefined) throw new Error("además salió del chat");
+});
+
+t("la hoja de transferir cierra antes que la ficha: se abre encima", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", xSub: "chat", xFicha: "x1", xTransferir: "x1" }));
+  if (r === "fondo" || r.xTransferir !== null) throw new Error("no cerró la hoja primero");
+  if (r.xFicha !== undefined) throw new Error("además cerró la ficha");
+});
+
 t("la foto abierta gana a la cita: está más arriba", () => {
   const r = decidirAtras(base({ screen: "conversaciones", xCita: "Hola", xVisor: { src: "u", tipo: "foto" } }));
   if (r === "fondo" || r.xVisor !== null) throw new Error("no cerró el visor primero");

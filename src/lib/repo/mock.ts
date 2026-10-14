@@ -18,7 +18,17 @@ import {
 import { ivaContenido, msgsDe, rateOf, stockDe, totalCompra } from "../calc";
 import { norm } from "../format";
 import { buildReport } from "../reportes";
-import type { Chat, ChatMsg, Cliente, Compra, InvProducto, Movimiento, Proveedor, Venta } from "../types";
+import type {
+  Chat,
+  ChatMsg,
+  Cliente,
+  Compra,
+  FichaChat,
+  InvProducto,
+  Movimiento,
+  Proveedor,
+  Venta,
+} from "../types";
 import type {
   AjusteInput,
   ClienteInput,
@@ -65,6 +75,85 @@ let sesion: Sesion | null = null;
 let seqVenta = 148;
 let seqCompra = 148;
 let seqAjuste = 32;
+
+/**
+ * Una ficha de ejemplo, armada a partir del chat.
+ *
+ * Es lo mismo que manda el ERP, con menos datos: alcanza para ver cómo queda
+ * la pantalla sin tener un ERP conectado. Los proyectos sólo se le ponen a los
+ * clientes, que es de donde salen en la realidad.
+ */
+function fichaDeEjemplo(c: Chat): FichaChat {
+  const esCliente = c.tipo === "Cliente";
+  return {
+    contacto: {
+      nombre: c.nombre,
+      telefono: "0981 123 456",
+      esCodigoInterno: false,
+      primerContacto: "2026-03-14T10:12:00Z",
+    },
+    cliente: esCliente
+      ? {
+          id: c.refId ?? "c1",
+          nombre: c.nombre,
+          ruc: "80012345-6",
+          email: "contacto@ejemplo.com.py",
+          telefono: "0981 123 456",
+          ciudad: "Asunción",
+          direccion: "Av. Mcal. López 1234",
+        }
+      : null,
+    proyectos: esCliente
+      ? [
+          {
+            id: "p1",
+            nombre: "Reposición mensual",
+            tipo: "Distribución",
+            estado: "En curso",
+            estadoColor: "#1F9D6B",
+            cerrado: false,
+            responsables: "PM: Ulises Barrios",
+          },
+          {
+            id: "p2",
+            nombre: "Apertura sucursal San Lorenzo",
+            tipo: "Proyecto",
+            estado: "Cerrado",
+            estadoColor: null,
+            cerrado: true,
+            responsables: null,
+          },
+        ]
+      : [],
+    cierre: esCliente
+      ? {
+          estado: "Ganado · Pedido cargado",
+          comentario: "Pidió 48 latas, se le facturó el mismo día.",
+          fecha: "2026-09-30T16:40:00Z",
+          por: "Sofía Giménez",
+          reabierta: true,
+          deOtraConversacion: false,
+        }
+      : null,
+    conversaciones: [
+      {
+        id: c.id,
+        canal: "WhatsApp Ventas",
+        cola: c.cola ?? null,
+        agente: "Ulises Barrios",
+        abierta: true,
+        fecha: "2026-10-14T11:38:00Z",
+        actual: true,
+      },
+    ],
+    recorrido: [
+      { id: "e1", fecha: "2026-10-14T11:30:00Z", tipo: "ingreso", accion: "Ingreso", linea: "WhatsApp Ventas", usuario: null, destino: c.cola ?? null },
+      { id: "e2", fecha: "2026-10-14T11:31:00Z", tipo: "asignado", accion: "Derivado", linea: "WhatsApp Ventas", usuario: "Automático", destino: "Ulises Barrios" },
+      { id: "e3", fecha: "2026-10-14T11:33:00Z", tipo: "tomado", accion: "Tomado", linea: "WhatsApp Ventas", usuario: "Ulises Barrios", destino: null },
+    ],
+    notas: [],
+  };
+}
 
 export const mockRepo: Repo = {
   auth: {
@@ -454,6 +543,33 @@ export const mockRepo: Repo = {
     },
 
     async marcarLeido() {
+      await demora(null);
+    },
+
+    async ficha(chatId) {
+      const c = CHATS.find((x) => x.id === chatId);
+      if (!c) return demora(null);
+      return demora(fichaDeEjemplo(c));
+    },
+
+    async destinos() {
+      return demora({
+        colas: [
+          { id: "q1", nombre: "Ventas" },
+          { id: "q2", nombre: "Compras" },
+          { id: "q3", nombre: "Cobranzas" },
+        ],
+        agentes: [
+          { id: "a1", nombre: "Ulises Barrios", colaId: "q1", colaNombre: "Ventas", disponible: true, enLinea: true, activas: 4 },
+          { id: "a2", nombre: "Sofía Giménez", colaId: "q1", colaNombre: "Ventas", disponible: true, enLinea: false, activas: 2 },
+          { id: "a3", nombre: "Ramón Núñez", colaId: "q3", colaNombre: "Cobranzas", disponible: false, enLinea: false, activas: 0 },
+        ],
+      });
+    },
+
+    // Sin ERP no hay a dónde transferir: se deja pasar para poder recorrer la
+    // pantalla, y nada cambia de lugar.
+    async transferir() {
       await demora(null);
     },
   },

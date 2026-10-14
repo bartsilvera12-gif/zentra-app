@@ -237,6 +237,120 @@ export interface Chat {
   msgs: ChatMsg[];
 }
 
+/* ---------- la ficha del contacto del chat ---------- */
+
+/**
+ * Quién es la persona del otro lado, y de dónde viene.
+ *
+ * Es la misma ficha que el ERP muestra al costado del chat en la web. No se
+ * arma en la app: la trae el ERP entero por `/chat/contactos/ficha`, porque
+ * adentro hay datos con permisos propios (los proyectos) y eso se decide en el
+ * servidor, no acá.
+ */
+export interface FichaContactoChat {
+  nombre: string;
+  telefono: string;
+  /**
+   * El "teléfono" es en realidad un código interno de WhatsApp (@lid), no un
+   * número al que se pueda llamar. Hay que decirlo: si no, alguien lo marca.
+   */
+  esCodigoInterno: boolean;
+  primerContacto: string | null;
+}
+
+export interface FichaClienteChat {
+  id: string;
+  nombre: string;
+  ruc: string | null;
+  email: string | null;
+  telefono: string | null;
+  ciudad: string | null;
+  direccion: string | null;
+}
+
+/** Un proyecto del cliente: de acá sale "de qué proyecto viene" la conversación. */
+export interface FichaProyectoChat {
+  id: string;
+  nombre: string;
+  tipo: string | null;
+  estado: string | null;
+  /** El color que el ERP le puso al estado. Se respeta para que coincida con la web. */
+  estadoColor: string | null;
+  /** Terminado o sacado de circulación: se muestra igual, pero apagado y al final. */
+  cerrado: boolean;
+  responsables: string | null;
+}
+
+/** Cómo se cerró la última vez que se atendió a este contacto. */
+export interface FichaCierreChat {
+  estado: string;
+  comentario: string | null;
+  fecha: string | null;
+  por: string | null;
+  /** Se reabrió después de ese cierre: la tipificación quedó vieja. */
+  reabierta: boolean;
+  /** El cierre es de otra conversación del mismo contacto. */
+  deOtraConversacion: boolean;
+}
+
+/** Otra conversación del mismo contacto. */
+export interface FichaConversacionChat {
+  id: string;
+  canal: string | null;
+  cola: string | null;
+  agente: string | null;
+  abierta: boolean;
+  fecha: string | null;
+  /** La que está abierta ahora mismo. */
+  actual: boolean;
+}
+
+/** Un paso del recorrido: cuándo, qué pasó, quién y a dónde fue. */
+export interface FichaPasoChat {
+  id: string;
+  fecha: string;
+  tipo: "ingreso" | "asignado" | "tomado" | "transferido" | "cola" | "cerrado" | "sistema";
+  accion: string;
+  linea: string | null;
+  usuario: string | null;
+  destino: string | null;
+}
+
+export interface FichaChat {
+  contacto: FichaContactoChat;
+  cliente: FichaClienteChat | null;
+  /**
+   * `null` no es "no tiene proyectos": es "esta persona no tiene acceso al
+   * módulo de proyectos", y entonces la sección no se dibuja. El vacío es `[]`.
+   */
+  proyectos: FichaProyectoChat[] | null;
+  cierre: FichaCierreChat | null;
+  conversaciones: FichaConversacionChat[];
+  recorrido: FichaPasoChat[];
+  /** Avisos del propio ERP (p. ej. historial incompleto por datos viejos). */
+  notas: string[];
+}
+
+/* ---------- transferir una conversación ---------- */
+
+export interface ColaDestino {
+  id: string;
+  nombre: string;
+}
+
+export interface AgenteDestino {
+  id: string;
+  nombre: string;
+  colaId: string;
+  colaNombre: string;
+  /** Está en turno (`ready`): si no, no le entran chats automáticos. */
+  disponible: boolean;
+  /** Tiene el inbox abierto ahora mismo. */
+  enLinea: boolean;
+  /** Cuántas conversaciones tiene abiertas. Es la carga, y se mira antes de pasarle otra. */
+  activas: number;
+}
+
 export interface Adjunto {
   /** Elige el ícono y qué hace al tocarlo. No es decorativo. */
   key: string;
