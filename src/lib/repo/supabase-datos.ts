@@ -870,6 +870,7 @@ export const chatsRepo: ChatsRepo = {
   enviarArchivo: noImplementado,
   enviarSticker: noImplementado,
   marcarLeido: async () => {},
+  reaccionar: noImplementado,
   // Sin conversaciones no hay ficha ni a quién transferir. `null` y listas
   // vacías, no un error: la pantalla del chat ni se abre en este modo.
   async ficha() {

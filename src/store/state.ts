@@ -240,6 +240,13 @@ export interface AppState {
   xFicha: string | null;
   xTransferir: string | null;
   /**
+   * El mensaje al que se le va a poner una reacción, por su id de WhatsApp.
+   *
+   * Vive acá y no en la pantalla por lo mismo que el visor: "atrás" de Android
+   * tiene que cerrar la barra de emojis antes de salir de la conversación.
+   */
+  xReaccion: string | null;
+  /**
    * El motivo por el que algo no se puede, para mostrarlo arriba de todo.
    *
    * Vive en el estado y no en cada pantalla porque lo levantan varias: el
@@ -472,6 +479,7 @@ export const initialState: AppState = {
   xVisor: null,
   xFicha: null,
   xTransferir: null,
+  xReaccion: null,
   avisoPlan: null,
   xQuery: "",
   xEnvioError: "",

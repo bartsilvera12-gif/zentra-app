@@ -260,6 +260,13 @@ export interface ChatsRepo {
   enviarSticker(chatId: string, url: string): Promise<ChatMsg>;
   marcarLeido(chatId: string): Promise<void>;
   /**
+   * Reacciona a un mensaje con un emoji. Con `emoji` vacío saca la reacción,
+   * que es como lo entiende WhatsApp.
+   *
+   * `wamid` es el id del mensaje en WhatsApp, no el de la base.
+   */
+  reaccionar(chatId: string, wamid: string, emoji: string): Promise<void>;
+  /**
    * Quién es el contacto: cliente, proyectos, cierres anteriores y recorrido.
    *
    * `null` cuando el ERP no tiene ficha para esa conversación. Un error de

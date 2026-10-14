@@ -36,6 +36,15 @@ import { Badge, ChipRow, EmptyState, ScrollBody, SearchInput } from "../ui/primi
 const VIOLETA = MARCA.header;
 const VIOLETA_INK = MARCA.headerSuave;
 
+/**
+ * Los emojis de la barra de reacciones.
+ *
+ * Son los seis de WhatsApp y en el mismo orden: quien reacciona no está
+ * eligiendo de una paleta, está buscando el que ya conoce en el lugar donde lo
+ * conoce.
+ */
+const REACCIONES = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
+
 /** Los dos filtros que no son una cola. "Todas" sale de lib/colas. */
 const SIN_LEER = "No leídas";
 const CERRADAS = "Cerradas";
@@ -533,6 +542,21 @@ export function ConversacionesScreen() {
   // entera en cada cuadro del gesto.
   const cajas = useRef<(HTMLDivElement | null)[]>([]);
   const hilo = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * La pulsación larga sobre un globo abre la barra de emojis.
+   *
+   * El temporizador vive en un ref y no en estado: se arranca y se cancela
+   * decenas de veces mientras alguien baja por el hilo, y cada `set` sería un
+   * dibujado de la pantalla entera para nada.
+   */
+  const pulsacion = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const soltarPulsacion = () => {
+    if (pulsacion.current) {
+      clearTimeout(pulsacion.current);
+      pulsacion.current = null;
+    }
+  };
   const final = useRef<HTMLDivElement | null>(null);
   // Qué conversación estaba abierta la última vez que se dibujó, para saber si
   // esto es "se abrió" o "llegó un mensaje a la que ya estaba abierta".
@@ -630,6 +654,27 @@ export function ConversacionesScreen() {
 
   // Los favoritos primero: es para lo que sirve marcarlos.
   const panelLista = ordenarPorFavoritos(s.xPanelTab === "Emojis" ? EMOJIS : STICKERS, favoritos);
+
+  /**
+   * Pone (o saca) la reacción y cierra la barra.
+   *
+   * No se dibuja nada por adelantado: la reacción vuelve del ERP como una fila
+   * más del hilo —así la manda WhatsApp— y el refresco la trae en el acto. Si
+   * se pintara acá y el envío fallara, quedaría un emoji que el cliente nunca
+   * vio.
+   */
+  const reaccionar = async (emoji: string) => {
+    const wamid = s.xReaccion;
+    const chatId = s.xSel;
+    set({ xReaccion: null });
+    if (!wamid || !chatId) return;
+    try {
+      await repo.chats.reaccionar(chatId, wamid, emoji);
+      refrescarChat();
+    } catch (e) {
+      set({ xEnvioError: e instanceof Error ? e.message : "No se pudo reaccionar." });
+    }
+  };
 
   const enviarTexto = () => {
     const escrito = s.xTexto.trim();
@@ -842,10 +887,19 @@ export function ConversacionesScreen() {
           inicio.x = e.touches[0].clientX;
           inicio.y = e.touches[0].clientY;
           inicio.tomado = false;
+          // Mantener apretado abre las reacciones, como en WhatsApp. Sólo con
+          // ERP y sólo si el mensaje ya salió: a uno que todavía se está
+          // enviando no se le puede reaccionar porque WhatsApp no lo conoce.
+          soltarPulsacion();
+          if (conErp && m.wamid) {
+            pulsacion.current = setTimeout(() => set({ xReaccion: m.wamid ?? null }), 480);
+          }
         }}
         onTouchMove={(e) => {
           const dx = e.touches[0].clientX - inicio.x;
           const dy = e.touches[0].clientY - inicio.y;
+          // Si el dedo se movió, era un gesto y no una pulsación larga.
+          if (Math.abs(dx) > 8 || Math.abs(dy) > 8) soltarPulsacion();
           if (!inicio.tomado) {
             if (Math.abs(dy) > Math.abs(dx)) return; // está bajando por el hilo
             if (Math.abs(dx) < 8) return;
@@ -856,6 +910,7 @@ export function ConversacionesScreen() {
           mover(Math.max(Math.min(haciaAdentro, 64), -64));
         }}
         onTouchEnd={() => {
+          soltarPulsacion();
           const caja = cajas.current[i];
           const dx = caja ? Number((/-?\d+(\.\d+)?/.exec(caja.style.transform) ?? ["0"])[0]) : 0;
           if (caja) {
@@ -2152,6 +2207,68 @@ export function ConversacionesScreen() {
       {s.xSub === "lista" && <BottomNav />}
 
       {s.xVisor && <Visor src={s.xVisor.src} tipo={s.xVisor.tipo} onCerrar={() => set({ xVisor: null })} />}
+
+      {/* La barra de reacciones. Abajo, que es donde llega el pulgar. */}
+      {s.xReaccion && (
+        <div
+          role="presentation"
+          onClick={() => set({ xReaccion: null })}
+          style={{ position: "fixed", inset: 0, zIndex: 56, background: "rgba(0,0,0,.3)", display: "flex", alignItems: "flex-end" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              background: t.card,
+              borderRadius: "20px 20px 0 0",
+              padding: "14px 12px",
+              paddingBottom: "calc(14px + env(safe-area-inset-bottom, 0px))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 6,
+            }}
+          >
+            {REACCIONES.map((e) => (
+              <button
+                key={e}
+                onClick={() => void reaccionar(e)}
+                aria-label={`Reaccionar con ${e}`}
+                style={{
+                  flex: 1,
+                  border: 0,
+                  background: "none",
+                  cursor: "pointer",
+                  fontSize: 30,
+                  lineHeight: 1,
+                  padding: "6px 0",
+                }}
+              >
+                {e}
+              </button>
+            ))}
+            {/* Sacar la reacción es mandar un emoji vacío: así lo entiende
+                WhatsApp, y es lo que espera quien se arrepintió. */}
+            <button
+              onClick={() => void reaccionar("")}
+              aria-label="Sacar la reacción"
+              style={{
+                flex: "0 0 auto",
+                width: 40,
+                height: 40,
+                border: `1px solid ${t.border}`,
+                borderRadius: 999,
+                background: t.bg,
+                color: t.ink2,
+                cursor: "pointer",
+                font: "600 15px/1 var(--font-barlow),Barlow,sans-serif",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {s.xFicha && (
         <FichaChatPanel

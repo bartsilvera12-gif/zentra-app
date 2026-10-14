@@ -83,6 +83,13 @@ t("con un mensaje citado, atrás cancela la cita y no sale del chat", () => {
   if (r.xSub !== undefined) throw new Error("además salió del chat");
 });
 
+t("con la barra de emojis abierta, atrás la cierra y no sale del chat", () => {
+  const r = decidirAtras(base({ screen: "conversaciones", xSub: "chat", xReaccion: "wamid-1" }));
+  if (r === "fondo") throw new Error("se salió de la app");
+  if (r.xReaccion !== null) throw new Error("no cerró la barra");
+  if (r.xSub !== undefined) throw new Error("además salió del chat");
+});
+
 t("con la ficha abierta, atrás cierra la ficha y no sale del chat", () => {
   const r = decidirAtras(base({ screen: "conversaciones", xSub: "chat", xFicha: "x1" }));
   if (r === "fondo") throw new Error("se salió de la app");

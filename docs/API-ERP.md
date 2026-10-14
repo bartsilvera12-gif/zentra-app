@@ -275,6 +275,23 @@ hecha desde la app se ve en la web igual que una hecha ahí.
 Y puede transferir tanto el agente asignado como un supervisor que ve la
 conversación por su alcance omnicanal — no sólo el dueño del chat.
 
+### Reaccionar: va por el id de WhatsApp, no por el del ERP
+
+```
+POST /api/mobile/asesor/conversations/<id>/react
+     ← { target_wa_message_id, emoji }     emoji vacío = sacar la reacción
+```
+
+`target_wa_message_id` es el **wamid**: el id del mensaje en WhatsApp, no el de
+la fila del ERP. `/api/chat/messages` ya lo devuelve en `wa_message_id`, y la
+app lo guarda en cada mensaje (`ChatMsg.wamid`). Un mensaje que todavía se está
+enviando no lo tiene, y por eso no se le puede reaccionar: WhatsApp todavía no
+lo conoce.
+
+La reacción vuelve como **una fila más** del hilo, con `message_type:
+"reaction"` — así la manda WhatsApp—, no como un campo del mensaje reaccionado.
+Por eso después de reaccionar alcanza con volver a pedir la conversación.
+
 ### El inbox pagina, y las cerradas se piden aparte
 
 ```

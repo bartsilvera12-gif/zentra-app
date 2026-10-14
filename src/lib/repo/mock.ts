@@ -555,6 +555,11 @@ export const mockRepo: Repo = {
       await demora(null);
     },
 
+    // Sin ERP no hay WhatsApp al que mandarle la reacción.
+    async reaccionar() {
+      await demora(null);
+    },
+
     async ficha(chatId) {
       const c = CHATS.find((x) => x.id === chatId);
       if (!c) return demora(null);

@@ -37,6 +37,9 @@ export function decidirAtras(s: AppState): Parche | "fondo" {
   // visor queda encima de la lista.
   if (s.xVisor) return { xVisor: null };
 
+  // La barra de emojis es lo último que se abre sobre el hilo.
+  if (s.xReaccion) return { xReaccion: null };
+
   // La hoja de transferir se abre encima de la ficha, así que cierra primero.
   // Las dos tapan el chat: sin esto, "atrás" volvía a la lista y el panel
   // quedaba flotando sobre una conversación que ya no era la de abajo.

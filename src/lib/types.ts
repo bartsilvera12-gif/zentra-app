@@ -195,6 +195,14 @@ export interface ChatArchivo {
 
 export interface ChatMsg {
   de: "yo" | "ellos";
+  /**
+   * El id del mensaje en WhatsApp.
+   *
+   * Hace falta para reaccionar: la reacción no apunta a una fila de la base del
+   * ERP sino al mensaje de WhatsApp. Sin esto no hay a qué reaccionar. Falta en
+   * los mensajes que todavía no salieron (los que están "enviando").
+   */
+  wamid?: string;
   texto?: string;
   hora: string;
   tick?: string;

@@ -900,6 +900,8 @@ interface ConversacionesErp {
 
 interface MensajeErp {
   id: string;
+  /** El id del mensaje en WhatsApp, que es a lo que apunta una reacción. */
+  wa_message_id?: string | null;
   from_me?: boolean;
   content?: string | null;
   message_type?: string | null;
@@ -1424,6 +1426,9 @@ function aMensaje(m: MensajeErp): ChatMsg | null {
   const base = {
     de: (m.from_me ? "yo" : "ellos") as "yo" | "ellos",
     hora: horaCorta(m.created_at),
+    // Sin esto no se puede reaccionar: la reacción apunta al mensaje de
+    // WhatsApp, no a la fila del ERP.
+    ...(primero(m.wa_message_id) ? { wamid: primero(m.wa_message_id) } : {}),
     ...(esReenviado(m.raw_payload) ? { reenviado: true } : {}),
   };
 
@@ -2188,6 +2193,22 @@ export const httpRepo: Repo = {
 
     // El ERP marca leído solo al abrir la conversación; no hay endpoint aparte.
     async marcarLeido() {},
+
+    /**
+     * Reaccionar a un mensaje.
+     *
+     * Va contra el mensaje de WhatsApp (`wamid`), no contra la fila del ERP: la
+     * reacción se la manda WhatsApp al contacto, y del otro lado la ve pegada a
+     * su mensaje igual que si la hubieras puesto desde el teléfono.
+     *
+     * Emoji vacío saca la reacción, que es como lo entiende WhatsApp.
+     */
+    async reaccionar(chatId, wamid, emoji) {
+      await request(`/mobile/asesor/conversations/${encodeURIComponent(chatId)}/react`, {
+        method: "POST",
+        body: JSON.stringify({ target_wa_message_id: wamid, emoji }),
+      });
+    },
 
     /**
      * La ficha del contacto: la misma que el ERP muestra al costado del chat.
