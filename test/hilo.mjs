@@ -7,7 +7,7 @@
  * todo, y otra cuando el refresco automático empezó a tirar la vista al final
  * mientras alguien leía historial.
  */
-import { alFinal, altoDeEscritura, citaDe, debeBajarAlAbrir, marcaLocal, pegarReacciones, resolverCitas, resumenDeMensaje, vaSinGlobo } from "../src/lib/hilo.ts";
+import { alFinal, altoDeEscritura, citaDe, debeBajarAlAbrir, marcaLocal, mensajeDeArchivo, pegarReacciones, resolverCitas, resumenDeMensaje, vaSinGlobo } from "../src/lib/hilo.ts";
 
 const casos = [];
 const t = (n, f) => casos.push([n, f]);
@@ -203,6 +203,19 @@ t("una linea sola no deja el cuadro mas chico de lo que es", () => {
 t("un parrafo largo no se come la conversacion", () => {
   // De cinco líneas para arriba el cuadro se queda quieto y scrollea adentro.
   if (altoDeEscritura(900) !== 116) throw new Error("creció sin límite: " + altoDeEscritura(900));
+});
+
+t("el error del navegador no se muestra en ingles", () => {
+  const e = new Error("The requested file could not be read, typically due to permission problems");
+  const m = mensajeDeArchivo(e);
+  if (/could not be read/.test(m)) throw new Error("salió el texto del navegador: " + m);
+  if (!/elegirlo de nuevo/.test(m)) throw new Error("no dice qué hacer: " + m);
+});
+
+t("lo que dice el ERP se respeta", () => {
+  // Ahí el mensaje sirve: dice qué pasó y en castellano.
+  const m = mensajeDeArchivo(new Error("El video es muy largo para comprimirlo bajo 16 MB."));
+  if (!/video es muy largo/.test(m)) throw new Error(m);
 });
 
 let malas = 0;

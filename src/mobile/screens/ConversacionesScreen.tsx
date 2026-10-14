@@ -22,6 +22,7 @@ import {
   ALTO_MINIMO_ESCRITURA,
   debeBajarAlAbrir,
   marcaLocal,
+  mensajeDeArchivo,
   resumenDeMensaje,
   vaSinGlobo,
 } from "@/lib/hilo";
@@ -881,12 +882,12 @@ export function ConversacionesScreen() {
    * el hilo todavía no tendría el mensaje del servidor y el globo
    * parpadearía.
    */
-  const subir = async (archivo: File | Blob, nombre: string, vistaPrevia: ChatMsg) => {
-    if (!det) return;
+  const subir = async (archivo: File | Blob, nombre: string, vistaPrevia: ChatMsg): Promise<boolean> => {
+    if (!det) return false;
     const chatId = det.id;
     const localId = marcaLocal();
     pushMsg(chatId, { ...vistaPrevia, localId, tick: conErp ? "…" : "✓" });
-    if (!conErp) return;
+    if (!conErp) return false;
     try {
       // Las fotos van achicadas: lo que sale del teléfono pesa 3 o 4 MB y el
       // camino nativo le suma un tercio al codificarlo.
@@ -898,31 +899,56 @@ export function ConversacionesScreen() {
       // tarjeta gris cuando el mensaje ya salió se sienten eternos.
       await refrescarChat();
       quitarMsg(chatId, localId);
+      return true;
     } catch (e) {
-      set({ xEnvioError: e instanceof Error ? e.message : "No se pudo enviar el archivo." });
+      set({ xEnvioError: mensajeDeArchivo(e) });
+      return false;
     }
   };
 
-  /** Abre el selector del celular. `captura` usa la cámara directo. */
+  /**
+   * Abre el selector del celular. `captura` usa la cámara directo.
+   *
+   * El input se deja puesto en la página hasta terminar de leer el archivo, y
+   * los bytes se leen ANTES que cualquier otra cosa. En Android lo que devuelve
+   * el selector no es el archivo sino un permiso prestado para leerlo, atado a
+   * ese input; si el navegador lo saca de encima antes —y lo saca apenas nadie
+   * lo apunta— leerlo falla con "The requested file could not be read", que es
+   * el error en inglés que aparecía en pantalla. Desde que tenemos los bytes el
+   * archivo es nuestro y no depende de nadie.
+   */
   const elegirArchivo = (accept: string, captura?: boolean) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = accept;
     if (captura) input.capture = "environment";
-    input.onchange = () => {
-      const f = input.files?.[0];
-      if (!f) return;
+    input.style.display = "none";
+    document.body.appendChild(input);
+    const sacarInput = () => input.remove();
+
+    const leerYMandar = async (f: File) => {
+      let propio: Blob;
+      try {
+        propio = new Blob([await f.arrayBuffer()], { type: f.type || "application/octet-stream" });
+      } catch (e) {
+        set({ xEnvioError: mensajeDeArchivo(e) });
+        return;
+      } finally {
+        sacarInput();
+      }
+
       const esImagen = /^image\//.test(f.type);
       // Una foto se muestra como foto desde el primer momento. Antes se veía
       // la tarjeta gris con el nombre del archivo hasta que volvía del ERP, y
       // recién ahí aparecía la miniatura: parecía que se había mandado otra
       // cosa. La URL es local, del archivo que está en el teléfono.
-      void subir(f, f.name, {
+      const vista = esImagen ? URL.createObjectURL(propio) : null;
+      const salio = await subir(propio, f.name, {
         de: "yo",
         hora: new Date().toTimeString().slice(0, 5),
         texto: "",
-        ...(esImagen
-          ? { imagen: URL.createObjectURL(f) }
+        ...(vista
+          ? { imagen: vista }
           : {
               archivo: {
                 tag: (f.name.split(".").pop() || "DOC").toUpperCase().slice(0, 4),
@@ -931,6 +957,17 @@ export function ConversacionesScreen() {
               },
             }),
       });
+      // La miniatura provisoria ya no está en pantalla: se suelta la copia que
+      // quedó en memoria. Si falló, el globo sigue ahí y la URL también.
+      if (vista && salio) URL.revokeObjectURL(vista);
+    };
+
+    // Si cierran el selector sin elegir nada, el input igual se va.
+    input.oncancel = sacarInput;
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (!f) return sacarInput();
+      void leerYMandar(f);
     };
     input.click();
   };

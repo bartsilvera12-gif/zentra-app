@@ -269,3 +269,24 @@ export function altoDeEscritura(
   if (!Number.isFinite(contenido) || contenido <= 0) return min;
   return Math.max(min, Math.min(Math.round(contenido), max));
 }
+
+/**
+ * Qué decirle a quien manda un archivo cuando algo falla.
+ *
+ * El navegador avisa en inglés y hablando de otra cosa: "The requested file
+ * could not be read, typically due to permission problems…" apareció tal cual
+ * en la pantalla de un vendedor. No es un permiso de Android —la app no pide
+ * ninguno para esto— sino el archivo elegido, que dejó de estar al alcance.
+ * Elegirlo de nuevo alcanza, y eso es lo que hay que decir.
+ *
+ * Lo que viene del ERP ya está en castellano y se deja pasar tal cual: ahí el
+ * mensaje dice algo útil ("el video es muy largo", "se requiere archivo").
+ */
+export function mensajeDeArchivo(e: unknown): string {
+  const texto = e instanceof Error ? e.message : "";
+  if (!texto) return "No se pudo enviar el archivo.";
+  if (/could not be read|NotReadable|NotFound|permission/i.test(texto)) {
+    return "No pudimos leer ese archivo. Probá elegirlo de nuevo.";
+  }
+  return texto;
+}
