@@ -219,6 +219,43 @@ export async function leerArchivo(f: File | Blob, nombre?: string): Promise<Arch
 }
 
 /**
+ * El pedido multipart tal como lo quiere Capacitor, aparte para poder probarlo.
+ *
+ * `dataType: "formData"` ES EL CAMPO QUE HACE QUE SE MANDE ALGO. Capacitor
+ * sólo arma el multipart cuando está puesto; con el `Content-Type` en
+ * `multipart/form-data` y sin él, escribe el arreglo de entradas como texto
+ * crudo en el cuerpo. El ERP no encuentra el archivo y contesta "Se requiere
+ * archivo de audio" —para cualquier cosa, una foto o un PDF—, que es
+ * exactamente lo que se veía en el teléfono: no se podía mandar nada.
+ */
+export function pedidoMultipart(
+  url: string,
+  auth: Record<string, string>,
+  archivo: ArchivoAEnviar,
+  campos: Record<string, string> = {},
+) {
+  return {
+    url,
+    method: "POST",
+    headers: { ...auth, "Content-Type": "multipart/form-data" },
+    data: [
+      ...Object.entries(campos).map(([key, value]) => ({ type: "string", key, value })),
+      {
+        type: "base64File",
+        key: "file",
+        value: archivo.base64,
+        fileName: archivo.nombre,
+        contentType: archivo.tipo,
+      },
+    ],
+    dataType: "formData" as const,
+    responseType: "text" as const,
+    connectTimeout: config.timeoutMs,
+    readTimeout: config.timeoutMs,
+  };
+}
+
+/**
  * Manda un archivo como `multipart/form-data`.
  *
  * Los dos caminos arman el multipart distinto y ninguno sirve para el otro:
@@ -244,25 +281,7 @@ export async function enviarArchivoAlErp<T>(
   try {
     if (enNativo()) {
       const { CapacitorHttp } = await import("@capacitor/core");
-      const entradas = [
-        ...Object.entries(campos).map(([key, value]) => ({ type: "string", key, value })),
-        {
-          type: "base64File",
-          key: "file",
-          value: archivo.base64,
-          fileName: archivo.nombre,
-          contentType: archivo.tipo,
-        },
-      ];
-      const r = await CapacitorHttp.request({
-        url,
-        method: "POST",
-        headers: { ...auth, "Content-Type": "multipart/form-data" },
-        data: entradas,
-        responseType: "text",
-        connectTimeout: config.timeoutMs,
-        readTimeout: config.timeoutMs,
-      });
+      const r = await CapacitorHttp.request(pedidoMultipart(url, auth, archivo, campos));
       res = { status: r.status, texto: typeof r.data === "string" ? r.data : JSON.stringify(r.data ?? "") };
     } else {
       const form = new FormData();

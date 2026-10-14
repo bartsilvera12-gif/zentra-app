@@ -733,6 +733,20 @@ t("el sticker manda su URL, que es lo que el ERP pide", async () => {
   if (m.sticker !== "https://x.com/s.webp") throw new Error("el mensaje no quedó con el sticker");
 });
 
+t("adentro del APK el multipart lleva dataType, o no se manda nada", async () => {
+  const { pedidoMultipart } = await import("../src/lib/repo/http.ts");
+  const p = pedidoMultipart("https://erp/x", {}, { nombre: "f.jpg", tipo: "image/jpeg", base64: "AAA" }, { caption: "hola" });
+  // Sin esto Capacitor escribe el arreglo como texto crudo y el ERP contesta
+  // "Se requiere archivo de audio" para cualquier archivo.
+  if (p.dataType !== "formData") throw new Error("falta dataType: " + p.dataType);
+  const archivo = p.data.find((e) => e.key === "file");
+  if (archivo.type !== "base64File") throw new Error("el archivo no va en base64");
+  if (archivo.fileName !== "f.jpg" || archivo.contentType !== "image/jpeg") {
+    throw new Error("el archivo viaja sin nombre o sin tipo");
+  }
+  if (!p.data.some((e) => e.key === "caption" && e.value === "hola")) throw new Error("falta el pie");
+});
+
 t("adentro del APK sale por nativo, y así el CORS no aplica", async () => {
   const { transporte } = await import("../src/lib/repo/http.ts");
   if (transporte() !== "navegador") throw new Error("sin Capacitor debería ser navegador");

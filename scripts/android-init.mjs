@@ -335,6 +335,16 @@ escribirJdk();
  * merge de Gradle lo trae al de la app. Repetirlo sería ruido. Si algún día se
  * saca ese plugin, hay que agregarlo a mano o los avisos dejan de salir sin
  * ningún error visible.
+ *
+ * Los de ubicación SÍ van acá: `@capacitor/geolocation` trae un manifiesto
+ * vacío a propósito —para no pedirle el permiso a quien no usa la función— así
+ * que el que manda la ubicación por el chat tiene que declararlos él. Sin
+ * esto el plugin contesta "permiso denegado" sin preguntarle nada a nadie.
+ *
+ * `ACCESS_BACKGROUND_LOCATION` no, y no se agrega: la ubicación se toma cuando
+ * alguien aprieta el botón de mandarla, con la app adelante. Pedir la de
+ * segundo plano obliga a una revisión aparte en Play Store y a explicar un uso
+ * que la app no tiene.
  */
 /**
  * Borra los íconos que trae la plantilla de Capacitor.
@@ -440,6 +450,8 @@ function agregarPermisos() {
   const permisos = [
     "android.permission.RECORD_AUDIO",
     "android.permission.MODIFY_AUDIO_SETTINGS",
+    "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.ACCESS_FINE_LOCATION",
   ];
   let xml = readFileSync(RUTA, "utf8");
   const faltan = permisos.filter((p) => !xml.includes(p));

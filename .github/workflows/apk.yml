@@ -67,6 +67,23 @@ jobs:
       - name: Generar el proyecto Android
         run: npm run android:init
 
+      # Los permisos se vuelven a escribir en cada corrida, porque
+      # `cap add android` genera el manifiesto de cero. Si alguno se pierde, la
+      # funcion falla SOLO en el APK —en el navegador el permiso lo da el
+      # navegador— y se descubre con la app ya instalada en el telefono de
+      # alguien.
+      - name: Verificar los permisos del manifiesto
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          for P in RECORD_AUDIO ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION; do
+            if ! grep -q "android.permission.$P" "$M"; then
+              echo "ERROR: falta el permiso $P en el manifiesto."
+              echo "Mira agregarPermisos() en scripts/android-init.mjs."
+              exit 1
+            fi
+          done
+          echo "Permisos presentes: audio y ubicacion."
+
       # Que el icono generado sea el nuestro y no el que trae Capacitor por
       # defecto. Que el paso de iconos "corra bien" no prueba que haya puesto
       # el nuestro: puede generar el generico y salir con exito igual.

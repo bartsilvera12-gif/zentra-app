@@ -741,6 +741,35 @@ export function ConversacionesScreen() {
     }
   };
 
+  /**
+   * Manda dónde está el teléfono.
+   *
+   * Va como enlace de mapa y no como el mensaje "ubicación" de WhatsApp —el
+   * del mapita con el pin— porque el ERP todavía no tiene por dónde mandar
+   * ese tipo: su endpoint acepta texto, media y stickers. El enlace se toca y
+   * abre el mapa del teléfono, que es para lo que se manda una ubicación.
+   *
+   * El globo se dibuja recién cuando el envío salió: acá no hay nada escrito
+   * que se pueda perder, y pintar un "mandé mi ubicación" que no llegó es
+   * peor que esperar dos segundos.
+   */
+  const enviarUbicacion = async () => {
+    if (!det) return;
+    set({ xEnvioError: "" });
+    try {
+      const { ubicacionActual, textoDeUbicacion } = await import("@/lib/ubicacion");
+      const texto = textoDeUbicacion(await ubicacionActual());
+      if (!conErp) {
+        pushMsg(det.id, { de: "yo", texto, hora: new Date().toTimeString().slice(0, 5), tick: "✓" });
+        return;
+      }
+      await repo.chats.enviar(det.id, { de: "yo", texto });
+      pushMsg(det.id, { de: "yo", texto, hora: new Date().toTimeString().slice(0, 5), tick: "✓" });
+    } catch (e) {
+      set({ xEnvioError: e instanceof Error ? e.message : "No pudimos tomar tu ubicación." });
+    }
+  };
+
   const enviarTexto = () => {
     const escrito = s.xTexto.trim();
     if (!escrito || !det) return;
@@ -1807,10 +1836,11 @@ export function ConversacionesScreen() {
                     if (a.key === "galeria") return elegirArchivo("image/*");
                     if (a.key === "audioarch") return elegirArchivo("audio/*");
                     if (a.key === "documento") return elegirArchivo("*/*");
+                    // La ubicación no es un archivo: la da el GPS y viaja como
+                    // enlace de mapa.
+                    if (a.key === "ubicacion") return void enviarUbicacion();
 
-                    // Ubicación y contacto no son archivos: necesitan lo suyo
-                    // (GPS, agenda) y todavía no están. Se dice, en vez de
-                    // mandar un adjunto inventado.
+                    // Lo que no está no se inventa: se dice.
                     if (conErp) {
                       set({ xEnvioError: `Todavía no se puede mandar ${a.label.toLowerCase()} desde la app.` });
                       return;
