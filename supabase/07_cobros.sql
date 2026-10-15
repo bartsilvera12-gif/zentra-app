@@ -89,11 +89,17 @@ begin
   -- El `greatest` es lo que hace justicia en los dos sentidos: quien paga tres
   -- días antes no pierde esos días, y quien paga una semana tarde no se los
   -- lleva de regalo. Son las dos quejas clásicas de cualquier suscripción.
-  update zentra.empresas
+  --
+  -- La tabla va con alias y las columnas calificadas (`e.vence`) porque esta
+  -- función devuelve una columna que se llama igual. Sin el alias, Postgres no
+  -- sabe si `vence` es la columna o el parámetro de salida y corta con
+  -- "column reference vence is ambiguous" —después de que la plata entró, que
+  -- es el peor momento para enterarse—.
+  update zentra.empresas e
      set plan  = v_cobro.plan,
-         vence = (greatest(coalesce(vence, current_date), current_date) + interval '1 month')::date
-   where id = v_cobro.empresa_id
-   returning vence into v_nuevo;
+         vence = (greatest(coalesce(e.vence, current_date), current_date) + interval '1 month')::date
+   where e.id = v_cobro.empresa_id
+   returning e.vence into v_nuevo;
 
   update zentra.pagos set periodo_hasta = v_nuevo
    where pasarela = p_pasarela and referencia = p_hash;

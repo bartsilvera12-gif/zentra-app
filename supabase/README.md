@@ -124,11 +124,14 @@ psql -f supabase/02_funciones.sql
 psql -f supabase/03_permisos.sql
 psql -f supabase/04_borrar_cuenta.sql
 psql -f supabase/05_dispositivos.sql
+psql -f supabase/06_planes.sql
+psql -f supabase/07_cobros.sql
+psql -f supabase/08_precios.sql
 
 psql -f supabase/test/01_pruebas.sql            # las pruebas
 ```
 
-Hay tres juegos, y cada uno quiere una base limpia (dejan datos de prueba):
+Cada juego quiere una base limpia (dejan datos de prueba):
 
 | | |
 |---|---|
@@ -136,6 +139,7 @@ Hay tres juegos, y cada uno quiere una base limpia (dejan datos de prueba):
 | `test/02_pruebas_borrado.sql` | el último usuario se lleva la empresa; si quedan compañeros, no |
 | `test/03_pruebas_dispositivos.sql` | un token es un teléfono, el alta pasa por el servidor, se van con la cuenta |
 | `test/04_pruebas_compartida.sql` | dentro del proyecto de un ERP: no toca sus usuarios ni su login |
+| `test/05_pruebas_cobros.sql` | un pago empuja el vencimiento un mes, el aviso repetido no lo empuja dos veces, y pagar antes o tarde da lo que corresponde |
 
 Cada prueba falla ruidosamente si la regla se rompe.
 
