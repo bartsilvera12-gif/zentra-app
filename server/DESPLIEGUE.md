@@ -13,7 +13,14 @@ No son técnicas pero frenan todo si faltan:
 
 1. **El dominio del server.** Algo como `cobros.zentra.com.py`. Tiene que
    existir y apuntar a la IP de la VPS **antes** del paso 7, porque el
-   certificado se emite verificando ese dominio.
+   certificado se emite verificando ese dominio. No hace falta uno nuevo: a esa
+   URL le pega sólo PagoPar, nadie la ve, así que un subdominio de uno que ya
+   tengas alcanza.
+
+   Si el DNS está en Cloudflare, el registro va en **DNS only** (nube gris). Con
+   el proxy prendido el certificado se complica, y —peor— Cloudflare puede
+   frenar el aviso de PagoPar tomándolo por un bot: el pago entra, el aviso
+   rebota y el cobro queda `pendiente` como si nadie hubiera pagado.
 2. **Contra qué Supabase trabaja.** El de siempre (`api.neura.com.py`) o uno
    nuevo. Si es nuevo, hay que correr las migraciones ahí.
 3. **Si el comercio de PagoPar está habilitado para producción.** Eso lo
@@ -121,6 +128,20 @@ Lo que hay que completar:
 firman pedidos y se falsifican avisos de pago; con la `service_role` se pasa
 por encima de RLS. De ahí el `chmod 600` y el `UMask` del paso 8.
 
+### Y que `zentra` pueda leer el código
+
+El código se baja con tu usuario, así que queda con tus permisos. Si tu carpeta
+personal es `700` —lo normal—, el servicio arranca y muere en el acto: `zentra`
+no puede leer ni `src/index.js`.
+
+```bash
+sudo chmod 755 /opt/zentra-app /opt/zentra-app/server
+sudo chmod -R a+rX /opt/zentra-app/server/src /opt/zentra-app/server/node_modules
+```
+
+El `.env` NO entra acá y sigue en `600` de root: lo lee systemd antes de bajar a
+`zentra`, así que el servicio arranca igual.
+
 ## 7. Las migraciones y los precios
 
 En el SQL editor de Supabase, en orden:
@@ -144,8 +165,12 @@ update zentra.planes set precio_mensual =  80000, vendible = true where codigo =
 
 ```bash
 cd /opt/zentra-app/server
-node --env-file=.env src/prueba.js
+sudo node --env-file=.env src/prueba.js
 ```
+
+Con `sudo` porque el `.env` es de root. Sin él, Node dice **`.env: not found`**
+—aunque el archivo esté ahí— y se pierde un rato buscando un archivo que nunca
+faltó.
 
 Crea un pedido de prueba de mil guaraníes que caduca en una hora. **No pagues
 nada.**
@@ -158,8 +183,12 @@ cuesta diez veces más encontrarlo.
 
 ## 9. Que el servicio se levante solo
 
+Si entraste como root, `cat >` alcanza. Si entraste con un usuario normal
+—lo recomendable— va con `sudo tee`, que es lo que está acá: `sudo cat >`
+no funciona, porque el que escribe es el shell y el shell no es root.
+
 ```bash
-cat > /etc/systemd/system/zentra-cobros.service <<'EOF'
+sudo tee /etc/systemd/system/zentra-cobros.service > /dev/null <<'EOF'
 [Unit]
 Description=Zentra — cobros con PagoPar
 After=network-online.target
@@ -183,9 +212,9 @@ ProtectHome=true
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable --now zentra-cobros
-systemctl status zentra-cobros --no-pager
+sudo systemctl daemon-reload
+sudo systemctl enable --now zentra-cobros
+sudo systemctl status zentra-cobros --no-pager
 ```
 
 Tiene que decir `active (running)`. Si no:
@@ -197,13 +226,27 @@ journalctl -u zentra-cobros -n 50 --no-pager
 Y desde la propia VPS, que el proceso contesta:
 
 ```bash
-curl -s localhost:8790/pagopar/health
+curl -s localhost:8790/pagopar/health | python3 -m json.tool
 ```
+
+Si no contesta nada, probá de nuevo en unos segundos: recién arrancado, el
+proceso todavía no abrió el puerto y el `-s` esconde el error de conexión.
 
 ## 10. HTTPS por delante
 
-PagoPar tiene que llegar al webhook desde internet y por HTTPS. Caddy saca el
-certificado solo:
+PagoPar tiene que llegar al webhook desde internet y por HTTPS.
+
+**Antes que nada, mirá si el 80 y el 443 están libres:**
+
+```bash
+sudo ss -lntp | grep -E ':80 |:443 '
+```
+
+Si algo ya escucha ahí —nginx, apache— **no instales Caddy**: los dos quieren
+los mismos puertos y el que ya estaba sirviendo deja de servir. Saltá a *"Si la
+VPS ya tiene nginx"*, más abajo.
+
+Con los puertos libres, Caddy saca el certificado solo:
 
 ```bash
 apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
@@ -233,6 +276,36 @@ curl https://cobros.zentra.com.py/pagopar/health
 
 Si las claves salen `(vacía)` o dice `FALTA SUPABASE_URL`, el `.env` no se está
 leyendo: revisá el `EnvironmentFile` del paso 9.
+
+### Si la VPS ya tiene nginx
+
+No se reemplaza nada: se le agrega un sitio más. Lo de antes queda intacto.
+
+```bash
+sudo tee /etc/nginx/sites-available/cobros-zentra > /dev/null <<'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name cobros.zentra.com.py;
+
+    location / {
+        proxy_pass http://127.0.0.1:8790;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+sudo ln -s /etc/nginx/sites-available/cobros-zentra /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d cobros.zentra.com.py
+```
+
+Cambiá el dominio por el tuyo. Certbot edita sólo ese archivo, pregunta si
+redirigir HTTP a HTTPS —sí— y deja la renovación programada. El puerto 80 tiene
+que seguir abierto después: es por donde se renueva.
 
 ## 11. Decirle a PagoPar a dónde avisar
 
@@ -273,7 +346,11 @@ El `.env` no se toca: está fuera del repo y `git pull` no lo pisa.
 
 | Síntoma | Dónde mirar |
 |---|---|
-| `curl` al dominio no responde | Caddy: `systemctl status caddy`, DNS, `ufw status` |
+| `curl` al dominio no responde | El proxy de adelante (`systemctl status caddy` o `nginx`), DNS, `ufw status` |
+| Caddy no levanta | Algo más tiene el 80/443: `sudo ss -lntp`. Con nginx puesto, usá nginx |
+| El dominio resuelve a `104.x` o `172.67.x` | Está proxeado en Cloudflare. Ponelo en *DNS only* (nube gris) |
+| `node: .env: not found` y el archivo está ahí | Es permiso, no ausencia: corré el comando con `sudo` |
+| El servicio arranca y muere enseguida | Permisos del paso 6: `zentra` no puede leer `/opt/zentra-app/server` |
 | `health` dice claves `(vacía)` | El `EnvironmentFile` del paso 9, o el `.env` sin permisos |
 | `health` dice `FALTA SUPABASE` | `SUPABASE_URL` / `SERVICE_ROLE_KEY` en el `.env` |
 | "Token no corresponde" | Paso 8. Clave mal copiada, ambiente cruzado, o comercio sin habilitar |
