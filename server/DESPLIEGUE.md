@@ -121,6 +121,20 @@ Lo que hay que completar:
 firman pedidos y se falsifican avisos de pago; con la `service_role` se pasa
 por encima de RLS. De ahí el `chmod 600` y el `UMask` del paso 8.
 
+### Y que `zentra` pueda leer el código
+
+El código se baja con tu usuario, así que queda con tus permisos. Si tu carpeta
+personal es `700` —lo normal—, el servicio arranca y muere en el acto: `zentra`
+no puede leer ni `src/index.js`.
+
+```bash
+sudo chmod 755 /opt/zentra-app /opt/zentra-app/server
+sudo chmod -R a+rX /opt/zentra-app/server/src /opt/zentra-app/server/node_modules
+```
+
+El `.env` NO entra acá y sigue en `600` de root: lo lee systemd antes de bajar a
+`zentra`, así que el servicio arranca igual.
+
 ## 7. Las migraciones y los precios
 
 En el SQL editor de Supabase, en orden:
@@ -144,8 +158,12 @@ update zentra.planes set precio_mensual =  80000, vendible = true where codigo =
 
 ```bash
 cd /opt/zentra-app/server
-node --env-file=.env src/prueba.js
+sudo node --env-file=.env src/prueba.js
 ```
+
+Con `sudo` porque el `.env` es de root. Sin él, Node dice **`.env: not found`**
+—aunque el archivo esté ahí— y se pierde un rato buscando un archivo que nunca
+faltó.
 
 Crea un pedido de prueba de mil guaraníes que caduca en una hora. **No pagues
 nada.**
@@ -158,8 +176,12 @@ cuesta diez veces más encontrarlo.
 
 ## 9. Que el servicio se levante solo
 
+Si entraste como root, `cat >` alcanza. Si entraste con un usuario normal
+—lo recomendable— va con `sudo tee`, que es lo que está acá: `sudo cat >`
+no funciona, porque el que escribe es el shell y el shell no es root.
+
 ```bash
-cat > /etc/systemd/system/zentra-cobros.service <<'EOF'
+sudo tee /etc/systemd/system/zentra-cobros.service > /dev/null <<'EOF'
 [Unit]
 Description=Zentra — cobros con PagoPar
 After=network-online.target
@@ -183,9 +205,9 @@ ProtectHome=true
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable --now zentra-cobros
-systemctl status zentra-cobros --no-pager
+sudo systemctl daemon-reload
+sudo systemctl enable --now zentra-cobros
+sudo systemctl status zentra-cobros --no-pager
 ```
 
 Tiene que decir `active (running)`. Si no:
@@ -197,8 +219,11 @@ journalctl -u zentra-cobros -n 50 --no-pager
 Y desde la propia VPS, que el proceso contesta:
 
 ```bash
-curl -s localhost:8790/pagopar/health
+curl -s localhost:8790/pagopar/health | python3 -m json.tool
 ```
+
+Si no contesta nada, probá de nuevo en unos segundos: recién arrancado, el
+proceso todavía no abrió el puerto y el `-s` esconde el error de conexión.
 
 ## 10. HTTPS por delante
 
@@ -274,6 +299,8 @@ El `.env` no se toca: está fuera del repo y `git pull` no lo pisa.
 | Síntoma | Dónde mirar |
 |---|---|
 | `curl` al dominio no responde | Caddy: `systemctl status caddy`, DNS, `ufw status` |
+| `node: .env: not found` y el archivo está ahí | Es permiso, no ausencia: corré el comando con `sudo` |
+| El servicio arranca y muere enseguida | Permisos del paso 6: `zentra` no puede leer `/opt/zentra-app/server` |
 | `health` dice claves `(vacía)` | El `EnvironmentFile` del paso 9, o el `.env` sin permisos |
 | `health` dice `FALTA SUPABASE` | `SUPABASE_URL` / `SERVICE_ROLE_KEY` en el `.env` |
 | "Token no corresponde" | Paso 8. Clave mal copiada, ambiente cruzado, o comercio sin habilitar |
