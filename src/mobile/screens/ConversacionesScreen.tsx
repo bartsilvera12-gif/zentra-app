@@ -376,6 +376,18 @@ export function ConversacionesScreen() {
    * Se leen una sola vez al abrir la pantalla: están en el teléfono, no en la
    * red, y releerlos en cada dibujo no agrega nada.
    */
+  /**
+   * Lo elegido que todavía NO se mandó.
+   *
+   * Antes el archivo salía apenas se tocaba en el selector: no había forma de ver qué se
+   * estaba por mandar, ni de elegir varios, ni de arrepentirse. Un toque equivocado ya era
+   * un mensaje al cliente, y en WhatsApp lo que salió no vuelve atrás de verdad.
+   */
+  const [porEnviar, setPorEnviar] = useState<
+    { id: string; archivo: Blob; nombre: string; vista: string | null; esVideo: boolean }[]
+  >([]);
+  const [enviandoAdjuntos, setEnviandoAdjuntos] = useState(false);
+
   const [favoritos, setFavoritos] = useState<string[]>([]);
   useEffect(() => setFavoritos(leerFavoritos()), []);
   const marcar = (emoji: string) => {
@@ -805,6 +817,44 @@ export function ConversacionesScreen() {
     }
   };
 
+  /**
+   * Manda lo que está esperando y después el texto, para que el comentario quede debajo de
+   * la foto como en WhatsApp. Si falla uno, se deja el resto en la tira: se corta ahí en vez
+   * de seguir mandando a ciegas.
+   */
+  const enviarPendientes = async () => {
+    if (porEnviar.length === 0 || enviandoAdjuntos) return;
+    setEnviandoAdjuntos(true);
+    const cola = porEnviar;
+    try {
+      for (let i = 0; i < cola.length; i++) {
+        const a = cola[i];
+        const salio = await subir(a.archivo, a.nombre, {
+          de: "yo",
+          hora: new Date().toTimeString().slice(0, 5),
+          texto: "",
+          ...(a.vista
+            ? { imagen: a.vista }
+            : {
+                archivo: {
+                  tag: (a.nombre.split(".").pop() || "DOC").toUpperCase().slice(0, 4),
+                  nombre: a.nombre,
+                  peso: `Archivo · ${Math.max(1, Math.round(a.archivo.size / 1024))} KB`,
+                },
+              }),
+        });
+        if (!salio) {
+          setPorEnviar(cola.slice(i));
+          return;
+        }
+        if (a.vista) URL.revokeObjectURL(a.vista);
+      }
+      setPorEnviar([]);
+    } finally {
+      setEnviandoAdjuntos(false);
+    }
+  };
+
   const enviarTexto = () => {
     const escrito = s.xTexto.trim();
     if (!escrito || !det) return;
@@ -921,6 +971,8 @@ export function ConversacionesScreen() {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = accept;
+    // Varios de una: mandar seis fotos de a una es seis veces el mismo baile.
+    if (!captura) input.multiple = true;
     if (captura) input.capture = "environment";
     input.style.display = "none";
     document.body.appendChild(input);
@@ -962,12 +1014,44 @@ export function ConversacionesScreen() {
       if (vista && salio) URL.revokeObjectURL(vista);
     };
 
+    /**
+     * Guarda lo elegido SIN mandarlo: queda en la tira de arriba del teclado hasta que se
+     * toque enviar. Los bytes se leen acá mismo por lo del permiso prestado de Android.
+     */
+    const guardarParaDespues = async (fs: File[]) => {
+      const leidos: typeof porEnviar = [];
+      try {
+        for (const f of fs) {
+          const propio = new Blob([await f.arrayBuffer()], {
+            type: f.type || "application/octet-stream",
+          });
+          const esImagen = /^image\//.test(f.type);
+          const esVideo = /^video\//.test(f.type);
+          leidos.push({
+            id: `${Date.now()}-${leidos.length}-${f.name}`,
+            archivo: propio,
+            nombre: f.name,
+            vista: esImagen ? URL.createObjectURL(propio) : null,
+            esVideo,
+          });
+        }
+      } catch (e) {
+        set({ xEnvioError: mensajeDeArchivo(e) });
+      } finally {
+        sacarInput();
+      }
+      if (leidos.length > 0) setPorEnviar((p) => [...p, ...leidos]);
+    };
+
     // Si cierran el selector sin elegir nada, el input igual se va.
     input.oncancel = sacarInput;
     input.onchange = () => {
-      const f = input.files?.[0];
-      if (!f) return sacarInput();
-      void leerYMandar(f);
+      const fs = Array.from(input.files ?? []);
+      if (fs.length === 0) return sacarInput();
+      // La cámara manda directo: sacar una foto ya es la confirmación, y hacerla pasar por
+      // la tira sería un paso de más con el cliente esperando.
+      if (captura && fs[0]) return void leerYMandar(fs[0]);
+      void guardarParaDespues(fs);
     };
     input.click();
   };
@@ -1975,7 +2059,7 @@ export function ConversacionesScreen() {
                     // Cámara, galería, audio y documento abren el selector del
                     // celular y mandan el archivo de verdad.
                     if (a.key === "camara") return elegirArchivo("image/*", true);
-                    if (a.key === "galeria") return elegirArchivo("image/*");
+                    if (a.key === "galeria") return elegirArchivo("image/*,video/*");
                     if (a.key === "audioarch") return elegirArchivo("audio/*");
                     if (a.key === "documento") return elegirArchivo("*/*");
                     // La ubicación no es un archivo: la da el GPS y viaja como
@@ -2217,6 +2301,70 @@ export function ConversacionesScreen() {
             </div>
           )}
 
+          {/* Lo que está por mandarse, con su cruz para sacarlo. */}
+          {porEnviar.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                overflowX: "auto",
+                padding: "8px 14px 0",
+                background: t.card,
+              }}
+            >
+              {porEnviar.map((a) => (
+                <div key={a.id} style={{ position: "relative", flex: "0 0 auto" }}>
+                  {a.vista ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={a.vista}
+                      alt={a.nombre}
+                      style={{ width: 58, height: 58, objectFit: "cover", borderRadius: 9 }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 58,
+                        height: 58,
+                        borderRadius: 9,
+                        background: t.border,
+                        display: "grid",
+                        placeItems: "center",
+                        font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
+                        color: t.ink2,
+                      }}
+                    >
+                      {a.esVideo ? "▶" : (a.nombre.split(".").pop() || "DOC").toUpperCase().slice(0, 4)}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (a.vista) URL.revokeObjectURL(a.vista);
+                      setPorEnviar((p) => p.filter((x) => x.id !== a.id));
+                    }}
+                    aria-label={`Sacar ${a.nombre}`}
+                    disabled={enviandoAdjuntos}
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      width: 20,
+                      height: 20,
+                      border: 0,
+                      borderRadius: "50%",
+                      background: "rgba(0,0,0,.6)",
+                      color: "#fff",
+                      cursor: "pointer",
+                      font: "700 11px/1 var(--font-barlow),Barlow,sans-serif",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Composer */}
           <div
             style={{
@@ -2389,9 +2537,18 @@ export function ConversacionesScreen() {
                     ☺
                   </button>
                 </div>
-                {s.xTexto.trim().length > 0 ? (
+                {s.xTexto.trim().length > 0 || porEnviar.length > 0 ? (
                   <button
-                    onClick={enviarTexto}
+                    onClick={() => {
+                      // Primero los archivos, después el texto.
+                      if (porEnviar.length > 0) {
+                        void enviarPendientes().then(() => {
+                          if (s.xTexto.trim()) enviarTexto();
+                        });
+                        return;
+                      }
+                      enviarTexto();
+                    }}
                     style={{
                       width: 40,
                       height: 40,

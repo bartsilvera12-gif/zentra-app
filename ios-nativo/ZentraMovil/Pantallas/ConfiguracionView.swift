@@ -1,0 +1,273 @@
+import SwiftUI
+
+/// Configuración. Port de `src/mobile/screens/ConfigScreen.tsx`.
+///
+/// Cuatro bloques: apariencia, notificaciones, soporte y cuenta. El borrado de
+/// cuenta no es opcional — las dos tiendas lo exigen si la app permite
+/// registrarse, y Apple lo hace cumplir.
+struct ConfiguracionView: View {
+    @Environment(\.tema) private var t
+    @Environment(Ajustes.self) private var ajustes
+    @Environment(Estado.self) private var estado
+
+    @State private var confirmarSalir = false
+    @State private var confirmarBorrar = false
+    @State private var textoBorrar = ""
+
+    var body: some View {
+        @Bindable var a = ajustes
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                apariencia($a)
+                notificaciones($a)
+                soporte
+                cuenta
+
+                Text("Zentra ERP · versión 2.4.1 · \(estado.tenant?.nombre ?? "Zentra")")
+                    .font(Tipo.barlow(.regular, 11.5))
+                    .foregroundStyle(t.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
+            .padding(14)
+        }
+        .background(t.bg)
+        .safeAreaInset(edge: .top, spacing: 0) { encabezado }
+        .alert("¿Cerrar sesión?", isPresented: $confirmarSalir) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Cerrar sesión", role: .destructive) { Task { await estado.salir() } }
+        } message: {
+            Text("Vas a tener que volver a escribir tu usuario y contraseña.")
+        }
+        .sheet(isPresented: $confirmarBorrar) { hojaBorrar }
+    }
+
+    private var encabezado: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Configuración")
+                .font(Tipo.barlow(.bold, 24))
+                .foregroundStyle(t.ink)
+            Text("Preferencias visuales y avisos")
+                .font(Tipo.barlow(.regular, 12.5))
+                .foregroundStyle(t.ink2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 14)
+        .background(t.card)
+        .overlay(alignment: .bottom) { Rectangle().fill(t.border).frame(height: 1) }
+    }
+
+    // MARK: - Apariencia
+
+    private func apariencia(_ a: Bindable<Ajustes>) -> some View {
+        tarjeta {
+            etiqueta("APARIENCIA")
+
+            HStack(spacing: 12) {
+                modo(.claro, "Modo claro", "sun.max")
+                modo(.oscuro, "Modo oscuro", "moon")
+            }
+            // Elegir un modo a mano implica dejar de seguir al teléfono: si no,
+            // se toca "Modo oscuro" y no pasa nada visible.
+            .disabled(ajustes.seguirSistema)
+            .opacity(ajustes.seguirSistema ? 0.45 : 1)
+
+            fila("Usar la del sistema", "Usar el tema del teléfono") {
+                Toggle("", isOn: a.seguirSistema.animation(.easeInOut(duration: 0.2)))
+                    .labelsHidden().tint(C.teal)
+            }
+        }
+    }
+
+    // MARK: - Notificaciones
+
+    private func notificaciones(_ a: Bindable<Ajustes>) -> some View {
+        tarjeta {
+            etiqueta("NOTIFICACIONES")
+            fila("Avisos push", "Ventas, cobros y entregas") {
+                Toggle("", isOn: a.push).labelsHidden().tint(C.teal)
+            }
+            fila("Stock bajo", "Alertar bajo el mínimo") {
+                Toggle("", isOn: a.stockBajo).labelsHidden().tint(C.teal)
+            }
+            fila("Resumen diario", "Todos los días a las 19:00") {
+                Toggle("", isOn: a.resumenDiario).labelsHidden().tint(C.teal)
+            }
+            fila("Sonido y vibración", "Al recibir un aviso") {
+                Toggle("", isOn: a.sonido).labelsHidden().tint(C.teal)
+            }
+
+            // Honesto: el permiso del sistema y el envío todavía no están.
+            Text("Los avisos todavía no se envían: falta la clave APNs en Firebase y el servidor que los dispara.")
+                .font(Tipo.barlow(.regular, 11.5))
+                .foregroundStyle(Tint.avisoInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Tint.avisoBg, in: .rect(cornerRadius: 10))
+        }
+    }
+
+    // MARK: - Soporte
+
+    private var soporte: some View {
+        tarjeta {
+            etiqueta("SOPORTE")
+            filaSoporte("WA", "WhatsApp de soporte", "+595 981 000 450 · lun a sáb, 8 a 18 h",
+                        destino: Config.linkWhatsapp("Hola, necesito ayuda con la app de Zentra."))
+            filaSoporte("@", "Correo de soporte", "soporte@zentra.com.py · respuesta en 24 h",
+                        destino: URL(string: "mailto:soporte@zentra.com.py"))
+            filaSoporte("?", "Reportar un problema", "Adjunta captura y datos del dispositivo",
+                        destino: Config.linkWhatsapp("Hola, quiero reportar un problema en la app de Zentra."))
+        }
+    }
+
+    // MARK: - Cuenta
+
+    private var cuenta: some View {
+        tarjeta {
+            etiqueta("CUENTA")
+
+            if let p = estado.perfil {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Formato.nombreCorto(p.nombre))
+                        .font(Tipo.barlow(.semibold, 14.5)).foregroundStyle(t.ink)
+                    Text(Formato.rolLegible(p.rol))
+                        .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button { confirmarSalir = true } label: {
+                Text("Cerrar sesión")
+                    .font(Tipo.barlow(.semibold, 14.5))
+                    .foregroundStyle(t.ink)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(t.bg, in: .rect(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).stroke(t.border) }
+            }
+            .buttonStyle(.plain)
+
+            Button { textoBorrar = ""; confirmarBorrar = true } label: {
+                Text("Eliminar mi cuenta")
+                    .font(Tipo.barlow(.semibold, 14.5))
+                    .foregroundStyle(Tint.errorInk)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Tint.errorBg, in: .rect(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Pide escribir ELIMINAR: un toque accidental no puede borrar un negocio.
+    private var hojaBorrar: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Eliminar mi cuenta")
+                .font(Tipo.barlow(.bold, 19)).foregroundStyle(t.ink)
+            Text("Se borran tu perfil y tus datos. **No se puede deshacer.**")
+                .font(Tipo.barlow(.regular, 13)).foregroundStyle(t.ink2)
+            Text("Escribí ELIMINAR para habilitar el botón.")
+                .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink2)
+
+            TextField("ELIMINAR", text: $textoBorrar)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.system(size: 16))
+                .padding(.horizontal, 14).frame(height: 46)
+                .background(t.card, in: .rect(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).stroke(t.border) }
+
+            Text("En esta instalación el acceso es el del ERP, así que tu usuario para entrar al sistema de tu empresa no se toca: se van tu perfil y tus datos de la app.")
+                .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+
+            Button {
+                // Pendiente: `zentra.eliminar_mi_cuenta()` es del Supabase propio;
+                // contra un ERP hace falta el endpoint del lado de ellos.
+            } label: {
+                Text("Eliminar definitivamente")
+                    .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).frame(height: 46)
+                    .background(textoBorrar == "ELIMINAR" ? Tint.errorInk : t.dim,
+                                in: .rect(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .disabled(textoBorrar != "ELIMINAR")
+
+            Spacer()
+        }
+        .padding(20)
+        .background(t.bg)
+        .presentationDetents([.medium])
+    }
+
+    // MARK: - Piezas
+
+    private func etiqueta(_ s: String) -> some View {
+        Text(s).font(Tipo.barlow(.semibold, 10.5)).tracking(1.68).foregroundStyle(t.ink2)
+    }
+
+    private func fila(_ titulo: String, _ detalle: String, @ViewBuilder _ control: () -> some View) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(titulo).font(Tipo.barlow(.semibold, 14.5)).foregroundStyle(t.ink)
+                Text(detalle).font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
+            }
+            Spacer(minLength: 0)
+            control()
+        }
+    }
+
+    private func filaSoporte(_ tag: String, _ titulo: String, _ detalle: String, destino: URL?) -> some View {
+        Button {
+            if let destino { UIApplication.shared.open(destino) }
+        } label: {
+            HStack(spacing: 12) {
+                Text(tag)
+                    .font(Tipo.barlow(.semibold, 12)).foregroundStyle(t.ink2)
+                    .frame(width: 38, height: 38)
+                    .background(t.bg, in: .rect(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(titulo).font(Tipo.barlow(.semibold, 14)).foregroundStyle(t.ink)
+                    Text(detalle).font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink2)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(t.ink3)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(destino == nil)
+    }
+
+    private func modo(_ cual: Ajustes.Tema, _ titulo: String, _ icono: String) -> some View {
+        let activo = ajustes.tema == cual && !ajustes.seguirSistema
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) { ajustes.tema = cual }
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: icono).font(.system(size: 20))
+                Text(titulo).font(Tipo.barlow(.semibold, 14))
+            }
+            .foregroundStyle(activo ? Tint.tealInk : t.ink)
+            .frame(maxWidth: .infinity).padding(.vertical, 18)
+            .background(activo ? Tint.tealBg : t.card, in: .rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(activo ? C.teal : t.border, lineWidth: activo ? 1.5 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tarjeta<C: View>(@ViewBuilder _ c: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 14, content: c)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(t.card, in: .rect(cornerRadius: 14))
+    }
+}
