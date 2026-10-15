@@ -13,7 +13,14 @@ No son técnicas pero frenan todo si faltan:
 
 1. **El dominio del server.** Algo como `cobros.zentra.com.py`. Tiene que
    existir y apuntar a la IP de la VPS **antes** del paso 7, porque el
-   certificado se emite verificando ese dominio.
+   certificado se emite verificando ese dominio. No hace falta uno nuevo: a esa
+   URL le pega sólo PagoPar, nadie la ve, así que un subdominio de uno que ya
+   tengas alcanza.
+
+   Si el DNS está en Cloudflare, el registro va en **DNS only** (nube gris). Con
+   el proxy prendido el certificado se complica, y —peor— Cloudflare puede
+   frenar el aviso de PagoPar tomándolo por un bot: el pago entra, el aviso
+   rebota y el cobro queda `pendiente` como si nadie hubiera pagado.
 2. **Contra qué Supabase trabaja.** El de siempre (`api.neura.com.py`) o uno
    nuevo. Si es nuevo, hay que correr las migraciones ahí.
 3. **Si el comercio de PagoPar está habilitado para producción.** Eso lo
@@ -227,8 +234,19 @@ proceso todavía no abrió el puerto y el `-s` esconde el error de conexión.
 
 ## 10. HTTPS por delante
 
-PagoPar tiene que llegar al webhook desde internet y por HTTPS. Caddy saca el
-certificado solo:
+PagoPar tiene que llegar al webhook desde internet y por HTTPS.
+
+**Antes que nada, mirá si el 80 y el 443 están libres:**
+
+```bash
+sudo ss -lntp | grep -E ':80 |:443 '
+```
+
+Si algo ya escucha ahí —nginx, apache— **no instales Caddy**: los dos quieren
+los mismos puertos y el que ya estaba sirviendo deja de servir. Saltá a *"Si la
+VPS ya tiene nginx"*, más abajo.
+
+Con los puertos libres, Caddy saca el certificado solo:
 
 ```bash
 apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
@@ -258,6 +276,36 @@ curl https://cobros.zentra.com.py/pagopar/health
 
 Si las claves salen `(vacía)` o dice `FALTA SUPABASE_URL`, el `.env` no se está
 leyendo: revisá el `EnvironmentFile` del paso 9.
+
+### Si la VPS ya tiene nginx
+
+No se reemplaza nada: se le agrega un sitio más. Lo de antes queda intacto.
+
+```bash
+sudo tee /etc/nginx/sites-available/cobros-zentra > /dev/null <<'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name cobros.zentra.com.py;
+
+    location / {
+        proxy_pass http://127.0.0.1:8790;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+sudo ln -s /etc/nginx/sites-available/cobros-zentra /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d cobros.zentra.com.py
+```
+
+Cambiá el dominio por el tuyo. Certbot edita sólo ese archivo, pregunta si
+redirigir HTTP a HTTPS —sí— y deja la renovación programada. El puerto 80 tiene
+que seguir abierto después: es por donde se renueva.
 
 ## 11. Decirle a PagoPar a dónde avisar
 
@@ -298,7 +346,9 @@ El `.env` no se toca: está fuera del repo y `git pull` no lo pisa.
 
 | Síntoma | Dónde mirar |
 |---|---|
-| `curl` al dominio no responde | Caddy: `systemctl status caddy`, DNS, `ufw status` |
+| `curl` al dominio no responde | El proxy de adelante (`systemctl status caddy` o `nginx`), DNS, `ufw status` |
+| Caddy no levanta | Algo más tiene el 80/443: `sudo ss -lntp`. Con nginx puesto, usá nginx |
+| El dominio resuelve a `104.x` o `172.67.x` | Está proxeado en Cloudflare. Ponelo en *DNS only* (nube gris) |
 | `node: .env: not found` y el archivo está ahí | Es permiso, no ausencia: corré el comando con `sudo` |
 | El servicio arranca y muere enseguida | Permisos del paso 6: `zentra` no puede leer `/opt/zentra-app/server` |
 | `health` dice claves `(vacía)` | El `EnvironmentFile` del paso 9, o el `.env` sin permisos |
