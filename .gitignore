@@ -41,3 +41,4 @@ npm-debug.log*
 
 # Copia temporal que usa scripts/android-init.mjs
 .google-services.json.bak
+ios-nativo/ZentraMovil/Recursos/Secretos.plist
