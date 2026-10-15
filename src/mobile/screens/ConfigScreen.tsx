@@ -7,6 +7,7 @@ import type { ThemeName } from "@/lib/types";
 import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
 import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
+import { estadoDeSuscripcion } from "@/lib/planes";
 import { repo } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -31,7 +32,19 @@ function IconLuna({ stroke }: { stroke: string }) {
 }
 
 export function ConfigScreen() {
-  const { s, t, set, cerrarSesion } = useApp();
+  const { s, t, set, cerrarSesion, plan } = useApp();
+
+  /**
+   * El estado de la suscripción, o `null` si no corresponde mostrarla.
+   *
+   * El contexto se arma donde ya vive —`plan()` del store— para que esta
+   * pantalla no vuelva a decidir de dónde sale el plan: ese cálculo ya estuvo
+   * mal una vez.
+   */
+  const suscripcion = (() => {
+    const ctx = plan();
+    return estadoDeSuscripcion({ conErp: ctx.conErp, plan: ctx.plan, vence: ctx.vence });
+  })();
 
   /** A labelled switch row. */
   const claro = s.theme === "claro";
@@ -211,6 +224,73 @@ export function ConfigScreen() {
           gap: 14,
         }}
       >
+        {suscripcion && (
+          <Card gap={10}>
+            <SectionLabel>Suscripción</SectionLabel>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ font: "700 18px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
+                {suscripcion.plan}
+              </span>
+              <span
+                style={{
+                  font: "600 12.5px/1 var(--font-barlow),Barlow,sans-serif",
+                  padding: "5px 9px",
+                  borderRadius: 999,
+                  // El rojo se guarda para lo que ya venció. Un "vence en 5
+                  // días" en rojo es la alarma gritando todos los días.
+                  background: suscripcion.urgente ? "#FBE9E8" : MARCA.suave,
+                  color: suscripcion.urgente ? "#7A2220" : MARCA.suaveInk,
+                }}
+              >
+                {suscripcion.estado}
+              </span>
+            </div>
+            <div style={{ font: "400 13px/1.45 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+              {suscripcion.detalle}
+            </div>
+
+            {/* Dónde se paga. La dirección va como texto y el botón sólo
+                aparece en el APK que se reparte fuera de la tienda: Play no
+                permite mandar a pagar afuera, y eso no depende del código sino
+                de por dónde se distribuye. Está en docs/COBROS.md. */}
+            {config.cobrosUrl && (
+              <div style={{ paddingTop: 2 }}>
+                <div style={{ font: "400 12.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                  Se paga desde el navegador, en:
+                </div>
+                <div
+                  style={{
+                    font: "600 13px/1.4 var(--font-barlow),Barlow,sans-serif",
+                    color: t.ink,
+                    wordBreak: "break-all",
+                    paddingTop: 2,
+                  }}
+                >
+                  {config.cobrosUrl.replace(/^https?:\/\//, "")}/pagar
+                </div>
+                {config.linkDePago && (
+                  <button
+                    onClick={() => window.open(`${config.cobrosUrl}/pagar`, "_blank", "noopener")}
+                    style={{
+                      marginTop: 10,
+                      width: "100%",
+                      padding: "11px",
+                      border: 0,
+                      borderRadius: 10,
+                      background: MARCA.acento,
+                      color: "#fff",
+                      cursor: "pointer",
+                      font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                    }}
+                  >
+                    Pagar o renovar
+                  </button>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
         <Card gap={12}>
           <SectionLabel>Apariencia</SectionLabel>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

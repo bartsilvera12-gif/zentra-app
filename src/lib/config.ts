@@ -81,6 +81,31 @@ export const config = {
   build: (process.env.NEXT_PUBLIC_BUILD_SHA || "").slice(0, 7),
 
   /**
+   * Dónde se paga la suscripción.
+   *
+   * Es una página web, fuera de la app, y no por comodidad: vender una
+   * suscripción adentro de una app Android, cobrando a clientes de Paraguay,
+   * choca con la política de pagos de Google Play. La apertura a cobros
+   * externos de 2026 llega a Estados Unidos, Reino Unido y el EEE; Paraguay
+   * no está. Está explicado en docs/COBROS.md.
+   */
+  cobrosUrl: (process.env.NEXT_PUBLIC_COBROS_URL || "").replace(/\/+$/, ""),
+
+  /**
+   * Si la pantalla de suscripción muestra un botón que abre esa página.
+   *
+   * Apagado por defecto, y es a propósito: lo que Play no permite no es sólo
+   * cobrar adentro, es también mandar a pagar afuera. Con esto apagado la app
+   * dice cuál es el plan y cuándo vence —informar siempre se puede— y la
+   * dirección queda como texto, para escribirla en el navegador.
+   *
+   * Se prende con `NEXT_PUBLIC_LINK_DE_PAGO=1` en el APK que se reparte por
+   * fuera de la tienda, donde esa política no rige. La compilación que sube a
+   * Play se arma sin esa variable.
+   */
+  linkDePago: process.env.NEXT_PUBLIC_LINK_DE_PAGO === "1",
+
+  /**
    * La versión que se muestra al usuario. Va acá y no en `data.ts`, que son los
    * datos de ejemplo: el cliente del ERP la manda al registrar el teléfono para
    * las notificaciones, y no tiene por qué importar nada del prototipo para eso.

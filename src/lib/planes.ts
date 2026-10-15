@@ -58,10 +58,19 @@ interface Limites {
 
 interface DefinicionPlan {
   nombre: string;
-  precioMensual: number;
   limites: Limites;
   permite: ReadonlySet<Accion>;
 }
+
+/**
+ * El precio NO está acá.
+ *
+ * Estuvo, no lo usaba nadie, y decía 49.000 y 89.000 cuando en la base eran
+ * 80.000 y 150.000. Un precio en dos lugares es un precio que en algún momento
+ * dice dos cosas distintas, y el que importa —el que se cobra— es el de
+ * `zentra.planes`, que es de donde lo lee el server. La pantalla de pago lo
+ * muestra desde ahí.
+ */
 
 const FREE: Accion[] = ["inventario.alta", "inventario.ajuste"];
 
@@ -94,19 +103,16 @@ const MAX: Accion[] = [
 export const PLANES: Record<Plan, DefinicionPlan> = {
   free: {
     nombre: "Básico",
-    precioMensual: 0,
     limites: { productos: 20, esperaAjusteDias: 30 },
     permite: new Set(FREE),
   },
   emprendedor: {
     nombre: "Emprendedor",
-    precioMensual: 49000,
     limites: { productos: 50, esperaAjusteDias: 30 },
     permite: new Set(EMPRENDEDOR),
   },
   max: {
     nombre: "Max",
-    precioMensual: 89000,
     limites: { productos: null, esperaAjusteDias: null },
     permite: new Set(MAX),
   },
@@ -271,4 +277,70 @@ function diasQueFaltan(ultimoIso: string, espera: number, ahora = new Date()): n
 export function cupoProductos(ctx: Contexto): { usados: number; tope: number | null } {
   const tope = ctx.conErp ? null : PLANES[ctx.plan].limites.productos;
   return { usados: ctx.productos ?? 0, tope };
+}
+
+/**
+ * Qué mostrar en la pantalla de suscripción.
+ *
+ * Tres estados y ninguno más: con ERP no hay nada que decir, vencido es
+ * urgente, y al día es informativo. La pantalla no decide nada —sólo dibuja lo
+ * que esto devuelve— para que el texto que lee alguien que pagó ayer y el que
+ * lee alguien que no paga hace un mes estén decididos en el mismo lugar.
+ */
+export function estadoDeSuscripcion(ctx: {
+  conErp: boolean;
+  plan: Plan;
+  vence: string | null | undefined;
+  ahora?: Date;
+}): { plan: string; estado: string; detalle: string; urgente: boolean } | null {
+  if (ctx.conErp) return null;
+
+  const def = PLANES[ctx.plan];
+  const dias = diasParaVencer(ctx.vence, ctx.ahora);
+
+  // Sin fecha: nunca pagó. No es un error ni una deuda, es el plan gratis.
+  if (dias === null) {
+    return ctx.plan === "free"
+      ? {
+          plan: def.nombre,
+          estado: "Gratis, sin vencimiento",
+          detalle: "Pagando un plan se habilitan compras, reportes y el resto de los módulos.",
+          urgente: false,
+        }
+      : {
+          plan: def.nombre,
+          estado: "Sin fecha de vencimiento",
+          detalle: "Tu plan está activo. Si creés que esto no es correcto, escribinos.",
+          urgente: false,
+        };
+  }
+
+  if (dias < 0) {
+    const d = Math.abs(dias);
+    return {
+      plan: def.nombre,
+      estado: d === 1 ? "Venció ayer" : `Venció hace ${d} días`,
+      // Lo que importa no es que venció: es qué se puede seguir haciendo. Nadie
+      // pierde lo cargado, y decirlo evita la llamada asustada.
+      detalle: "Podés seguir viendo todo lo que cargaste, pero no cargar más hasta renovar.",
+      urgente: true,
+    };
+  }
+
+  if (dias === 0) {
+    return { plan: def.nombre, estado: "Vence hoy", detalle: "Renová para no quedarte sin cargar mañana.", urgente: true };
+  }
+
+  return {
+    plan: def.nombre,
+    estado: dias === 1 ? "Vence mañana" : `Vence en ${dias} días`,
+    detalle: `Pagado hasta el ${formatoDia(ctx.vence)}.`,
+    urgente: dias <= 7,
+  };
+}
+
+/** `2026-11-15` → `15/11/2026`. Como se escribe una fecha acá. */
+function formatoDia(v: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v ?? "");
 }

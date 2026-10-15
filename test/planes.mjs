@@ -8,7 +8,7 @@
  * vencer se sigue viendo todo pero no se escribe, y el tope se cuenta al dar
  * de alta y nunca al listar.
  */
-import { cupoProductos, diasParaVencer, fechaVencida, motivoBloqueo, planEfectivo, puedeEscribir } from "../src/lib/planes.ts";
+import { cupoProductos, diasParaVencer, estadoDeSuscripcion, fechaVencida, motivoBloqueo, planEfectivo, puedeEscribir } from "../src/lib/planes.ts";
 
 const casos = [];
 const t = (nombre, fn) => casos.push([nombre, fn]);
@@ -176,6 +176,43 @@ t("leer nunca se bloquea: lo que se consulta es escribir", () => {
   // Vencido hace años y aun asi el modulo de compras sigue permitido en free?
   // No: lo que importa es que la funcion habla de escribir, no de ver.
   if (typeof motivoBloqueo("compras.modulo", ctx) === "undefined") throw new Error("no deberia ser undefined");
+});
+
+t("con ERP la pantalla de suscripcion no existe", () => {
+  // Esa empresa paga su ERP; la app no le cobra nada y no tiene por qué
+  // hablarle de planes.
+  if (estadoDeSuscripcion({ conErp: true, plan: "free", vence: null })) {
+    throw new Error("le mostró una suscripción a alguien con ERP");
+  }
+});
+
+t("sin haber pagado nunca, free no parece una deuda", () => {
+  const e = estadoDeSuscripcion({ conErp: false, plan: "free", vence: null });
+  if (e.urgente) throw new Error("el plan gratis no es una urgencia");
+  if (/venc(e|ió) /i.test(e.estado)) throw new Error("anuncia un vencimiento que no existe: " + e.estado);
+});
+
+t("vencido lo dice, y dice que no se pierde nada", () => {
+  const ahora = new Date("2026-10-15T12:00:00Z");
+  const e = estadoDeSuscripcion({ conErp: false, plan: "max", vence: "2026-10-05", ahora });
+  if (!e.urgente) throw new Error("vencido es urgente");
+  if (!/10 días/.test(e.estado)) throw new Error("estado: " + e.estado);
+  // Lo primero que piensa alguien al ver "venció" es que perdió sus datos.
+  if (!/seguir viendo/.test(e.detalle)) throw new Error("no aclara que no se pierde nada");
+});
+
+t("al dia muestra hasta cuando, con la fecha como se escribe aca", () => {
+  const ahora = new Date("2026-10-15T12:00:00Z");
+  const e = estadoDeSuscripcion({ conErp: false, plan: "emprendedor", vence: "2026-11-15", ahora });
+  if (e.urgente) throw new Error("faltando un mes no es urgente");
+  if (!e.detalle.includes("15/11/2026")) throw new Error("la fecha: " + e.detalle);
+});
+
+t("faltando pocos dias se pone urgente, pero sin asustar", () => {
+  const ahora = new Date("2026-10-15T12:00:00Z");
+  const e = estadoDeSuscripcion({ conErp: false, plan: "max", vence: "2026-10-18", ahora });
+  if (!e.urgente) throw new Error("tres días tiene que avisar");
+  if (!/3 días/.test(e.estado)) throw new Error("estado: " + e.estado);
 });
 
 let malas = 0;
