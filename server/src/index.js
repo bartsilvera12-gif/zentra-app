@@ -29,14 +29,18 @@ import {
 } from "./pagopar.js";
 import {
   cobroPendiente,
+  cobroPorHash,
   configurada,
   crearCobro,
+  entrarConClave,
   guardarHash,
   perfilDe,
+  planesVendibles,
   planVendible,
   registrarPago,
   usuarioDelToken,
 } from "./db.js";
+import { paginaPagar, paginaResultado } from "./pagina.js";
 
 const PORT = Number(process.env.PORT || 8790);
 /**
@@ -91,6 +95,8 @@ app.use("/pagopar/webhook", express.raw({ type: "*/*", limit: "1mb" }), (req, _r
   next();
 });
 app.use(express.json({ limit: "1mb" }));
+// El formulario de la página de pago llega como `application/x-www-form-urlencoded`.
+app.use(express.urlencoded({ extended: false, limit: "64kb" }));
 app.use(
   cors({
     origin(origin, cb) {
@@ -131,6 +137,135 @@ function falta() {
 
 /* ──────────────────────────── crear el cobro ──────────────────────────── */
 
+/**
+ * Un error con cara de respuesta: el código HTTP y lo que se le muestra a la
+ * persona. Lo que no se muestra —el motivo técnico— va al log y nada más.
+ */
+class ErrorDeCobro extends Error {
+  constructor(status, mensaje, faltan) {
+    super(mensaje);
+    this.status = status;
+    this.faltan = faltan;
+  }
+}
+
+/**
+ * Arma el cobro y el pedido en PagoPar, y devuelve a dónde mandar a la persona.
+ *
+ * Vive fuera de los endpoints porque entran por dos puertas —la app, con su
+ * token, y la página web, con correo y contraseña— y lo que pasa después tiene
+ * que ser exactamente lo mismo. Partirlo en dos copias es la forma más
+ * confiable de que dentro de tres meses una cobre bien y la otra no.
+ */
+async function iniciarCobro({ usuarioId, email, plan, documento, telefono }) {
+  if (!plan) throw new ErrorDeCobro(400, "Falta decir qué plan.");
+
+  const perfil = await perfilDe(usuarioId);
+  if (!perfil?.empresa?.id) throw new ErrorDeCobro(400, "Tu usuario no tiene empresa asignada.");
+
+  // El precio sale de la base. Si lo mandara el navegador, cualquiera se
+  // compra un mes de Max por mil guaraníes.
+  const def = await planVendible(plan);
+  if (!def) throw new ErrorDeCobro(400, "Ese plan no está a la venta.");
+  const monto = def.precio_mensual;
+
+  const nombre = String(perfil.nombre || "").trim() || perfil.empresa.nombre || "";
+  const correo = email || perfil.email || "";
+  const ruc = String(perfil.empresa.ruc || "").trim();
+  const doc = String(documento || "").trim() || ruc;
+
+  // Se dice QUÉ falta, no "datos incompletos": quien lo lee tiene que saber
+  // qué cargar para poder seguir.
+  const faltan = [];
+  if (!nombre) faltan.push("el nombre");
+  if (!correo) faltan.push("el correo");
+  if (!doc) faltan.push("la cédula o el RUC");
+  if (faltan.length) throw new ErrorDeCobro(400, `Para cobrar falta ${faltan.join(" y ")}.`, faltan);
+
+  // Un cobro pendiente reciente se reutiliza en vez de abrir otro pedido.
+  const desde = new Date(Date.now() - HORAS * 3600_000).toISOString();
+  const previo = await cobroPendiente(perfil.empresa.id, plan, monto, desde);
+  if (previo?.hash_pedido) {
+    return { url: checkoutUrlFromHash(previo.hash_pedido), monto, plan: def.nombre, reutilizado: true };
+  }
+
+  // La referencia se guarda ANTES de hablar con PagoPar. Si la llamada se
+  // corta, queda un cobro pendiente sin hash y no pasa nada. Al revés, un
+  // corte dejaría plata entrando sin saber de quién es.
+  const referencia = "ztr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const cobroId = await crearCobro({ empresaId: perfil.empresa.id, plan, monto, referencia });
+
+  const vence = new Date(Date.now() + HORAS * 3600_000);
+  const dos = (n) => String(n).padStart(2, "0");
+  const fechaMax =
+    `${vence.getFullYear()}-${dos(vence.getMonth() + 1)}-${dos(vence.getDate())} ` +
+    `${dos(vence.getHours())}:${dos(vence.getMinutes())}:${dos(vence.getSeconds())}`;
+
+  const cuerpo = {
+    token: buildStartTransactionToken(PRIVADA, referencia, monto),
+    public_key: PUBLICA,
+    monto_total: monto,
+    tipo_pedido: "VENTA-COMERCIO",
+    fecha_maxima_pago: fechaMax,
+    id_pedido_comercio: referencia,
+    descripcion_resumen: `Zentra ${def.nombre} · 1 mes`,
+    comprador: {
+      ruc,
+      email: correo,
+      ciudad: Number(process.env.PAGOPAR_ITEM_CIUDAD || 1),
+      nombre,
+      telefono: String(telefono || "").trim(),
+      direccion: "",
+      documento: doc,
+      coordenadas: "",
+      razon_social: perfil.empresa.nombre || "",
+      direccion_referencia: "",
+      tipo_documento: "CI",
+    },
+    compras_items: [
+      {
+        ciudad: Number(process.env.PAGOPAR_ITEM_CIUDAD || 1),
+        nombre: `Plan ${def.nombre}`,
+        descripcion: "Suscripción mensual a Zentra",
+        cantidad: 1,
+        categoria: Number(process.env.PAGOPAR_ITEM_CATEGORIA || 909),
+        public_key: PUBLICA,
+        url_imagen: process.env.PAGOPAR_ITEM_IMAGEN_URL || "",
+        id_producto: process.env.PAGOPAR_ITEM_PRODUCTO_ID || plan,
+        // Total de la línea, no precio unitario.
+        precio_total: monto,
+        vendedor_telefono: "",
+        vendedor_direccion: "",
+        vendedor_direccion_referencia: "",
+        vendedor_direccion_coordenadas: "",
+      },
+    ],
+  };
+
+  const data = await iniciarTransaccion(cuerpo);
+  if (!isPagoparRespuestaOk(data?.respuesta)) {
+    // El mensaje de PagoPar va al log y no a la pantalla: habla de tokens y
+    // claves, que no le dice nada a quien sólo quiere pagar.
+    const motivo = typeof data?.resultado === "string" ? data.resultado : JSON.stringify(data?.resultado);
+    console.error("[cobro] PagoPar rechazó:", motivo);
+    throw new ErrorDeCobro(502, "PagoPar no aceptó el pedido. Ya estamos viendo.");
+  }
+
+  const fila = Array.isArray(data.resultado) ? data.resultado[0] : data.resultado;
+  const hash = String(fila?.data || "").trim();
+  if (!hash) {
+    console.error("[cobro] PagoPar no devolvió hash:", JSON.stringify(data).slice(0, 300));
+    throw new ErrorDeCobro(502, "PagoPar no aceptó el pedido. Ya estamos viendo.");
+  }
+
+  // Sin el hash guardado no sabríamos de quién es el pago que entre, así que
+  // si esto falla no se manda a nadie a pagar.
+  await guardarHash(cobroId, hash);
+
+  console.info(`[cobro] empresa ${perfil.empresa.id} · ${plan} · ${monto} · ${hash}`);
+  return { url: checkoutUrlFromHash(hash), monto, plan: def.nombre };
+}
+
 app.post("/pagopar/crear-cobro", async (req, res) => {
   const problema = falta();
   if (problema) {
@@ -145,125 +280,113 @@ app.post("/pagopar/crear-cobro", async (req, res) => {
     const usuario = auth.startsWith("Bearer ") ? await usuarioDelToken(auth.slice(7)) : null;
     if (!usuario) return res.status(401).json({ error: "Iniciá sesión." });
 
-    const plan = String(req.body?.plan || "").trim();
-    if (!plan) return res.status(400).json({ error: "Falta decir qué plan." });
-
-    const perfil = await perfilDe(usuario.id);
-    if (!perfil?.empresa?.id) {
-      return res.status(400).json({ error: "Tu usuario no tiene empresa asignada." });
-    }
-
-    // El precio sale de la base. Si lo mandara el navegador, cualquiera se
-    // compra un mes de Max por mil guaraníes.
-    const def = await planVendible(plan);
-    if (!def) return res.status(400).json({ error: "Ese plan no está a la venta." });
-    const monto = def.precio_mensual;
-
-    const nombre = String(perfil.nombre || "").trim() || perfil.empresa.nombre || "";
-    const email = usuario.email || perfil.email || "";
-    const ruc = String(perfil.empresa.ruc || "").trim();
-    const documento = String(req.body?.documento || "").trim() || ruc;
-
-    // Se dice QUÉ falta, no "datos incompletos": quien lo lee tiene que saber
-    // qué cargar para poder seguir.
-    const faltan = [];
-    if (!nombre) faltan.push("el nombre");
-    if (!email) faltan.push("el correo");
-    if (!documento) faltan.push("la cédula o el RUC");
-    if (faltan.length) {
-      return res.status(400).json({ error: `Para cobrar falta ${faltan.join(" y ")}.`, faltan });
-    }
-
-    // Un cobro pendiente reciente se reutiliza en vez de abrir otro pedido.
-    const desde = new Date(Date.now() - HORAS * 3600_000).toISOString();
-    const previo = await cobroPendiente(perfil.empresa.id, plan, monto, desde);
-    if (previo?.hash_pedido) {
-      return res.json({ url: checkoutUrlFromHash(previo.hash_pedido), monto, reutilizado: true });
-    }
-
-    // La referencia se guarda ANTES de hablar con PagoPar. Si la llamada se
-    // corta, queda un cobro pendiente sin hash y no pasa nada. Al revés, un
-    // corte dejaría plata entrando sin saber de quién es.
-    const referencia = "ztr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    const cobroId = await crearCobro({
-      empresaId: perfil.empresa.id,
-      plan,
-      monto,
-      referencia,
+    const r = await iniciarCobro({
+      usuarioId: usuario.id,
+      email: usuario.email,
+      plan: String(req.body?.plan || "").trim(),
+      documento: req.body?.documento,
+      telefono: req.body?.telefono,
     });
-
-    const vence = new Date(Date.now() + HORAS * 3600_000);
-    const dos = (n) => String(n).padStart(2, "0");
-    const fechaMax =
-      `${vence.getFullYear()}-${dos(vence.getMonth() + 1)}-${dos(vence.getDate())} ` +
-      `${dos(vence.getHours())}:${dos(vence.getMinutes())}:${dos(vence.getSeconds())}`;
-
-    const cuerpo = {
-      token: buildStartTransactionToken(PRIVADA, referencia, monto),
-      public_key: PUBLICA,
-      monto_total: monto,
-      tipo_pedido: "VENTA-COMERCIO",
-      fecha_maxima_pago: fechaMax,
-      id_pedido_comercio: referencia,
-      descripcion_resumen: `Zentra ${def.nombre} · 1 mes`,
-      comprador: {
-        ruc,
-        email,
-        ciudad: Number(process.env.PAGOPAR_ITEM_CIUDAD || 1),
-        nombre,
-        telefono: String(req.body?.telefono || "").trim(),
-        direccion: "",
-        documento,
-        coordenadas: "",
-        razon_social: perfil.empresa.nombre || "",
-        direccion_referencia: "",
-        tipo_documento: "CI",
-      },
-      compras_items: [
-        {
-          ciudad: Number(process.env.PAGOPAR_ITEM_CIUDAD || 1),
-          nombre: `Plan ${def.nombre}`,
-          descripcion: "Suscripción mensual a Zentra",
-          cantidad: 1,
-          categoria: Number(process.env.PAGOPAR_ITEM_CATEGORIA || 909),
-          public_key: PUBLICA,
-          url_imagen: process.env.PAGOPAR_ITEM_IMAGEN_URL || "",
-          id_producto: process.env.PAGOPAR_ITEM_PRODUCTO_ID || plan,
-          // Total de la línea, no precio unitario.
-          precio_total: monto,
-          vendedor_telefono: "",
-          vendedor_direccion: "",
-          vendedor_direccion_referencia: "",
-          vendedor_direccion_coordenadas: "",
-        },
-      ],
-    };
-
-    const data = await iniciarTransaccion(cuerpo);
-    if (!isPagoparRespuestaOk(data?.respuesta)) {
-      // El mensaje de PagoPar va al log y no a la pantalla: habla de tokens y
-      // claves, que no le dice nada a quien sólo quiere pagar.
-      const motivo = typeof data?.resultado === "string" ? data.resultado : JSON.stringify(data?.resultado);
-      console.error("[crear-cobro] PagoPar rechazó:", motivo);
-      return res.status(502).json({ error: "PagoPar no aceptó el pedido. Ya estamos viendo." });
-    }
-
-    const fila = Array.isArray(data.resultado) ? data.resultado[0] : data.resultado;
-    const hash = String(fila?.data || "").trim();
-    if (!hash) {
-      console.error("[crear-cobro] PagoPar no devolvió hash:", JSON.stringify(data).slice(0, 300));
-      return res.status(502).json({ error: "PagoPar no aceptó el pedido. Ya estamos viendo." });
-    }
-
-    // Sin el hash guardado no sabríamos de quién es el pago que entre, así que
-    // si esto falla no se manda a nadie a pagar.
-    await guardarHash(cobroId, hash);
-
-    console.info(`[crear-cobro] empresa ${perfil.empresa.id} · ${plan} · ${monto} · ${hash}`);
-    return res.json({ url: checkoutUrlFromHash(hash), monto, plan: def.nombre });
+    return res.json(r);
   } catch (e) {
+    if (e instanceof ErrorDeCobro) {
+      return res.status(e.status).json({ error: e.message, ...(e.faltan ? { faltan: e.faltan } : {}) });
+    }
     console.error("[crear-cobro] error:", e?.message || e);
     return res.status(500).json({ error: "No se pudo iniciar el pago. Probá de nuevo." });
+  }
+});
+
+/* ─────────────────────── la página donde se paga ─────────────────────── */
+
+/**
+ * Cuántos intentos fallidos lleva cada IP.
+ *
+ * Es un formulario con contraseña asomado a internet: sin esto, probar claves
+ * a mano alzada sale gratis. En memoria y nada más —se limpia al reiniciar—
+ * porque el objetivo es frenar la fuerza bruta, no llevar un registro.
+ */
+const intentos = new Map();
+const TOPE_INTENTOS = 8;
+const VENTANA_MS = 10 * 60 * 1000;
+
+function demasiadosIntentos(ip) {
+  const x = intentos.get(ip);
+  if (!x) return false;
+  if (Date.now() - x.desde > VENTANA_MS) {
+    intentos.delete(ip);
+    return false;
+  }
+  return x.n >= TOPE_INTENTOS;
+}
+
+function anotarFallo(ip) {
+  const x = intentos.get(ip);
+  if (!x || Date.now() - x.desde > VENTANA_MS) intentos.set(ip, { n: 1, desde: Date.now() });
+  else x.n += 1;
+}
+
+app.get("/pagar", async (_req, res) => {
+  try {
+    const planes = await planesVendibles();
+    res.type("html").send(paginaPagar({ planes }));
+  } catch (e) {
+    console.error("[pagar] no se pudieron leer los planes:", e?.message || e);
+    res.status(500).type("html").send(paginaPagar({ planes: [], error: "No pudimos cargar los planes. Probá en un rato." }));
+  }
+});
+
+app.post("/pagar", async (req, res) => {
+  const email = String(req.body?.email || "").trim();
+  const plan = String(req.body?.plan || "").trim();
+  const documento = String(req.body?.documento || "").trim();
+  const ip = req.ip || "";
+
+  const volver = async (error) => {
+    const planes = await planesVendibles().catch(() => []);
+    res.status(400).type("html").send(paginaPagar({ planes, email, plan, error }));
+  };
+
+  if (falta()) return volver("Los cobros no están configurados todavía.");
+  if (demasiadosIntentos(ip)) {
+    return volver("Demasiados intentos. Esperá diez minutos y probá de nuevo.");
+  }
+
+  try {
+    const usuario = await entrarConClave(email, String(req.body?.password || ""));
+    if (!usuario) {
+      anotarFallo(ip);
+      // No se dice si falló el correo o la contraseña: decirlo sirve para
+      // averiguar qué correos existen.
+      return volver("Correo o contraseña incorrectos.");
+    }
+
+    const r = await iniciarCobro({ usuarioId: usuario.id, email: usuario.email, plan, documento });
+    // 303 y no 302: después de un POST, el navegador tiene que ir con GET. Si
+    // no, volver atrás reenvía el formulario y se crea otro pedido.
+    return res.redirect(303, r.url);
+  } catch (e) {
+    if (e instanceof ErrorDeCobro) return volver(e.message);
+    console.error("[pagar] error:", e?.message || e);
+    return volver("No se pudo iniciar el pago. Probá de nuevo.");
+  }
+});
+
+/**
+ * La vuelta de PagoPar, que en el panel se configura como
+ * `https://.../pagopar/resultado/($hash)`.
+ *
+ * No decide nada: sólo mira cómo quedó el cobro. Quien lo da por pagado es el
+ * aviso firmado, que entra por otro lado.
+ */
+app.get("/pagopar/resultado/:hash", async (req, res) => {
+  const hash = String(req.params.hash || "").trim();
+  try {
+    const cobro = hash ? await cobroPorHash(hash) : null;
+    res.type("html").send(paginaResultado(cobro));
+  } catch (e) {
+    console.error("[resultado] error:", e?.message || e);
+    res.status(500).type("html").send(paginaResultado(null));
   }
 });
 

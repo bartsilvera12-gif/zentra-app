@@ -145,3 +145,58 @@ export async function registrarPago(hash, monto) {
   });
   return uno(r);
 }
+
+/**
+ * Los planes que se pueden comprar, del más barato al más caro.
+ *
+ * `free` no aparece: no se vende, se cae a él solo cuando vence el pago.
+ */
+export async function planesVendibles() {
+  const filas = await rest("/planes?vendible=is.true&select=codigo,nombre,precio_mensual&order=precio_mensual.asc");
+  return (Array.isArray(filas) ? filas : [])
+    .map((f) => ({ ...f, precio_mensual: Number(f.precio_mensual) }))
+    .filter((f) => Number.isFinite(f.precio_mensual) && f.precio_mensual > 0);
+}
+
+/**
+ * Un cobro por su hash, con la empresa al lado.
+ *
+ * Es lo que necesita la pantalla de "volviste de pagar": si el aviso ya entró,
+ * decir hasta cuándo quedó pago; si todavía no, decir que puede tardar un
+ * minuto en vez de dejar a la persona mirando una pantalla muda.
+ */
+export async function cobroPorHash(hash) {
+  const cobro = uno(
+    await rest(
+      `/cobros?hash_pedido=eq.${encodeURIComponent(hash)}&select=id,empresa_id,plan,monto,estado&limit=1`,
+    ),
+  );
+  if (!cobro) return null;
+  const empresa = uno(
+    await rest(`/empresas?id=eq.${encodeURIComponent(cobro.empresa_id)}&select=nombre,plan,vence&limit=1`),
+  );
+  return { ...cobro, empresa: empresa ?? null };
+}
+
+/**
+ * Entrar con correo y contraseña.
+ *
+ * La página de pago no es la app: acá no hay sesión guardada, la persona llega
+ * desde un link y lo único que tiene son sus datos. La contraseña se le pasa a
+ * Supabase y no se guarda en ningún lado —ni en un log— y lo único que queda
+ * es el usuario.
+ *
+ * Devuelve `null` si no entra, sin decir si falló el correo o la contraseña:
+ * decirlo sirve para saber qué correos existen.
+ */
+export async function entrarConClave(email, password) {
+  const r = await fetch(URL_BASE + "/auth/v1/token?grant_type=password", {
+    method: "POST",
+    headers: { apikey: SERVICE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!r.ok) return null;
+  const data = await r.json().catch(() => null);
+  const u = data?.user;
+  return u?.id ? { id: u.id, email: u.email || email } : null;
+}
