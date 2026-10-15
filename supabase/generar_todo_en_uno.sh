@@ -7,7 +7,7 @@ out=todo_en_uno.sql
 {
   echo "-- ============================================================================="
   echo "-- Zentra Móvil · TODO EN UNO"
-  echo "-- Equivale a correr 01 + 02 + 03 + 04 + 05 en ese orden."
+  echo "-- Equivale a correr todos los archivos numerados, en orden."
   echo "-- Generado automáticamente: no editar a mano, editar los archivos sueltos."
   echo "-- ============================================================================="
   echo

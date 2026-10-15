@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Zentra Móvil · TODO EN UNO
--- Equivale a correr 01 + 02 + 03 + 04 + 05 en ese orden.
+-- Equivale a correr todos los archivos numerados, en orden.
 -- Generado automáticamente: no editar a mano, editar los archivos sueltos.
 -- =============================================================================
 
@@ -535,6 +535,18 @@ $$;
 -- El rol anónimo puede ver el schema, pero cada tabla decide qué deja ver.
 grant usage on schema zentra to anon, authenticated;
 
+-- Y el rol de servicio, que es con el que trabaja el server de cobros.
+--
+-- En un schema propio esto NO viene puesto: `service_role` pasa por encima de
+-- RLS, pero RLS es otra cosa que el permiso de entrar al schema. Sin estas
+-- líneas, el server contesta `permission denied for schema zentra` y los
+-- cobros no funcionan nunca —ni siquiera para leer el precio de un plan—.
+grant usage on schema zentra to service_role;
+grant all on all tables in schema zentra to service_role;
+grant all on all sequences in schema zentra to service_role;
+alter default privileges in schema zentra grant all on tables to service_role;
+alter default privileges in schema zentra grant all on sequences to service_role;
+
 alter table zentra.empresas       enable row level security;
 alter table zentra.usuarios       enable row level security;
 alter table zentra.clientes       enable row level security;
@@ -821,4 +833,226 @@ $$;
 -- No se le da a `authenticated`: es para el backend de envío. Un vendedor no
 -- necesita la lista de teléfonos de sus compañeros.
 revoke all on function zentra.tokens_de_empresa(uuid) from public, anon, authenticated;
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 06_planes.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- ---------- plan y vencimiento ----------
+--
+-- La suscripción vive en la empresa, no en el usuario: lo que se contrata es
+-- una empresa, y todos sus vendedores trabajan bajo el mismo plan.
+--
+-- `vence` es la única fecha que mira la app. Cada pago la empuja hacia
+-- adelante; si los pagos paran, la fecha llega sola y la empresa cae a Free:
+-- sigue viendo todo lo cargado y no puede editar ni cargar más.
+--
+-- No hay un estado "activa/vencida/cancelada" a propósito. Un estado hay que
+-- mantenerlo sincronizado con la pasarela, y cada desincronización es un
+-- cliente que pagó y no puede trabajar, o uno que no pagó y sigue entrando.
+-- Una fecha que sólo se empuja hacia adelante no se desincroniza de nada.
+
+alter table zentra.empresas
+  add column if not exists plan  text not null default 'free'
+    check (plan in ('free', 'emprendedor', 'max')),
+  -- Nulo es "sin vencimiento": las empresas que todavía no contrataron nada, y
+  -- las que tienen un acuerdo aparte. La app no bloquea por una fecha ausente.
+  add column if not exists vence date;
+
+comment on column zentra.empresas.plan is
+  'Plan contratado. Al vencer, la app se comporta como free sin tocar este campo.';
+comment on column zentra.empresas.vence is
+  'Hasta cuándo está pago. Nulo = sin vencimiento. Cada pago lo empuja.';
+
+-- ---------- pagos ----------
+--
+-- El libro de lo cobrado. Sirve para dos cosas, y la segunda es la que importa:
+--
+--   1. Responder por qué el vencimiento de una empresa dice lo que dice.
+--   2. No cobrar dos veces lo mismo. La pasarela reintenta el aviso hasta
+--      recibir un 200; si cada reintento empujara la fecha, una caída de media
+--      hora le regala meses a un cliente. La clave única sobre la referencia
+--      del pago es lo que lo impide, a nivel de base y no de código.
+
+create table if not exists zentra.pagos (
+  id             uuid primary key default gen_random_uuid(),
+  empresa_id     uuid not null references zentra.empresas (id) on delete cascade,
+  -- Identificador del pago en la pasarela (el `hash_pedido` de Pagopar).
+  referencia     text not null,
+  pasarela       text not null default 'pagopar',
+  monto          numeric(14, 2) not null check (monto >= 0),
+  plan           text not null check (plan in ('free', 'emprendedor', 'max')),
+  -- A qué fecha quedó empujado el vencimiento con este pago.
+  periodo_hasta  date not null,
+  pagado_en      timestamptz not null default now(),
+  creado_en      timestamptz not null default now(),
+  unique (pasarela, referencia)
+);
+
+create index if not exists pagos_empresa_idx on zentra.pagos (empresa_id, pagado_en desc);
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 07_cobros.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- ---------- cobros ----------
+--
+-- Un cobro es una intención: "esta empresa va a pagar este plan". Se crea al
+-- generar el pedido en la pasarela y se completa —o no— cuando la pasarela
+-- avisa.
+--
+-- Existe por una razón concreta: el aviso de pago trae el `hash_pedido` de
+-- Pagopar y nada más. Sin esta tabla no hay forma de saber de qué empresa es
+-- la plata que entró. La relación hay que guardarla ANTES de mandar a la
+-- persona a pagar, no después.
+--
+-- Está separada de `pagos` porque son cosas distintas: acá hay muchos intentos
+-- y la mayoría se abandona; allá hay plata que entró de verdad.
+
+create table if not exists zentra.cobros (
+  id            uuid primary key default gen_random_uuid(),
+  empresa_id    uuid not null references zentra.empresas (id) on delete cascade,
+  plan          text not null check (plan in ('free', 'emprendedor', 'max')),
+  monto         numeric(14, 2) not null check (monto > 0),
+  pasarela      text not null default 'pagopar',
+  -- Nuestro identificador, el que se le manda a la pasarela al crear el pedido.
+  referencia    text not null,
+  -- El identificador de la pasarela. Llega en la respuesta de creación, y es
+  -- por el que después pregunta el aviso de pago.
+  hash_pedido   text,
+  estado        text not null default 'pendiente'
+    check (estado in ('pendiente', 'pagado', 'cancelado')),
+  creado_en     timestamptz not null default now(),
+  unique (pasarela, referencia)
+);
+
+create unique index if not exists cobros_hash_idx
+  on zentra.cobros (pasarela, hash_pedido) where hash_pedido is not null;
+
+-- ---------- registrar un pago ----------
+--
+-- Todo junto y en una sola transacción, que es el punto: insertar el pago,
+-- empujar el vencimiento y marcar el cobro no pueden quedar a medias ni
+-- correrse dos veces en paralelo.
+--
+-- Devuelve qué pasó, para que quien la llame pueda distinguir un pago nuevo de
+-- un aviso repetido sin tener que adivinar.
+
+create or replace function zentra.registrar_pago_pasarela(
+  p_pasarela    text,
+  p_hash        text,
+  p_monto       numeric
+)
+returns table (resultado text, empresa uuid, vence date)
+language plpgsql
+security definer
+set search_path = zentra, public
+as $$
+declare
+  v_cobro   zentra.cobros%rowtype;
+  v_nuevo   date;
+  v_insertó boolean;
+begin
+  select * into v_cobro
+    from zentra.cobros
+   where pasarela = p_pasarela and hash_pedido = p_hash
+   -- El lock es lo que impide que dos avisos simultáneos del mismo pago
+   -- empujen el vencimiento dos veces.
+   for update;
+
+  if not found then
+    return query select 'desconocido'::text, null::uuid, null::date;
+    return;
+  end if;
+
+  -- La clave única sobre (pasarela, referencia) de `pagos` es lo que hace que
+  -- esto sea idempotente. La pasarela reintenta el aviso hasta recibir un 200;
+  -- sin esto, una caída de media hora le regala meses a un cliente.
+  insert into zentra.pagos (empresa_id, referencia, pasarela, monto, plan, periodo_hasta)
+    select v_cobro.empresa_id, p_hash, p_pasarela, p_monto, v_cobro.plan, current_date
+    on conflict (pasarela, referencia) do nothing;
+  get diagnostics v_insertó = row_count;
+
+  if not v_insertó then
+    -- Ya estaba registrado: se contesta igual que si fuera nuevo, para que la
+    -- pasarela deje de reintentar, pero sin tocar nada.
+    select e.vence into v_nuevo from zentra.empresas e where e.id = v_cobro.empresa_id;
+    return query select 'repetido'::text, v_cobro.empresa_id, v_nuevo;
+    return;
+  end if;
+
+  -- Un mes desde el vencimiento, o desde hoy si ya pasó.
+  --
+  -- El `greatest` es lo que hace justicia en los dos sentidos: quien paga tres
+  -- días antes no pierde esos días, y quien paga una semana tarde no se los
+  -- lleva de regalo. Son las dos quejas clásicas de cualquier suscripción.
+  update zentra.empresas
+     set plan  = v_cobro.plan,
+         vence = (greatest(coalesce(vence, current_date), current_date) + interval '1 month')::date
+   where id = v_cobro.empresa_id
+   returning vence into v_nuevo;
+
+  update zentra.pagos set periodo_hasta = v_nuevo
+   where pasarela = p_pasarela and referencia = p_hash;
+
+  update zentra.cobros set estado = 'pagado' where id = v_cobro.id;
+
+  return query select 'pagado'::text, v_cobro.empresa_id, v_nuevo;
+end;
+$$;
+
+-- Sólo el servidor. La app nunca llama a esto: quien decide que algo se pagó
+-- es la pasarela, no el teléfono.
+--
+-- Y el `grant` de abajo hace falta justamente por el `revoke`: al sacárselo a
+-- `public` se lo saca a todos, `service_role` incluido, que es el único que
+-- tiene que poder llamarla.
+revoke all on function zentra.registrar_pago_pasarela(text, text, numeric) from public, anon, authenticated;
+grant execute on function zentra.registrar_pago_pasarela(text, text, numeric) to service_role;
+
+alter table zentra.cobros enable row level security;
+-- Sin políticas: nadie llega a esta tabla con la clave pública. Se escribe y se
+-- lee sólo desde el servidor, con la clave de servicio.
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 08_precios.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- ---------- precios de los planes ----------
+--
+-- El precio vive en la base y no en el código de la página de pago, por una
+-- razón de seguridad y no de comodidad: si el monto lo manda el navegador,
+-- cualquiera abre las herramientas de desarrollo y se compra un mes de Max por
+-- mil guaraníes. El servidor nunca le cree al cliente cuánto hay que cobrar.
+--
+-- Que esté en una tabla y no en una constante de la función también permite
+-- cambiar un precio sin volver a desplegar nada, y que la página de pago
+-- muestre exactamente lo que se va a cobrar: un solo lugar, sin posibilidad de
+-- que se desencuentren.
+
+create table if not exists zentra.planes (
+  codigo          text primary key check (codigo in ('free', 'emprendedor', 'max')),
+  nombre          text not null,
+  precio_mensual  numeric(14, 2) not null check (precio_mensual >= 0),
+  -- Un plan que se deja de vender pero que los clientes actuales conservan.
+  vendible        boolean not null default true,
+  actualizado_en  timestamptz not null default now()
+);
+
+insert into zentra.planes (codigo, nombre, precio_mensual, vendible) values
+  ('free',        'Gratis',      0, false),
+  ('emprendedor', 'Emprendedor', 0, false),
+  ('max',         'Max',         0, false)
+on conflict (codigo) do nothing;
+
+-- Los precios arrancan en cero y `vendible` en false a propósito: hay que
+-- cargarlos antes de poder cobrar. Un precio por defecto inventado acá sería
+-- el que termina cobrándose el día que alguien se olvida de ponerlo.
+--
+--   update zentra.planes set precio_mensual = 150000, vendible = true
+--    where codigo = 'max';
+
+-- Los precios se muestran en la página de pago, así que se leen sin sesión.
+-- No hay nada sensible: es la lista de precios.
+alter table zentra.planes enable row level security;
+
+drop policy if exists planes_lectura on zentra.planes;
+create policy planes_lectura on zentra.planes for select using (true);
 

@@ -106,7 +106,12 @@ $$;
 
 -- Sólo el servidor. La app nunca llama a esto: quien decide que algo se pagó
 -- es la pasarela, no el teléfono.
+--
+-- Y el `grant` de abajo hace falta justamente por el `revoke`: al sacárselo a
+-- `public` se lo saca a todos, `service_role` incluido, que es el único que
+-- tiene que poder llamarla.
 revoke all on function zentra.registrar_pago_pasarela(text, text, numeric) from public, anon, authenticated;
+grant execute on function zentra.registrar_pago_pasarela(text, text, numeric) to service_role;
 
 alter table zentra.cobros enable row level security;
 -- Sin políticas: nadie llega a esta tabla con la clave pública. Se escribe y se

@@ -9,6 +9,18 @@
 -- El rol anónimo puede ver el schema, pero cada tabla decide qué deja ver.
 grant usage on schema zentra to anon, authenticated;
 
+-- Y el rol de servicio, que es con el que trabaja el server de cobros.
+--
+-- En un schema propio esto NO viene puesto: `service_role` pasa por encima de
+-- RLS, pero RLS es otra cosa que el permiso de entrar al schema. Sin estas
+-- líneas, el server contesta `permission denied for schema zentra` y los
+-- cobros no funcionan nunca —ni siquiera para leer el precio de un plan—.
+grant usage on schema zentra to service_role;
+grant all on all tables in schema zentra to service_role;
+grant all on all sequences in schema zentra to service_role;
+alter default privileges in schema zentra grant all on tables to service_role;
+alter default privileges in schema zentra grant all on sequences to service_role;
+
 alter table zentra.empresas       enable row level security;
 alter table zentra.usuarios       enable row level security;
 alter table zentra.clientes       enable row level security;

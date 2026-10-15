@@ -25,4 +25,7 @@ $$;
 
 do $$ begin create role anon nologin;          exception when duplicate_object then null; end $$;
 do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
+-- `service_role` es con la que trabaja el server de cobros. Sin este rol acá,
+-- los `grant` de 03 fallan y las pruebas no llegan a correr.
+do $$ begin create role service_role nologin;  exception when duplicate_object then null; end $$;
 grant usage on schema auth to anon, authenticated;
