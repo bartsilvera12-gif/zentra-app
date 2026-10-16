@@ -85,6 +85,25 @@ final class Estado {
     ///
     /// `nil` no pisa: significa "no se pudo leer", y ahí es mejor dejar lo que
     /// venía que bajarle el plan a alguien por una lectura que falló.
+    /// Relee el plan sin tocar la sesión ni la pantalla.
+    ///
+    /// Se llama al volver del segundo plano. Hace falta porque el plan cambia
+    /// **afuera** de la app: se paga en el navegador, el server actualiza la
+    /// empresa, y acá nadie se entera. Hasta ahora el único momento en que se
+    /// leía era al abrir la app desde cero, así que quien pagaba volvía a la
+    /// app y seguía viendo todo bloqueado — que es justo cuando quiere usar lo
+    /// que acaba de comprar.
+    ///
+    /// Si falla no pasa nada: queda el plan que ya tenía. Una lectura que no
+    /// salió no es motivo para bajarle el plan a nadie.
+    func refrescarPlan() async {
+        guard tenant != nil, await Auth.shared.haySesion() else { return }
+        if let p = try? await ApiERP.perfil() {
+            perfil = p
+            aplicarPlan(de: p)
+        }
+    }
+
     private func aplicarPlan(de p: Perfil) {
         guard var t = tenant else { return }
         if let plan = p.plan { t.plan = plan }

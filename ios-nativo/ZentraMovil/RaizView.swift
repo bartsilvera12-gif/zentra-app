@@ -16,6 +16,7 @@ import SwiftUI
 /// color activo (`#209EBB`), para que la app se siga sintiendo la misma.
 struct RaizView: View {
     @Environment(\.colorScheme) private var sistema
+    @Environment(\.scenePhase) private var fase
     @State private var ajustes = Ajustes()
     @State private var estado = Estado()
     @State private var locales = AjustesLocales()
@@ -41,6 +42,12 @@ struct RaizView: View {
             // Sesión guardada: se entra sin volver a pedir la contraseña.
             await estado.reanudar()
             revisando = false
+        }
+        // Y al volver del segundo plano, releer el plan. `.task` corre una sola
+        // vez —cuando la pantalla aparece—, y volver del fondo no la hace
+        // aparecer de nuevo: sin esto, pagar no se nota hasta cerrar la app.
+        .onChange(of: fase) { _, nueva in
+            if nueva == .active { Task { await estado.refrescarPlan() } }
         }
         .environment(\.tema, ajustes.tokens(sistema: sistema))
         .environment(ajustes)
