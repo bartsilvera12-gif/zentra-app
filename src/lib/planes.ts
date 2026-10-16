@@ -60,7 +60,18 @@ interface DefinicionPlan {
   nombre: string;
   limites: Limites;
   permite: ReadonlySet<Accion>;
+  /**
+   * Lo que suma este plan, en castellano, para la hoja de planes.
+   *
+   * Escrito a mano y no generado de `permite`: ahí los nombres son de código
+   * —"inventario.mayorista"— y lo que hay que leer es qué cambia en el día a
+   * día. Sale de docs/PLANES.md.
+   */
+  resumen: string[];
 }
+
+/** De menos a más: el orden en que se muestran. */
+export const ORDEN_PLANES: Plan[] = ["free", "emprendedor", "max"];
 
 /**
  * El precio NO está acá, y lo que incluye cada plan está en docs/PLANES.md.
@@ -108,16 +119,30 @@ export const PLANES: Record<Plan, DefinicionPlan> = {
     nombre: "Gratis",
     limites: { productos: 20, esperaAjusteDias: 30 },
     permite: new Set(FREE),
+    resumen: ["Inventario hasta 20 productos", "Ventas al contado", "Dashboard de ventas"],
   },
   emprendedor: {
     nombre: "Emprendedor",
     limites: { productos: 50, esperaAjusteDias: 30 },
     permite: new Set(EMPRENDEDOR),
+    resumen: [
+      "Inventario hasta 50 productos",
+      "Compras y proveedores",
+      "Dashboard de compras",
+      "Facturación con auto-impresor",
+    ],
   },
   max: {
     nombre: "Max",
     limites: { productos: null, esperaAjusteDias: null },
     permite: new Set(MAX),
+    resumen: [
+      "Inventario sin tope y sin espera",
+      "Chat de WhatsApp",
+      "Ventas a crédito y compras en dólares",
+      "Stock mínimo, código de barras y vencimiento",
+      "Factura electrónica",
+    ],
   },
 };
 

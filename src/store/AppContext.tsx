@@ -14,6 +14,7 @@ import { IVAS } from "@/lib/data";
 import { desactivarPush, escucharAvisos, pushPreferido, reanudarPush } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
 import { escucharTemaDelSistema, leerPreferencia, temaDelSistema } from "@/lib/tema";
+import { olvidarPreciosDePlanes } from "@/lib/precios-planes";
 import { repo, usaApiDelErp, usaSupabase } from "@/lib/repo";
 import type { Contexto } from "@/lib/planes";
 import { activarTenant } from "@/lib/supabase/client";
@@ -136,6 +137,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const cerrarSesion = useCallback(async () => {
     await desactivarPush().catch(() => {});
+    // La próxima instalación puede tener otros precios.
+    olvidarPreciosDePlanes();
     if (usaSupabase) await repo.auth.logout().catch(() => {});
     setS((prev) => ({
       ...prev,
