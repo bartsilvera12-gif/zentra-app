@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
 import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
 import { estadoDeSuscripcion } from "@/lib/planes";
+import { linkDeSoporte, type MotivoSoporte } from "@/lib/soporte";
 import { repo } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
@@ -41,6 +42,23 @@ export function ConfigScreen() {
    * pantalla no vuelva a decidir de dónde sale el plan: ese cálculo ya estuvo
    * mal una vez.
    */
+  /**
+   * Abre WhatsApp con el mensaje ya armado.
+   *
+   * Va con los datos de quien escribe y la versión instalada adentro: del otro
+   * lado, la primera pregunta siempre es quién sos y qué versión tenés, y esa
+   * vuelta convierte diez minutos de soporte en dos días.
+   */
+  const escribirASoporte = (motivo: MotivoSoporte) => {
+    const url = linkDeSoporte(config.soporteWhatsapp, motivo, {
+      nombre: s.sesion?.nombre,
+      empresa: s.sesion?.empresa || s.tenant?.nombre,
+      version: config.version,
+      build: config.build,
+    });
+    if (url) window.open(url, "_blank", "noopener");
+  };
+
   const suscripcion = (() => {
     const ctx = plan();
     return estadoDeSuscripcion({ conErp: ctx.conErp, plan: ctx.plan, vence: ctx.vence });
@@ -361,7 +379,7 @@ export function ConfigScreen() {
           {SOPORTE.map((sp) => (
             <button
               key={sp.tag}
-              onClick={() => {}}
+              onClick={() => escribirASoporte(sp.motivo)}
               style={{
                 display: "flex",
                 alignItems: "center",

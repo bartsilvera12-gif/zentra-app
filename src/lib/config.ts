@@ -66,10 +66,15 @@ export const config = {
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
 
   /**
-   * WhatsApp de soporte, en formato internacional y sólo dígitos (595981000450).
+   * WhatsApp de soporte de la app, en formato internacional y sólo dígitos.
+   *
+   * Es el número de ATC de Zentra, no el de la empresa que usa la app: quien
+   * escribe desde acá tiene un problema con la app, y del otro lado contesta
+   * el equipo de Zentra.
+   *
    * Vacío oculta los enlaces de contacto en vez de abrir un chat a la nada.
    */
-  soporteWhatsapp: (process.env.NEXT_PUBLIC_SOPORTE_WHATSAPP || "595981000450").replace(/\D/g, ""),
+  soporteWhatsapp: (process.env.NEXT_PUBLIC_SOPORTE_WHATSAPP || "595973989068").replace(/\D/g, ""),
 
   /**
    * El commit del que salió este build. Lo pone el workflow.
@@ -112,15 +117,6 @@ export const config = {
    */
   version: "2.4.1",
 } as const;
-
-/**
- * Enlace a WhatsApp con un mensaje ya escrito. Devuelve null si no hay número
- * configurado, para que quien lo use sepa que no tiene que mostrar el enlace.
- */
-export function linkWhatsapp(mensaje: string): string | null {
-  if (!config.soporteWhatsapp) return null;
-  return `https://wa.me/${config.soporteWhatsapp}?text=${encodeURIComponent(mensaje)}`;
-}
 
 export function assertConfig(): void {
   if (config.backend === "http" && !config.apiUrl) {

@@ -278,10 +278,27 @@ export const METODOS: Metodo[] = [
 export const IVAS: IvaVenta[] = ["10%", "5%", "EXENTA"];
 export const IVAS_COMPRA: Iva[] = ["10%", "5%", "Exenta"];
 
+/**
+ * Por dónde se pide ayuda. Las dos salen por WhatsApp, con textos distintos.
+ *
+ * Eran tres filas y ninguna hacía nada: el botón estaba, el `onClick` estaba
+ * vacío. "Reportar un problema" y "Correo de soporte" se fueron —el correo no
+ * se lee y el reporte era lo mismo que pedir ayuda con otro nombre—, y quedó
+ * lo que sí resuelve algo: escribir, y sugerir.
+ */
 export const SOPORTE = [
-  { tag: "WA", titulo: "WhatsApp de soporte", detalle: "+595 981 000 450 · lun a sáb, 8 a 18 h" },
-  { tag: "@", titulo: "Correo de soporte", detalle: "soporte@zentra.com.py · respuesta en 24 h" },
-  { tag: "?", titulo: "Reportar un problema", detalle: "Adjunta captura y datos del dispositivo" },
+  {
+    tag: "WA",
+    motivo: "ayuda" as const,
+    titulo: "Escribir a soporte",
+    detalle: "Por WhatsApp · lunes a sábado, 8 a 18 h",
+  },
+  {
+    tag: "★",
+    motivo: "mejora" as const,
+    titulo: "Sugerir una mejora",
+    detalle: "Contanos qué te gustaría que haga la app",
+  },
 ];
 
 /** The mock is pinned to this date so figures stay reproducible. */

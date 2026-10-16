@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { linkWhatsapp } from "@/lib/config";
+import { config } from "@/lib/config";
+import { linkDeSoporte } from "@/lib/soporte";
 import { VERSION } from "@/lib/data";
 import { pushPreferido, reanudarPush } from "@/lib/push";
 import { registrar, repo, usaSupabase } from "@/lib/repo";
@@ -127,9 +128,14 @@ export function LoginScreen() {
 
   const tenantNombre = s.tenant && !s.tenant.publico ? s.tenant.nombre : null;
   const ocupado = s.tenantResolviendo || s.entrando;
-  const waSoporte = linkWhatsapp(
-    "Hola, necesito el código de empresa para entrar a la app de Zentra.",
-  );
+  // Con la misma marca que el resto del soporte de la app: del otro lado entra
+  // en la cola de ATC de Zentra y no mezclado con los clientes del ERP. Acá no
+  // hay sesión —es justamente quien no pudo entrar—, así que viaja lo único
+  // que se sabe, que es la versión.
+  const waSoporte = linkDeSoporte(config.soporteWhatsapp, "ayuda", {
+    version: config.version,
+    build: config.build,
+  });
 
   if (s.modoAcceso === "registro") return <RegistroScreen onCrear={crearCuenta} />;
 
