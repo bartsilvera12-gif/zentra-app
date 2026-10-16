@@ -13,6 +13,7 @@ import { repo } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
+import { IconBurbuja, IconIdea } from "../ui/Icons";
 import { Card, Notice, SectionLabel, Toggle } from "../ui/primitives";
 
 function IconSol({ stroke }: { stroke: string }) {
@@ -270,47 +271,40 @@ export function ConfigScreen() {
               {suscripcion.detalle}
             </div>
 
-            {/* Dónde se paga. La dirección va como texto y el botón sólo
-                aparece en el APK que se reparte fuera de la tienda: Play no
-                permite mandar a pagar afuera, y eso no depende del código sino
-                de por dónde se distribuye. Está en docs/COBROS.md. */}
+            {/* Dónde se paga. Mismo orden que en la app nativa de iOS: primero
+                el botón, y abajo la dirección en letra chica para quien
+                prefiera escribirla en la computadora.
+
+                El botón se apaga con NEXT_PUBLIC_LINK_DE_PAGO=0 en la
+                compilación que va a Google Play, que no permite mandar a pagar
+                afuera. Apagado queda la dirección sola, que es informar — eso
+                sí se puede. Está en docs/COBROS.md. */}
             {config.cobrosUrl && (
-              <div style={{ paddingTop: 2 }}>
-                <div style={{ font: "400 12.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
-                  Se paga desde el navegador, en:
-                </div>
-                <div
-                  style={{
-                    font: "600 13px/1.4 var(--font-barlow),Barlow,sans-serif",
-                    color: t.ink,
-                    wordBreak: "break-all",
-                    paddingTop: 2,
-                  }}
-                >
-                  {config.cobrosUrl.replace(/^https?:\/\//, "")}/pagar
-                </div>
+              <div style={{ paddingTop: 4, display: "flex", flexDirection: "column", gap: 8 }}>
                 {config.linkDePago && (
                   <a
                     href={`${config.cobrosUrl}/pagar`}
                     target="_blank"
                     rel="noreferrer"
                     style={{
-                      marginTop: 10,
                       display: "block",
                       width: "100%",
-                      padding: "11px",
+                      padding: "13px",
                       borderRadius: 10,
                       background: MARCA.acento,
                       color: "#fff",
                       cursor: "pointer",
                       textAlign: "center",
                       textDecoration: "none",
-                      font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                      font: "600 15px/1 var(--font-barlow),Barlow,sans-serif",
                     }}
                   >
-                    Pagar o renovar
+                    Ver planes y pagar
                   </a>
                 )}
+                <div style={{ font: "400 12px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                  Se paga en {config.cobrosUrl.replace(/^https?:\/\//, "")}/pagar, desde el navegador.
+                </div>
               </div>
             )}
           </Card>
@@ -399,21 +393,27 @@ export function ConfigScreen() {
                 cursor: "pointer",
               }}
             >
+              {/* Un ícono y no las letras "WA": en la app nativa de iOS son
+                  íconos, y dos letras adentro de un cuadrado se leen como una
+                  sigla que hay que descifrar. */}
               <span
                 style={{
-                  width: 36,
-                  height: 36,
+                  width: 38,
+                  height: 38,
                   flex: "0 0 auto",
                   borderRadius: 11,
-                  background: t.bg,
-                  color: t.ink2,
+                  background: MARCA.suave,
+                  color: MARCA.acento,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  font: "600 13px/1 var(--font-barlow),Barlow,sans-serif",
                 }}
               >
-                {sp.tag}
+                {sp.motivo === "mejora" ? (
+                  <IconIdea size={20} stroke={MARCA.acento} />
+                ) : (
+                  <IconBurbuja size={20} stroke={MARCA.acento} />
+                )}
               </span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                 <span style={{ font: "600 14px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{sp.titulo}</span>

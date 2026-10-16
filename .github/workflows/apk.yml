@@ -30,12 +30,13 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       NEXT_PUBLIC_DIRECTORIO_JSON: ${{ secrets.NEXT_PUBLIC_DIRECTORIO_JSON }}
       NEXT_PUBLIC_SOPORTE_WHATSAPP: ${{ secrets.NEXT_PUBLIC_SOPORTE_WHATSAPP }}
-      # Dónde se paga la suscripción. Sin esto, la pantalla de Configuración
-      # muestra el plan y el vencimiento pero no dice dónde renovar.
+      # Donde se paga la suscripcion. Vacio usa cobros.neura.com.py, que es lo
+      # que ya muestra la app nativa de iOS: el secret solo hace falta para
+      # apuntar a otro lado.
       NEXT_PUBLIC_COBROS_URL: ${{ secrets.NEXT_PUBLIC_COBROS_URL }}
-      # Prende el botón que abre esa página. Va como secret y NO se pone en la
-      # compilación que sube a Play: ahí mandar a pagar afuera está prohibido
-      # —ver docs/COBROS.md—. En el APK que se reparte por fuera, sí.
+      # El boton "Ver planes y pagar" viene prendido. Para la compilacion que
+      # sube a Google Play se pone este secret en 0: ahi mandar a pagar afuera
+      # esta prohibido (ver docs/COBROS.md) y queda solo la direccion escrita.
       NEXT_PUBLIC_LINK_DE_PAGO: ${{ secrets.NEXT_PUBLIC_LINK_DE_PAGO }}
 
     steps:

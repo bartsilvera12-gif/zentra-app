@@ -288,13 +288,13 @@ export const IVAS_COMPRA: Iva[] = ["10%", "5%", "Exenta"];
  */
 export const SOPORTE = [
   {
-    tag: "WA",
+    tag: "ayuda",
     motivo: "ayuda" as const,
     titulo: "Escribir a soporte",
     detalle: "Por WhatsApp · lunes a sábado, 8 a 18 h",
   },
   {
-    tag: "★",
+    tag: "mejora",
     motivo: "mejora" as const,
     titulo: "Sugerir una mejora",
     detalle: "Contanos qué te gustaría que haga la app",

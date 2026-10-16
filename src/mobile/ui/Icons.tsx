@@ -232,3 +232,18 @@ export function IconBurbuja({ size = 13, stroke = "currentColor" }: IconProps) {
     </svg>
   );
 }
+
+/** La lamparita de "se me ocurre algo", para sugerir una mejora. */
+export function IconIdea({ size = 20, stroke = "currentColor" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.5.4.8 1 .9 1.6h5.2c.1-.6.4-1.2.9-1.6A6 6 0 0 0 12 3Z"
+        stroke={stroke}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

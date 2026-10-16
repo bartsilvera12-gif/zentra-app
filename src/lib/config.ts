@@ -94,21 +94,22 @@ export const config = {
    * externos de 2026 llega a Estados Unidos, Reino Unido y el EEE; Paraguay
    * no está. Está explicado en docs/COBROS.md.
    */
-  cobrosUrl: (process.env.NEXT_PUBLIC_COBROS_URL || "").replace(/\/+$/, ""),
+  cobrosUrl: (process.env.NEXT_PUBLIC_COBROS_URL || "https://cobros.neura.com.py").replace(/\/+$/, ""),
 
   /**
-   * Si la pantalla de suscripción muestra un botón que abre esa página.
+   * Si la pantalla de suscripción muestra el botón que abre esa página.
    *
-   * Apagado por defecto, y es a propósito: lo que Play no permite no es sólo
-   * cobrar adentro, es también mandar a pagar afuera. Con esto apagado la app
-   * dice cuál es el plan y cuándo vence —informar siempre se puede— y la
-   * dirección queda como texto, para escribirla en el navegador.
+   * Prendido por defecto, igual que en la app nativa de iOS: una tarjeta que
+   * dice "pagá en tal dirección" y no deja tocarla obliga a copiar una URL a
+   * mano desde el teléfono, que es la forma más segura de que nadie pague.
    *
-   * Se prende con `NEXT_PUBLIC_LINK_DE_PAGO=1` en el APK que se reparte por
-   * fuera de la tienda, donde esa política no rige. La compilación que sube a
-   * Play se arma sin esa variable.
+   * Se apaga con `NEXT_PUBLIC_LINK_DE_PAGO=0` en la compilación que sube a
+   * Google Play. Lo que esa tienda no permite no es sólo cobrar adentro de la
+   * app: también mandar a pagar afuera. Apagado, la tarjeta sigue diciendo el
+   * plan y el vencimiento —informar siempre se puede— y la dirección queda
+   * como texto. Está explicado en docs/COBROS.md.
    */
-  linkDePago: process.env.NEXT_PUBLIC_LINK_DE_PAGO === "1",
+  linkDePago: process.env.NEXT_PUBLIC_LINK_DE_PAGO !== "0",
 
   /**
    * La versión que se muestra al usuario. Va acá y no en `data.ts`, que son los
