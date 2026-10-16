@@ -1,63 +1,138 @@
 import SwiftUI
 
-/// El aviso de por qué algo no se puede con el plan actual.
+/// Lo que aparece al tocar algo que el plan no incluye.
 /// Port de `src/mobile/ui/AvisoPlan.tsx`.
 ///
-/// Aparece abajo, sobre la pantalla, y se va al tocarlo. **No es un diálogo**:
-/// no corta lo que la persona estaba haciendo, porque no hay nada que decidir
-/// — sólo hay que enterarse.
+/// Era un cartelito abajo que decía "Tu plan no incluye esto · Tocá para
+/// cerrar". Decía la verdad y no servía de nada: quien lo leía se quedaba sin
+/// saber qué plan sí lo incluye, cuánto sale ni dónde se paga. Un "no" sin
+/// salida.
 ///
-/// El texto ya viene escrito desde `Planes.motivoBloqueo()`, que es quien
-/// conoce el plan y el límite. Acá no se arma ningún mensaje: si esta vista
-/// tuviera que saber qué plan incluye qué, el dato viviría en dos lugares.
+/// Ahora es una hoja con los tres planes, el que se tiene marcado, y el botón
+/// para pagar. El precio se lee de la base —el mismo que cobra el server— y si
+/// no se puede leer, se muestran los planes sin precio: mejor eso que un
+/// número inventado.
+struct HojaPlanes: View {
+    /// El motivo, tal como lo escribió `Planes.motivoBloqueo()`.
+    let motivo: String
+    @Environment(\.tema) private var t
+    @Environment(Estado.self) private var estado
+    @Environment(\.dismiss) private var cerrar
+    @State private var precios: [Plan: Int] = [:]
+
+    private var actual: Plan { estado.tenant?.plan ?? .free }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 10) {
+                VStack(spacing: 6) {
+                    Text("Esto viene con otro plan")
+                        .font(Tipo.barlow(.bold, 20)).foregroundStyle(t.ink)
+                    Text("\(motivo) Mirá qué suma cada uno y seguí trabajando sin topes.")
+                        .font(Tipo.barlow(.regular, 13.5)).foregroundStyle(t.ink2)
+                        .multilineTextAlignment(.center)
+                }
+                // El aire de arriba es para la rayita de arrastrar: pegado,
+                // el título se lee como parte del tirador y la hoja no se ve
+                // como algo que se pueda bajar con el dedo.
+                .padding(.horizontal, 6).padding(.top, 18).padding(.bottom, 6)
+
+                ForEach(Plan.orden, id: \.self) { tarjeta($0) }
+
+                if let link = Config.linkDePago {
+                    Link(destination: link) {
+                        Text("Ver planes y pagar")
+                            .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(C.cian, in: .rect(cornerRadius: 12))
+                    }
+                    .padding(.top, 6)
+                } else if !Config.cobrosUrl.isEmpty {
+                    // Sin enlace queda la dirección escrita, que es informar.
+                    // El botón se apaga en la compilación de la tienda: Google
+                    // Play no permite mandar a pagar afuera.
+                    Text("Se paga en \(Config.cobrosUrl.replacingOccurrences(of: "https://", with: ""))/pagar, desde el navegador.")
+                        .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink3)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 6)
+                }
+
+                Button("Ahora no") { cerrar() }
+                    .font(Tipo.barlow(.semibold, 14))
+                    .foregroundStyle(t.ink2)
+                    .padding(.vertical, 12)
+            }
+            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 18)
+        }
+        .background(t.card)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .task { precios = await SupabaseDatos.preciosDePlanes() }
+    }
+
+    private func tarjeta(_ p: Plan) -> some View {
+        let esElTuyo = p == actual
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(p.nombre)
+                    .font(Tipo.barlow(.bold, 16))
+                    .foregroundStyle(esElTuyo ? C.azul : t.ink)
+                if esElTuyo {
+                    Text("TU PLAN")
+                        .font(Tipo.barlow(.semibold, 10)).tracking(1)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 4)
+                        .background(C.cian, in: .capsule)
+                }
+                Spacer(minLength: 0)
+                // En el plan gratis no va nada: el nombre ya lo dice, y repetir
+                // "Gratis" al lado de "Gratis" se lee como un error. Sin precio
+                // tampoco se escribe nada: el plan se entiende por lo que incluye.
+                if let n = precios[p], n > 0 {
+                    Text("\(Panel.gs(n)) /mes")
+                        .font(Tipo.barlow(.bold, 15))
+                        .foregroundStyle(esElTuyo ? C.azul : t.ink)
+                        .lineLimit(1)
+                }
+            }
+
+            ForEach(p.resumen, id: \.self) { linea in
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(C.cian)
+                    Text(linea)
+                        .font(Tipo.barlow(.regular, 12.5))
+                        .foregroundStyle(esElTuyo ? C.azul : t.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14).padding(.vertical, 13)
+        .background(esElTuyo ? Tint.avisoBg : t.bg, in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(esElTuyo ? C.cian : t.border, lineWidth: 1.5)
+        }
+    }
+}
+
 struct AvisoPlanFlotante: ViewModifier {
     @Binding var motivo: String?
-    @Environment(\.tema) private var t
 
     func body(content: Content) -> some View {
-        content.overlay(alignment: .bottom) {
-            if let m = motivo {
-                Button {
-                    withAnimation(.easeOut(duration: 0.18)) { motivo = nil }
-                } label: {
-                    HStack(spacing: 11) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Tint.avisoInk)
-                            .frame(width: 30, height: 30)
-                            .background(Tint.avisoBg, in: .circle)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(m)
-                                .font(Tipo.barlow(.medium, 13.5))
-                                .foregroundStyle(t.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            // La segunda línea no es decoración: el aviso no
-                            // tiene botón de cerrar, y sin esto no hay nada que
-                            // diga que se va tocándolo.
-                            Text("Tocá para cerrar")
-                                .font(Tipo.barlow(.regular, 12))
-                                .foregroundStyle(t.ink3)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 13)
-                    .background(t.card, in: .rect(cornerRadius: 13))
-                    .overlay { RoundedRectangle(cornerRadius: 13).stroke(t.border) }
-                    .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 18)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        content.sheet(isPresented: Binding(
+            get: { motivo != nil },
+            set: { if !$0 { motivo = nil } }
+        )) {
+            if let m = motivo { HojaPlanes(motivo: m) }
         }
     }
 }
 
 extension View {
-    /// Muestra el motivo del bloqueo flotando abajo, hasta que lo toquen.
+    /// Muestra la hoja de planes con el motivo del bloqueo.
     func avisoPlan(_ motivo: Binding<String?>) -> some View {
         modifier(AvisoPlanFlotante(motivo: motivo))
     }

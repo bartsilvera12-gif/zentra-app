@@ -103,6 +103,9 @@ actor Auth {
         }
         sesion = nil
         UserDefaults.standard.removeObject(forKey: Self.kSesion)
+        // La próxima instalación puede tener otros precios: dejar los de ésta
+        // en memoria haría que la hoja de planes muestre los del anterior.
+        SupabaseDatos.olvidarPrecios()
     }
 
     // MARK: - interno

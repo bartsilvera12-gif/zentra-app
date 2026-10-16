@@ -81,6 +81,46 @@ enum SupabaseDatos {
 
     /// Quién entró. Sale de `zentra.usuarios` y el nombre de la empresa de
     /// `zentra.empresas`, con un solo pedido.
+    /// Cuánto sale cada plan. Port de `src/lib/precios-planes.ts`.
+    ///
+    /// El precio no está escrito en la app, a propósito: vive en
+    /// `zentra.planes` y el server de cobros lo lee de ahí para cobrar. Si la
+    /// app tuviera su copia, el día que cambie un precio habría dos verdades y
+    /// la que se le muestra a la gente sería la vieja. Ya pasó: el código decía
+    /// 49.000 y 89.000 mientras la base decía 80.000 y 150.000.
+    ///
+    /// La tabla se lee sin sesión —su política de lectura es pública, es una
+    /// lista de precios—, así que esto anda incluso antes de entrar.
+    ///
+    /// Si no se puede leer devuelve vacío y la hoja muestra los planes sin
+    /// precio. Mejor eso que un número inventado.
+    static func preciosDePlanes() async -> [Plan: Int] {
+        if let c = cachePrecios { return c }
+        guard let crudo = try? await pedir("GET", "/planes",
+                                           query: ["select": "codigo,precio_mensual"])
+        else { return [:] }
+
+        var out: [Plan: Int] = [:]
+        for f in filas(crudo) {
+            guard let codigo = f["codigo"] as? String, let plan = Plan(rawValue: codigo)
+            else { continue }
+            if let n = f["precio_mensual"] as? Double { out[plan] = Int(n) }
+            else if let n = f["precio_mensual"] as? Int { out[plan] = n }
+            else if let t = f["precio_mensual"] as? String, let n = Double(t) {
+                out[plan] = Int(n)
+            }
+        }
+        // Se pide una vez y queda: son tres números que no cambian mientras la
+        // app está abierta, y la hoja puede abrirse muchas veces seguidas.
+        cachePrecios = out
+        return out
+    }
+
+    /// Al cerrar sesión: la próxima instalación puede tener otros precios.
+    static func olvidarPrecios() { cachePrecios = nil }
+
+    private nonisolated(unsafe) static var cachePrecios: [Plan: Int]?
+
     static func perfil() async throws -> Perfil {
         let crudo = try await pedir("GET", "/usuarios", query: [
             "select": "id,nombre,email,rol,empresas(nombre)",

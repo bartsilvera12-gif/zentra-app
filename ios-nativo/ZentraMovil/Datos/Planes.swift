@@ -33,6 +33,28 @@ enum Plan: String, CaseIterable, Codable, Equatable {
     // cobra. Un precio en dos lugares es un precio que algún día dice dos
     // cosas distintas, y el que se cobra no es el que la app muestra.
 
+    /// En qué orden se muestran: del más chico al más grande.
+    static let orden: [Plan] = [.free, .emprendedor, .max]
+
+    /// Lo que suma cada plan, en una línea por cosa.
+    ///
+    /// No es la grilla completa —esa está en `docs/PLANES.md`—: son las tres o
+    /// cuatro cosas por las que alguien cambiaría de plan. Una lista de
+    /// veinticuatro filas en una hoja del teléfono no la lee nadie.
+    var resumen: [String] {
+        switch self {
+        case .free:
+            ["Inventario hasta 20 productos", "Ventas al contado", "Dashboard de ventas"]
+        case .emprendedor:
+            ["Inventario hasta 50 productos", "Compras y proveedores",
+             "Dashboard de compras", "Facturación con auto-impresor"]
+        case .max:
+            ["Inventario sin tope y sin espera", "Chat de WhatsApp",
+             "Ventas a crédito y compras en dólares",
+             "Stock mínimo, código de barras y vencimiento", "Factura electrónica"]
+        }
+    }
+
     /// Máximo de productos cargados. `nil` es sin tope.
     var topeProductos: Int? {
         switch self {
