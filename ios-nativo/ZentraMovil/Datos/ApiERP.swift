@@ -45,6 +45,13 @@ enum ApiERP {
         try await pedir(ruta, metodo: "POST", query: [:], cuerpo: cuerpo, idempotencia: idempotencia)
     }
 
+    /// Corrige algo que ya existe. Va PATCH y no PUT: el ERP toma cada campo
+    /// presente como "cambialo", así que mandar media ficha borraría la otra
+    /// media.
+    static func patch(_ ruta: String, cuerpo: [String: Any]) async throws -> Any {
+        try await pedir(ruta, metodo: "PATCH", query: [:], cuerpo: cuerpo)
+    }
+
     /// Sube un archivo como multipart. El ERP espera el binario en el campo
     /// `file`; el resto de los campos van como texto al lado.
     @discardableResult
@@ -201,6 +208,15 @@ struct Perfil: Equatable {
     var nombre: String
     var rol: String
     var empresa: String
+
+    /// El plan que dice la base, cuando se pudo leer.
+    ///
+    /// `nil` no es "gratis": es "no lo sé". Ahí manda el directorio. Tratar lo
+    /// desconocido como gratis le sacaría a alguien lo que pagó por una
+    /// lectura que falló.
+    var plan: Plan?
+    /// Hasta cuándo está pagado.
+    var vence: Date?
 }
 
 enum ApiError: LocalizedError {

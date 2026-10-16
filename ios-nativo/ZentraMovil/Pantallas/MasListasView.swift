@@ -56,7 +56,7 @@ struct ProveedoresView: View {
                 } label: { Image(systemName: "plus") }
             }
         }
-        .sheet(isPresented: $nuevo) { NuevoProveedorView() }
+        .sheet(isPresented: $nuevo) { NuevoProveedorView { p in filas.insert(p, at: 0) } }
         .avisoPlan($aviso)
         .task { await cargar() }
         .refreshable { await cargar() }
@@ -122,7 +122,7 @@ struct ComprasView: View {
                 Button { nueva = true } label: { Image(systemName: "plus") }
             }
         }
-        .sheet(isPresented: $nueva) { NuevaCompraView() }
+        .sheet(isPresented: $nueva) { NuevaCompraView { c in filas.insert(c, at: 0) } }
         .task { await cargar() }
         .refreshable { await cargar() }
     }

@@ -239,6 +239,112 @@ enum RepoERP {
     ///
     /// Se resuelve en cada llamada y no al arrancar: cuando se carga este
     /// archivo todavía no hubo login y no se sabe de qué empresa es quien entra.
+    /// Aplica un ajuste de stock. Devuelve el stock que quedó.
+    ///
+    /// Con ERP no hay a dónde mandarlo: ese endpoint todavía no existe del
+    /// lado de ellos, y la app lo dice en vez de fingir que guardó. Sin ERP va
+    /// a nuestras tablas como movimiento, que es lo que mueve el stock.
+    static func ajustarStock(
+        productoId: String, tipo: String, cantidad: Double, motivo: String
+    ) async throws -> Double {
+        if await conErp() {
+            throw ApiError.http(
+                status: 501,
+                mensaje: "Tu ERP todavía no acepta ajustes de stock desde la app. El cambio queda sólo en este teléfono.",
+                ruta: "/inventario/ajuste")
+        }
+        return try await SupabaseDatos.ajustarStock(
+            productoId: productoId, tipo: tipo, cantidad: cantidad, motivo: motivo)
+    }
+
+    /// Corrige un producto ya cargado.
+    ///
+    /// Recibe sólo lo que cambió, con los nombres de la app; acá se traduce a
+    /// los del ERP. Si no cambió nada no se manda: un PATCH vacío igual
+    /// cuenta como edición y pisa la fecha de modificación de otro.
+    static func editarProducto(_ id: String, _ cambios: [String: Any]) async throws -> InvProducto {
+        if await !conErp() {
+            return try await SupabaseDatos.editarProducto(id, aColumnasLocales(cambios))
+        }
+        var cuerpo: [String: Any] = [:]
+        if let v = cambios["nombre"] { cuerpo["nombre"] = v }
+        if let v = cambios["sku"] { cuerpo["sku"] = v }
+        if let v = cambios["barras"] as? String { cuerpo["codigo_barras"] = onull(v) }
+        if let v = cambios["unidad"] as? String {
+            cuerpo["unidad_medida"] = v.isEmpty ? "UNIDAD" : v
+        }
+        if let v = cambios["costo"] { cuerpo["costo_promedio"] = v }
+        if let v = cambios["precio"] { cuerpo["precio_venta"] = v }
+        if let v = cambios["minimo"] { cuerpo["stock_minimo"] = v }
+        guard !cuerpo.isEmpty else {
+            guard let p = try await producto(id) else {
+                throw ApiError.http(status: 404, mensaje: "Ese producto ya no existe.",
+                                    ruta: "/productos")
+            }
+            return p
+        }
+        let r = try await ApiERP.patch("/productos/\(esc(id))", cuerpo: cuerpo)
+        guard let o = desenvolver(r) else {
+            throw ApiError.http(status: 200, mensaje: "El ERP no devolvió el producto actualizado.",
+                                ruta: "/productos")
+        }
+        return aProducto(o)
+    }
+
+    /// Corrige un proveedor ya cargado.
+    static func editarProveedor(_ id: String, _ cambios: [String: Any]) async throws -> Proveedor {
+        if await !conErp() {
+            return try await SupabaseDatos.editarProveedor(id, aColumnasProveedor(cambios))
+        }
+        var cuerpo: [String: Any] = [:]
+        if let v = cambios["nombre"] { cuerpo["nombre"] = v }
+        if let v = cambios["doc"] as? String { cuerpo["ruc"] = onull(v) }
+        if let v = cambios["tel"] as? String { cuerpo["telefono"] = onull(v) }
+        if let v = cambios["email"] as? String { cuerpo["email"] = onull(v) }
+        if let v = cambios["ciudad"] as? String { cuerpo["direccion"] = onull(v) }
+        if let v = cambios["contacto"] as? String { cuerpo["contacto"] = onull(v) }
+        if let v = cambios["plazoDias"] {
+            cuerpo["condicion_pago"] = (v as? Int).map { $0 > 0 } == true ? "credito" : "contado"
+            cuerpo["plazo_pago_dias"] = onull((v as? Int).flatMap { $0 > 0 ? $0 : nil })
+        }
+        guard !cuerpo.isEmpty else {
+            throw ApiError.http(status: 400, mensaje: "No cambiaste nada.", ruta: "/proveedores")
+        }
+        let r = try await ApiERP.patch("/proveedores/\(esc(id))", cuerpo: cuerpo)
+        guard let o = desenvolver(r) else {
+            throw ApiError.http(status: 200, mensaje: "El ERP no devolvió el proveedor actualizado.",
+                                ruta: "/proveedores")
+        }
+        return aProveedor(o)
+    }
+
+    /// Los nombres de la app a las columnas de `zentra.productos`.
+    ///
+    /// Casi todos coinciden; los que no, se traducen. `stock` no está a
+    /// propósito: se mueve con un ajuste, nunca editando la fila.
+    private static func aColumnasLocales(_ c: [String: Any]) -> [String: Any] {
+        var r: [String: Any] = [:]
+        for k in ["nombre", "sku", "barras", "unidad", "costo", "precio", "minimo",
+                  "categoria", "deposito"] where c[k] != nil {
+            r[k] = c[k]
+        }
+        return r
+    }
+
+    private static func aColumnasProveedor(_ c: [String: Any]) -> [String: Any] {
+        var r: [String: Any] = [:]
+        for k in ["nombre", "doc", "rubro", "ciudad", "contacto", "tel", "email"]
+        where c[k] != nil { r[k] = c[k] }
+        if let d = c["entregaDias"] as? Int { r["entrega_dias"] = max(0, d) }
+        if let p = c["plazoDias"] as? Int {
+            r["credito_plazo_dias"] = p > 0 ? p : NSNull()
+        }
+        return r
+    }
+
+    /// Lo mismo que `conErp()`, para las pantallas.
+    static func usaErp() async -> Bool { await conErp() }
+
     private static func conErp() async -> Bool {
         !((await Auth.shared.tenantActivo()?.apiUrl) ?? "").isEmpty
     }
@@ -545,6 +651,15 @@ enum RepoERP {
         costo: Int, precio: Int, stockInicial: Double, minimo: Double,
         categoriaId: String?, ubicacionId: String?
     ) async throws -> InvProducto {
+        // Sin ERP el alta va a nuestras tablas, igual que la lectura. Faltaba
+        // esta línea: el alta salía siempre al ERP, en la instalación pública
+        // contestaba 401 y el producto no se guardaba en ninguna parte.
+        if await !conErp() {
+            return try await SupabaseDatos.crearProducto(
+                nombre: nombre, sku: sku, barras: barras, unidad: unidad,
+                costo: costo, precio: precio, stockInicial: stockInicial,
+                minimo: minimo, categoria: categoriaId ?? "", deposito: ubicacionId ?? "")
+        }
         var cuerpo: [String: Any] = [
             "nombre": nombre, "sku": sku,
             "codigo_barras": onull(barras),
@@ -567,8 +682,14 @@ enum RepoERP {
     static func crearProveedor(
         nombre: String, ruc: String, tel: String, email: String,
         direccion: String, contacto: String, credito: Bool, plazoDias: Int,
-        categoriaIds: [String]
+        categoriaIds: [String], entregaDias: Int = 1
     ) async throws -> Proveedor {
+        if await !conErp() {
+            return try await SupabaseDatos.crearProveedor(
+                nombre: nombre, doc: ruc, rubro: categoriaIds.joined(separator: ", "),
+                ciudad: direccion, contacto: contacto, tel: tel, email: email,
+                entregaDias: entregaDias, creditoPlazoDias: credito ? plazoDias : nil)
+        }
         let cuerpo: [String: Any] = [
             "nombre": nombre,
             "ruc": onull(ruc),
@@ -603,6 +724,28 @@ enum RepoERP {
                 status: 400,
                 mensaje: "Agregá al menos un producto a la compra.",
                 ruta: "/compras")
+        }
+        // Sin ERP la compra va a nuestras tablas, igual que el resto.
+        if await !conErp() {
+            let numero = try await SupabaseDatos.crearCompra(
+                provId: provId, lineas: lineas,
+                credito: credito, plazoDias: plazoDias, cuotas: cuotas,
+                timbrado: timbrado, comprobante: comprobante,
+                moneda: moneda, tipoCambio: tipoCambio)
+            let primera = lineas[0]
+            return Compra(
+                id: numero, numero: numero,
+                producto: lineas.count == 1 ? primera.nombre : "\(lineas.count) productos",
+                cantidad: lineas.reduce(0) { $0 + $1.cantidad },
+                costo: primera.costo,
+                // Con varias líneas el IVA puede ser distinto en cada una; la
+                // fila del listado muestra el de la primera, y el detalle las
+                // tiene todas.
+                iva: primera.iva,
+                pago: credito ? "Crédito \(plazoDias) días" : "Contado",
+                pagada: !credito,
+                fecha: Formato.fechaDeHoy(),
+                factura: comprobante)
         }
         guard !cuentaContableId.isEmpty else {
             throw ApiError.http(
@@ -852,6 +995,22 @@ enum RepoERP {
     private static func urlEnTexto(_ t: String) -> String? {
         guard let r = t.range(of: #"https?://\S+"#, options: .regularExpression) else { return nil }
         return String(t[r])
+    }
+
+    /// Borra la cuenta, si es nuestra.
+    ///
+    /// En una instalación sobre un ERP la cuenta es del ERP, no de la app: el
+    /// vendedor que se da de baja de la app no puede perder el acceso al
+    /// sistema de su empresa. Lo da de baja quien administra el ERP, y la app
+    /// lo dice en vez de fingir que lo puede hacer.
+    static func eliminarMiCuenta() async throws {
+        if await conErp() {
+            throw ApiError.http(
+                status: 400,
+                mensaje: "Tu cuenta es la del sistema de tu empresa, así que no se borra desde acá. Pedíselo a quien administra el ERP.",
+                ruta: "/cuenta")
+        }
+        try await SupabaseDatos.eliminarMiCuenta()
     }
 
     private static func aChat(_ c: [String: Any]) -> Chat {

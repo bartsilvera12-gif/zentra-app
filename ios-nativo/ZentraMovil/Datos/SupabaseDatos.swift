@@ -110,6 +110,16 @@ enum SupabaseDatos {
         return json ?? []
     }
 
+    /// `yyyy-MM-dd` como lo manda Postgres para un `date`.
+    private static func fechaISO(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "America/Asuncion")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: String(s.prefix(10)))
+    }
+
     private static func filas(_ crudo: Any) -> [[String: Any]] {
         (crudo as? [[String: Any]]) ?? []
     }
@@ -159,8 +169,11 @@ enum SupabaseDatos {
     private nonisolated(unsafe) static var cachePrecios: [Plan: Int]?
 
     static func perfil() async throws -> Perfil {
+        // El plan y el vencimiento vienen en el mismo viaje que el perfil.
+        // Son los que deciden qué se puede hacer: sin ellos la app deja a todo
+        // el mundo en gratis, y quien pagó no recibe lo que pagó.
         let crudo = try await pedir("GET", "/usuarios", query: [
-            "select": "id,nombre,email,rol,empresas(nombre)",
+            "select": "id,nombre,email,rol,empresas(nombre,plan,vence)",
             "limit": "1",
         ])
         guard let u = filas(crudo).first else {
@@ -173,11 +186,16 @@ enum SupabaseDatos {
         let email = (u["email"] as? String) ?? ""
         let nombre = (u["nombre"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             ?? String(email.split(separator: "@").first ?? "")
+        let emp = u["empresas"] as? [String: Any]
         return Perfil(
             id: (u["id"] as? String) ?? "",
             nombre: nombre,
             rol: (u["rol"] as? String) ?? "",
-            empresa: ((u["empresas"] as? [String: Any])?["nombre"] as? String) ?? ""
+            empresa: (emp?["nombre"] as? String) ?? "",
+            // Un plan que no reconocemos se ignora en vez de tratarse como
+            // gratis: ante un valor raro en la columna, manda el directorio.
+            plan: (emp?["plan"] as? String).flatMap(Plan.init(rawValue:)),
+            vence: (emp?["vence"] as? String).flatMap(fechaISO)
         )
     }
 
@@ -211,22 +229,25 @@ enum SupabaseDatos {
         let crudo = try await pedir("GET", "/productos", query: [
             "select": "*", "activo": "is.true", "order": "nombre.asc",
         ])
-        return filas(crudo).map { p in
-            InvProducto(
-                id: texto(p["id"]),
-                nombre: (p["nombre"] as? String) ?? "(sin nombre)",
-                sku: (p["sku"] as? String) ?? "",
-                barras: (p["barras"] as? String) ?? "",
-                unidad: (p["unidad"] as? String) ?? "UNIDAD",
-                costo: entero(p["costo"]),
-                precio: entero(p["precio"]),
-                precioMayorista: nil,
-                iva: Iva.desde(p["iva"]),
-                // El stock no se redondea: hay productos por kilo.
-                stock: numero(p["stock"]),
-                minimo: numero(p["minimo"])
-            )
-        }
+        return filas(crudo).map(aProductoLocal)
+    }
+
+    /// Una fila de `zentra.productos` como la usa la app.
+    private static func aProductoLocal(_ p: [String: Any]) -> InvProducto {
+        InvProducto(
+            id: texto(p["id"]),
+            nombre: (p["nombre"] as? String) ?? "(sin nombre)",
+            sku: (p["sku"] as? String) ?? "",
+            barras: (p["barras"] as? String) ?? "",
+            unidad: (p["unidad"] as? String) ?? "UNIDAD",
+            costo: entero(p["costo"]),
+            precio: entero(p["precio"]),
+            precioMayorista: nil,
+            iva: Iva.desde(p["iva"]),
+            // El stock no se redondea: hay productos por kilo.
+            stock: numero(p["stock"]),
+            minimo: numero(p["minimo"])
+        )
     }
 
     static func proveedores() async throws -> [Proveedor] {
@@ -305,6 +326,252 @@ enum SupabaseDatos {
     }
 
     // MARK: - Escrituras
+
+    /// Alta de producto en nuestras tablas.
+    ///
+    /// Faltaba: `RepoERP.crearProducto` iba siempre al ERP, incluso en la
+    /// instalación pública, que no tiene ninguno. El alta contestaba 401 y el
+    /// producto no se guardaba en ningún lado.
+    ///
+    /// El stock inicial **no va acá**: lo mantiene el trigger de movimientos,
+    /// no la app. Escribirlo a mano dejaría la fila diciendo una cosa y el
+    /// historial de movimientos otra, y el que manda es el historial.
+    static func crearProducto(
+        nombre: String, sku: String, barras: String, unidad: String,
+        costo: Int, precio: Int, stockInicial: Double, minimo: Double,
+        categoria: String, deposito: String
+    ) async throws -> InvProducto {
+        let empresa = try await empresaActual()
+        var fila: [String: Any] = [
+            "empresa_id": empresa, "nombre": nombre,
+            // El SKU es obligatorio y único por empresa. Sin uno escrito se
+            // arma del nombre: mejor un código feo que un alta rechazada.
+            "sku": sku.isEmpty ? skuDesde(nombre) : sku,
+            "unidad": unidad.isEmpty ? "UNIDAD" : unidad,
+            "costo": costo, "precio": precio, "minimo": minimo,
+        ]
+        if !barras.isEmpty { fila["barras"] = barras }
+        if !categoria.isEmpty { fila["categoria"] = categoria }
+        if !deposito.isEmpty { fila["deposito"] = deposito }
+
+        let crudo = try await pedir("POST", "/productos", cuerpo: [fila],
+                                    preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el producto creado.",
+                                ruta: "/productos")
+        }
+        let creado = aProductoLocal(o)
+
+        // El inventario inicial entra como movimiento, que es lo que mueve el
+        // stock. Si falla, el producto ya existe: se avisa y se puede ajustar.
+        if stockInicial > 0 {
+            _ = try? await pedir("POST", "/movimientos", cuerpo: [[
+                "empresa_id": empresa, "producto_id": creado.id,
+                "tipo": "ENTRADA", "cantidad": stockInicial,
+                "origen": "Inventario inicial",
+            ]])
+            return try await producto(creado.id) ?? creado
+        }
+        return creado
+    }
+
+    /// Alta de proveedor en nuestras tablas.
+    ///
+    /// Acá `entrega_dias` sí se guarda: la tabla tiene la columna. En el ERP no
+    /// existe, y por eso en Android el campo se escribe y se tira.
+    static func crearProveedor(
+        nombre: String, doc: String, rubro: String, ciudad: String,
+        contacto: String, tel: String, email: String,
+        entregaDias: Int, creditoPlazoDias: Int?
+    ) async throws -> Proveedor {
+        let empresa = try await empresaActual()
+        var fila: [String: Any] = [
+            "empresa_id": empresa, "nombre": nombre,
+            "entrega_dias": max(0, entregaDias),
+        ]
+        for (k, v) in ["doc": doc, "rubro": rubro, "ciudad": ciudad,
+                       "contacto": contacto, "tel": tel, "email": email]
+        where !v.isEmpty { fila[k] = v }
+        if let d = creditoPlazoDias, d > 0 { fila["credito_plazo_dias"] = d }
+
+        let crudo = try await pedir("POST", "/proveedores", cuerpo: [fila],
+                                    preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el proveedor creado.",
+                                ruta: "/proveedores")
+        }
+        let plazo = o["credito_plazo_dias"] as? Int
+        return Proveedor(
+            id: texto(o["id"]), nombre: (o["nombre"] as? String) ?? "",
+            doc: (o["doc"] as? String) ?? "",
+            condicion: plazo.map { "Crédito \($0) días" } ?? "Contado",
+            rubro: (o["rubro"] as? String) ?? "", ciudad: (o["ciudad"] as? String) ?? "",
+            contacto: (o["contacto"] as? String) ?? "", tel: (o["tel"] as? String) ?? "",
+            email: (o["email"] as? String) ?? "",
+            activo: ((o["estado"] as? String) ?? "Activo") != "Inactivo"
+        )
+    }
+
+    /// Un producto por id, para releerlo después de moverle el stock.
+    static func producto(_ id: String) async throws -> InvProducto? {
+        let crudo = try await pedir("GET", "/productos",
+                                    query: ["id": "eq.\(id)", "limit": "1"])
+        return filas(crudo).first.map(aProductoLocal)
+    }
+
+    /// Un SKU a partir del nombre, para cuando no lo escribieron.
+    private static func skuDesde(_ nombre: String) -> String {
+        let letras = nombre.uppercased().filter { $0.isLetter || $0.isNumber }
+        let raiz = String(letras.prefix(6))
+        return (raiz.isEmpty ? "PROD" : raiz) + "-" + String(Int(Date().timeIntervalSince1970) % 100000)
+    }
+
+    /// Borra la cuenta de quien está en sesión. **No se puede deshacer.**
+    ///
+    /// Lo hace una función del servidor y no un `DELETE` desde acá: la clave
+    /// pública de la app no puede tocar `auth.users`, y además la decisión de
+    /// qué se arrastra —la empresa entera si era el último usuario, sólo el
+    /// perfil si quedan compañeros— es del servidor, que es el único que ve a
+    /// todos.
+    static func eliminarMiCuenta() async throws {
+        _ = try await pedir("POST", "/rpc/eliminar_mi_cuenta", cuerpo: [String: Any]())
+    }
+
+    /// Un ajuste de stock, como movimiento.
+    ///
+    /// La cantidad va **con signo**: negativa en salidas y mermas. Es lo que
+    /// espera la columna, y lo que hace que el trigger mueva el stock para el
+    /// lado correcto. El motivo va en `origen`, que es la columna que existe
+    /// —`motivo` no existe, y escribirlo hace que PostgREST rechace la fila.
+    static func ajustarStock(
+        productoId: String, tipo: String, cantidad: Double, motivo: String
+    ) async throws -> Double {
+        let empresa = try await empresaActual()
+        let signo: Double = tipo == "SALIDA" ? -1 : 1
+        let con = signo * abs(cantidad)
+        guard con != 0 else {
+            throw ApiError.http(status: 400, mensaje: "La cantidad no puede ser cero.",
+                                ruta: "/movimientos")
+        }
+
+        _ = try await pedir("POST", "/movimientos", cuerpo: [[
+            "empresa_id": empresa, "producto_id": productoId,
+            "tipo": tipo, "cantidad": con, "origen": motivo,
+        ]])
+
+        // Se relee el producto en vez de sumar el delta acá: el stock lo
+        // mantiene el trigger, y si dos personas ajustan a la vez el que vale
+        // es el de la base, no la cuenta que hizo este teléfono.
+        return try await producto(productoId)?.stock ?? 0
+    }
+
+    /// Una compra con sus líneas, en nuestras tablas.
+    ///
+    /// Son dos viajes sin transacción —la cabecera y las líneas—, y hay que
+    /// saberlo: si se corta la señal en el medio queda una compra con el
+    /// número consumido y sin líneas. Se ve en el listado y se puede anular.
+    /// Hacerlo en uno solo necesita una función del lado del servidor.
+    static func crearCompra(
+        provId: String?, lineas: [CompraLinea],
+        credito: Bool, plazoDias: Int, cuotas: Int,
+        timbrado: String, comprobante: String,
+        moneda: String, tipoCambio: Double
+    ) async throws -> String {
+        let empresa = try await empresaActual()
+
+        let numeroCrudo = try await pedir("POST", "/rpc/siguiente_numero",
+                                          cuerpo: ["p_empresa": empresa, "p_tipo": "compra"])
+        let numero = (numeroCrudo as? String) ?? texto(numeroCrudo)
+
+        var cabecera: [String: Any] = [
+            "empresa_id": empresa, "numero": numero,
+            "condicion": credito ? "Crédito" : "Contado",
+            // Al contado se cierra en el acto; a crédito queda por pagar.
+            "estado": credito ? "Pendiente" : "Pagada",
+            "cuotas": max(1, cuotas),
+            "moneda": moneda,
+        ]
+        if let provId, !provId.isEmpty { cabecera["proveedor_id"] = provId }
+        if credito { cabecera["plazo_dias"] = max(1, plazoDias) }
+        if !timbrado.isEmpty { cabecera["timbrado"] = timbrado }
+        if !comprobante.isEmpty { cabecera["factura"] = comprobante }
+        // La tabla exige cotización si la compra no es en guaraníes.
+        if moneda != "PYG" { cabecera["tipo_cambio"] = tipoCambio }
+
+        let crudo = try await pedir("POST", "/compras", cuerpo: [cabecera],
+                                    preferencia: "return=representation")
+        guard let c = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió la compra creada.",
+                                ruta: "/compras")
+        }
+        let compraId = texto(c["id"])
+
+        _ = try await pedir("POST", "/compra_lineas", cuerpo: lineas.map { l in
+            [
+                "compra_id": compraId, "producto_id": l.prodId,
+                "nombre": l.nombre, "unidad": l.unidad,
+                "cantidad": l.cantidad, "costo": l.costo,
+                "iva": l.iva.rawValue,
+            ]
+        })
+
+        // Una compra entra stock. Va como movimiento, que es lo que lo mueve.
+        _ = try? await pedir("POST", "/movimientos", cuerpo: lineas.map { l in
+            [
+                "empresa_id": empresa, "producto_id": l.prodId,
+                "tipo": "ENTRADA", "cantidad": l.cantidad,
+                "origen": "Compra \(numero)", "ref": numero,
+            ]
+        })
+
+        return numero
+    }
+
+    /// Corrige un producto ya cargado, en nuestras tablas.
+    ///
+    /// Viaja sólo lo que cambió. Mandar todo pisaría con lo que tiene este
+    /// teléfono lo que otro acaba de editar: el campo se toma como "cambialo"
+    /// por el hecho de estar presente.
+    ///
+    /// **El stock no se toca acá.** Se mueve con un ajuste, que deja un
+    /// movimiento y se puede auditar. Editarlo a mano haría que el stock y su
+    /// historial dijeran cosas distintas, y el que manda es el historial.
+    static func editarProducto(_ id: String, _ cambios: [String: Any]) async throws -> InvProducto {
+        guard !cambios.isEmpty else {
+            guard let p = try await producto(id) else {
+                throw ApiError.http(status: 404, mensaje: "Ese producto ya no existe.",
+                                    ruta: "/productos")
+            }
+            return p
+        }
+        let crudo = try await pedir("PATCH", "/productos", query: ["id": "eq.\(id)"],
+                                    cuerpo: cambios, preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el producto editado.",
+                                ruta: "/productos")
+        }
+        return aProductoLocal(o)
+    }
+
+    /// Corrige un proveedor ya cargado. Mismas reglas que el producto.
+    static func editarProveedor(_ id: String, _ cambios: [String: Any]) async throws -> Proveedor {
+        let crudo = try await pedir("PATCH", "/proveedores", query: ["id": "eq.\(id)"],
+                                    cuerpo: cambios, preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el proveedor editado.",
+                                ruta: "/proveedores")
+        }
+        let plazo = o["credito_plazo_dias"] as? Int
+        return Proveedor(
+            id: texto(o["id"]), nombre: (o["nombre"] as? String) ?? "",
+            doc: (o["doc"] as? String) ?? "",
+            condicion: plazo.map { "Crédito \($0) días" } ?? "Contado",
+            rubro: (o["rubro"] as? String) ?? "", ciudad: (o["ciudad"] as? String) ?? "",
+            contacto: (o["contacto"] as? String) ?? "", tel: (o["tel"] as? String) ?? "",
+            email: (o["email"] as? String) ?? "",
+            activo: ((o["estado"] as? String) ?? "Activo") != "Inactivo"
+        )
+    }
 
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
         let crudo = try await pedir("POST", "/clientes", cuerpo: [campos],

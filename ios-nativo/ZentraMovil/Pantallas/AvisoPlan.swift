@@ -51,37 +51,50 @@ struct HojaPlanes: View {
 
                 ForEach(Plan.orden, id: \.self) { tarjeta($0) }
 
-                if let link = Config.linkDePago {
-                    Link(destination: link) {
-                        Text("Ver planes y pagar")
-                            .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(C.cian, in: .rect(cornerRadius: 12))
-                    }
-                    .padding(.top, 6)
-                } else if !Config.cobrosUrl.isEmpty {
-                    // Sin enlace queda la dirección escrita, que es informar.
-                    // El botón se apaga en la compilación de la tienda: Google
-                    // Play no permite mandar a pagar afuera.
-                    Text("Se paga en \(Config.cobrosUrl.replacingOccurrences(of: "https://", with: ""))/pagar, desde el navegador.")
-                        .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink3)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 6)
-                }
-
-                Button("Ahora no") { cerrar() }
-                    .font(Tipo.barlow(.semibold, 14))
-                    .foregroundStyle(t.ink2)
-                    .padding(.vertical, 12)
             }
-            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 18)
+            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
             }
+            // Anclado abajo, no a continuación de las tarjetas.
+            //
+            // Pegado al final del contenido quedaba a media pantalla cuando
+            // los planes no la llenaban, lejos del pulgar y con un hueco
+            // debajo que lo hacía parecer un renglón más. Acá está siempre en
+            // el mismo lugar, y las tarjetas scrollean por detrás.
+            .safeAreaInset(edge: .bottom) { pie }
         }
         .background(t.card)
         .presentationDetents([.medium, .large])
         // Apagado: el nuestro va arriba, en la franja que no scrollea.
         .presentationDragIndicator(.hidden)
         .task { precios = await SupabaseDatos.preciosDePlanes() }
+    }
+
+    /// El botón de pagar y la salida, fijos al pie de la hoja.
+    private var pie: some View {
+        VStack(spacing: 0) {
+            if let link = Config.linkDePago {
+                Link(destination: link) {
+                    Text("Ver planes y pagar")
+                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(C.cian, in: .rect(cornerRadius: 12))
+                }
+            } else if !Config.cobrosUrl.isEmpty {
+                // Sin enlace queda la dirección escrita, que es informar. El
+                // botón se apaga en la compilación de la tienda: Google Play
+                // no permite mandar a pagar afuera.
+                Text("Se paga en \(Config.cobrosUrl.replacingOccurrences(of: "https://", with: ""))/pagar, desde el navegador.")
+                    .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink3)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button("Ahora no") { cerrar() }
+                .font(Tipo.barlow(.semibold, 14))
+                .foregroundStyle(t.ink2)
+                .padding(.top, 10).padding(.bottom, 2)
+        }
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 10)
+        .background(t.card)
     }
 
     private func tarjeta(_ p: Plan) -> some View {
