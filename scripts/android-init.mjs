@@ -13,7 +13,7 @@
  */
 import { existsSync, mkdirSync, copyFileSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { conFirma } from "./firma.mjs";
+import { conFirma, conRelease, conVersion } from "./firma.mjs";
 import { homedir, platform } from "node:os";
 import { join, resolve, sep } from "node:path";
 
@@ -489,10 +489,47 @@ function firmaEstable() {
   }
 
   const antes = readFileSync(RUTA, "utf8");
-  const despues = conFirma(antes);
+  let despues = conFirma(antes);
+
+  // La llave de la tienda, si está. Va aparte de la de depuración: son dos
+  // llaves distintas para dos cosas distintas, y la de la tienda no vive en
+  // el repositorio.
+  despues = conRelease(despues);
+
+  // La versión que ve Google Play. El nombre sale de `src/lib/config.ts` para
+  // que la pantalla de Configuración y la ficha de la tienda no se
+  // contradigan; el número, del entorno, porque Play rechaza dos subidas con
+  // el mismo y eso lo decide quien sube, no el código.
+  despues = conVersion(despues, {
+    versionCode: Number(process.env.ZENTRA_VERSION_CODE) || undefined,
+    versionName: versionDeLaApp(),
+  });
+
   if (despues === antes) return;
   writeFileSync(RUTA, despues);
-  console.log("\nFirma: el APK va a usar firma/debug.keystore, la misma en cada build.");
+  if (process.env.ZENTRA_LLAVE) {
+    console.log("\nFirma: release con la llave de ZENTRA_LLAVE; depuración con firma/debug.keystore.");
+  } else {
+    console.log("\nFirma: el APK va a usar firma/debug.keystore, la misma en cada build.");
+  }
+}
+
+/**
+ * La versión que muestra la app, leída de donde ya estaba escrita.
+ *
+ * Se lee con una expresión regular y no importando el módulo porque esto es
+ * un script de Node y aquello es TypeScript con alias de Next. Si algún día
+ * no se encuentra, se devuelve vacío y la versión del gradle queda como
+ * estaba: es preferible una versión vieja en la ficha de la tienda que un
+ * build que falla por esto.
+ */
+function versionDeLaApp() {
+  try {
+    const cfg = readFileSync("src/lib/config.ts", "utf8");
+    return /version:\s*"([^"]+)"/.exec(cfg)?.[1] || "";
+  } catch {
+    return "";
+  }
 }
 
 firmaEstable();
