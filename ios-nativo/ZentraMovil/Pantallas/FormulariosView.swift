@@ -206,11 +206,16 @@ struct MovimientosView: View {
     @Environment(AjustesLocales.self) private var locales
     @State private var delErp: [[String: Any]] = []
     @State private var cargando = true
+    @State private var conErp = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
-                if !locales.movs.isEmpty {
+                // Sólo con ERP, que es donde el ajuste de verdad no sale del
+                // teléfono. Sin ERP ya se guarda en nuestras tablas, y seguir
+                // diciendo lo contrario haría desconfiar de un dato que está
+                // bien guardado.
+                if conErp, !locales.movs.isEmpty {
                     AvisoLocal(que: "Los ajustes hechos desde acá quedan sólo en el teléfono")
                 }
 
@@ -269,6 +274,7 @@ struct MovimientosView: View {
         .background(t.bg)
         .navigationTitle("Movimientos")
         .navigationBarTitleDisplayMode(.inline)
+        .task { conErp = await RepoERP.usaErp() }
         .task {
             delErp = (try? await RepoERP.movimientos()) ?? []
             cargando = false

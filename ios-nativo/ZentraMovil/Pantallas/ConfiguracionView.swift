@@ -120,14 +120,6 @@ struct ConfiguracionView: View {
             fila("Sonido y vibración", "Al recibir un aviso") {
                 Toggle("", isOn: a.sonido).labelsHidden().tint(C.teal)
             }
-
-            // Honesto: el permiso del sistema y el envío todavía no están.
-            Text("Los avisos todavía no se envían: falta la clave APNs en Firebase y el servidor que los dispara.")
-                .font(Tipo.barlow(.regular, 11.5))
-                .foregroundStyle(Tint.avisoInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .background(Tint.avisoBg, in: .rect(cornerRadius: 10))
         }
     }
 
