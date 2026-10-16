@@ -57,6 +57,14 @@ const extra = {
   mensajes: {} as Record<string, ChatMsg[]>,
   /** Ajustes de stock aplicados, por id de producto. */
   deltas: {} as Record<string, number>,
+  /**
+   * Cuándo se ajustó cada producto, en ISO.
+   *
+   * Lo guarda acá por lo mismo que los deltas: en la demo no hay base. Sin
+   * esto, el límite de "un ajuste cada 30 días" de Gratis y Emprendedor no se
+   * puede ni mostrar, porque el campo volvía siempre vacío y el límite pasaba.
+   */
+  ajustes: {} as Record<string, string>,
   /** Tokens de notificaciones registrados, por token. */
   dispositivos: {} as Record<string, "android" | "ios" | "web">,
 };
@@ -69,6 +77,7 @@ const extra = {
 const conStockVigente = (p: InvProducto): InvProducto => ({
   ...p,
   stock: stockDe(p, extra.deltas),
+  ultimoAjuste: extra.ajustes[p.id] ?? p.ultimoAjuste ?? null,
 });
 
 let sesion: Sesion | null = null;
@@ -221,6 +230,15 @@ export const mockRepo: Repo = {
       extra.clientes.push(nuevo);
       return demora(nuevo);
     },
+    /**
+     * La SET de ejemplo, que contesta cualquier RUC.
+     *
+     * Acá sí se puede inventar, y es lo único que se puede hacer: éste es el
+     * modo de ejemplo, donde los clientes, los productos y las ventas también
+     * son inventados. En las implementaciones de verdad no se inventa nada —ni
+     * la razón social ni el "contribuyente activo"—, porque eso después sale
+     * impreso en una factura.
+     */
     async consultarSet(doc) {
       const base = doc.replace(/[^0-9]/g, "").slice(0, 8);
       if (!base) return demora(null);
@@ -399,6 +417,9 @@ export const mockRepo: Repo = {
     async ajustar(input: AjusteInput) {
       const signo = input.tipo === "SALIDA" ? -1 : 1;
       extra.deltas[input.prodId] = (extra.deltas[input.prodId] || 0) + signo * input.cantidad;
+      // Fechado, igual que lo hace el backend de verdad: es lo que hace valer
+      // el límite de un ajuste por mes.
+      extra.ajustes[input.prodId] = new Date().toISOString();
       const mov: Movimiento = {
         id: "nm" + (extra.movimientos.length + 1),
         prodId: input.prodId,

@@ -1288,3 +1288,115 @@ alter table zentra.planes enable row level security;
 drop policy if exists planes_lectura on zentra.planes;
 create policy planes_lectura on zentra.planes for select using (true);
 
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 09_precios_vigentes.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- ---------- precios vigentes ----------
+--
+-- Los montos del documento de planes del 6 de octubre de 2026:
+--
+--   Gratis       ₲      0   no se vende
+--   Emprendedor  ₲ 49.000   por mes
+--   Max          ₲ 89.000   por mes
+--
+-- `08_precios.sql` los deja en cero y con `vendible = false` a propósito, para
+-- que nadie cobre un precio inventado por defecto. Esto los carga.
+--
+-- Es idempotente: se puede correr de nuevo para cambiar un precio.
+
+-- Gratis no se vende: no tiene sentido mandar a alguien a PagoPar a pagar cero.
+-- Es a lo que se cae al vencer, no algo que se compre.
+update zentra.planes
+   set nombre = 'Gratis', precio_mensual = 0, vendible = false, actualizado_en = now()
+ where codigo = 'free';
+
+update zentra.planes
+   set precio_mensual = 49000, vendible = true, actualizado_en = now()
+ where codigo = 'emprendedor';
+
+update zentra.planes
+   set precio_mensual = 89000, vendible = true, actualizado_en = now()
+ where codigo = 'max';
+
+-- Para mirar cómo quedó. La página de pago muestra exactamente esto: sólo los
+-- `vendible = true` con precio mayor a cero, del más barato al más caro.
+select codigo, nombre, precio_mensual, vendible from zentra.planes order by precio_mensual;
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 10_planes_lectura_publica.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- ---------- la lista de precios se tiene que poder leer ----------
+--
+-- `08_precios.sql` le puso a `zentra.planes` la política de lectura pública y
+-- se quedó a mitad de camino: en Postgres hacen falta las **dos** cosas.
+--
+--   · El GRANT dice si el rol puede tocar la tabla.
+--   · La política RLS dice qué filas ve de las que puede tocar.
+--
+-- Sin el GRANT, la política no llega a correr nunca y PostgREST contesta
+-- "permission denied for table planes". El síntoma no es un error a la vista:
+-- la app pide los precios, no los puede leer, y muestra los planes sin precio
+-- —que es el respaldo previsto para cuando no hay red—. Así que la hoja de
+-- planes se ve bien y miente por omisión, en las dos apps.
+--
+-- `anon` y `authenticated` porque la hoja se puede abrir antes y después de
+-- entrar, y la página de pago la lee sin sesión.
+
+grant usage on schema zentra to anon, authenticated;
+grant select on zentra.planes to anon, authenticated;
+
+-- Para comprobarlo desde afuera, sin sesión:
+--
+--   curl -s "$SUPABASE_URL/rest/v1/planes?select=codigo,precio_mensual" \
+--        -H "apikey: $ANON_KEY" -H "Accept-Profile: zentra"
+--
+-- Tiene que devolver las tres filas, no un 42501.
+select codigo, nombre, precio_mensual, vendible from zentra.planes order by precio_mensual;
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 11_campos_max.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- ---------- los campos de Max en productos ----------
+--
+-- `zentra.productos` se quedó con las columnas del plan Gratis, pero la app
+-- escribe y lee tres campos más desde que existe Max:
+--
+--   precio_mayorista  el precio para quien compra por cantidad
+--   vencimiento       la fecha de vencimiento del producto
+--   ultimo_ajuste     cuándo se ajustó el stock por última vez
+--
+-- No era un campo que faltaba y se mostraba vacío: `supabase-datos.ts` los
+-- manda en el insert y en el update, así que guardar un producto con cualquiera
+-- de los tres contra la base de verdad fallaba con "column does not exist". Y
+-- fallaba en el alta, no en una pantalla secundaria.
+--
+-- `ultimo_ajuste` no es un dato del producto que alguien quiera mirar: es lo
+-- que hace real el límite de "un ajuste de stock cada 30 días" de Gratis y
+-- Emprendedor. Mientras la columna no existió, el campo volvía siempre nulo,
+-- el límite leía "nunca se ajustó" y pasaba siempre. Lo escribe el servidor al
+-- registrar el ajuste; la app sólo lo lee.
+--
+-- Es idempotente: se puede correr de nuevo.
+
+alter table zentra.productos
+  add column if not exists precio_mayorista bigint,
+  add column if not exists vencimiento      date,
+  add column if not exists ultimo_ajuste    timestamptz;
+
+-- El mayorista es plata: mismo criterio que `costo` y `precio`, en guaraníes
+-- enteros y nunca negativo. Nulo es "este producto no se vende al por mayor",
+-- que no es lo mismo que cero.
+do $$ begin
+  alter table zentra.productos
+    add constraint productos_mayorista_no_negativo
+    check (precio_mayorista is null or precio_mayorista >= 0);
+exception when duplicate_object then null; end $$;
+
+-- Para ver que quedaron las tres.
+select column_name, data_type
+  from information_schema.columns
+ where table_schema = 'zentra'
+   and table_name = 'productos'
+   and column_name in ('precio_mayorista', 'vencimiento', 'ultimo_ajuste')
+ order by column_name;
+

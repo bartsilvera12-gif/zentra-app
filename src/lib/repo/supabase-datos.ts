@@ -47,6 +47,28 @@ function reventar(contexto: string, error: { message: string } | null): never {
   throw new AuthError(`${contexto}: ${m}`);
 }
 
+/**
+ * La consulta de RUC a la SET, que todavía no existe.
+ *
+ * Devolvía `COMERCIAL <los ocho dígitos que escribiste> S.A.` y `activo: true`,
+ * armado acá con el documento que se tipeó. Eso no es un dato incompleto: es un
+ * dato fiscal inventado, presentado como "datos encontrados en la SET", y la
+ * razón social es lo que después sale impreso en la factura.
+ *
+ * Falla con el motivo a la vista en vez de devolver `null`: `null` significa
+ * "ese RUC no está en la SET", y eso tampoco lo sabemos — nunca preguntamos.
+ * Mientras no haya servicio, la razón social se escribe a mano, que es lo que
+ * de hecho pasaba.
+ *
+ * Qué falta para conectarla está en docs/BACKEND.md: con qué credenciales se
+ * consulta y qué hacer cuando el servicio no contesta.
+ */
+function sinServicioSet(): never {
+  throw new AuthError(
+    "La consulta de RUC a la SET todavía no está conectada. Escribí la razón social a mano.",
+  );
+}
+
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
 /** `2024-03-15T…` → `mar 2024`, como lo muestra la ficha del cliente. */
@@ -194,11 +216,8 @@ export const clientesRepo: ClientesRepo = {
     return aCliente(data as FilaCliente, 0, 0);
   },
 
-  async consultarSet(doc) {
-    // Pendiente: necesita el servicio real de la SET. Ver docs/BACKEND.md.
-    const base = doc.replace(/[^0-9]/g, "").slice(0, 8);
-    if (!base) return null;
-    return { razonSocial: `COMERCIAL ${base} S.A.`, activo: true };
+  async consultarSet() {
+    return sinServicioSet();
   },
 };
 
@@ -325,10 +344,8 @@ export const proveedoresRepo: ProveedoresRepo = {
     );
   },
 
-  async consultarSet(doc) {
-    const base = doc.replace(/[^0-9]/g, "").slice(0, 8);
-    if (!base) return null;
-    return { razonSocial: `COMERCIAL ${base} S.A.`, activo: true };
+  async consultarSet() {
+    return sinServicioSet();
   },
 };
 
@@ -511,6 +528,23 @@ export const inventarioRepo: InventarioRepo = {
     return (data as FilaMovimiento[]).map((f) => aMovimiento(f, ""));
   },
 
+  /**
+   * Registra el ajuste y deja fechado el producto.
+   *
+   * Las dos cosas, y en este orden. `ultimo_ajuste` es lo único que hace real
+   * el límite de "un ajuste cada 30 días" de Gratis y Emprendedor: mientras no
+   * se escribía, el campo volvía nulo, `motivoBloqueo` leía "nunca se ajustó" y
+   * el límite pasaba siempre.
+   *
+   * No lo hace un disparador sobre `movimientos` —que sería más difícil de
+   * esquivar— porque desde la base los movimientos de un ajuste no se
+   * distinguen de los de una venta: los dos son una SALIDA. Fecharlos todos
+   * haría que vender trabara el ajuste del mes, que no es lo que se vendió.
+   *
+   * Si el movimiento entró y la fecha no, no se revienta: el stock ya se movió
+   * y es lo que la persona pidió. Lo que se pierde es un límite comercial, no
+   * un dato suyo.
+   */
   async ajustar(input: AjusteInput) {
     const signo = input.tipo === "SALIDA" ? -1 : 1;
     const emp = await empresaId();
@@ -531,6 +565,13 @@ export const inventarioRepo: InventarioRepo = {
       .select()
       .single();
     if (error) reventar("registrando el ajuste", error);
+
+    await sb()
+      .from("productos")
+      .update({ ultimo_ajuste: new Date().toISOString() })
+      .eq("empresa_id", emp)
+      .eq("id", input.prodId);
+
     return aMovimiento(data as FilaMovimiento, "");
   },
 };

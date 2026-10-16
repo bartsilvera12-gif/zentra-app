@@ -35,9 +35,8 @@ const PERMITIDO = new Set([
 
 /** Las que pueden nombrar un prohibido porque lo usan sólo sin ERP. */
 const CON_GUARDA = new Map([
-  // Movimientos de stock: la API no los expone, así que con ERP se muestran
-  // sólo los hechos desde la app.
-  ["InventarioScreen.tsx", new Set(["MOVS"])],
+  // Inventario ya no está acá: los movimientos salen del repo en los dos
+  // modos. Los de ejemplo los pone `mock.ts`, que es donde corresponde.
   // Conversaciones: con ERP salen del ERP; las de ejemplo quedan sólo para
   // poder ver la pantalla sin una empresa conectada.
   ["ConversacionesScreen.tsx", new Set(["CHATS"])],

@@ -1,18 +1,19 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { MARCA } from "@/lib/theme";
-import { MOTIVOS, MOVS, PESABLES, UNIDADES } from "@/lib/data";
+import { MOTIVOS, PESABLES, UNIDADES } from "@/lib/data";
 import { usaApiDelErp } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
-import { margenPct, stockDe } from "@/lib/calc";
+import { margenPct } from "@/lib/calc";
 import { gs, norm, num } from "@/lib/format";
 import type { InvProducto, Movimiento, MovTipo } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { cupoProductos, motivoBloqueo } from "@/lib/planes";
+import { motivoCategoria } from "@/lib/inventario";
 import { avisarStockBajo } from "@/lib/avisos";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
@@ -39,32 +40,50 @@ const CIAN_CLARO = MARCA.sobre;
 
 export function InventarioScreen() {
   const { s, t, set, plan } = useApp();
-
-  // El catálogo sale del ERP.
-  const conErp = usaApiDelErp();
-  const { datos, cargando, error, recargar } = useRemoto(() => repo.inventario.list(), []);
   /**
-   * Los movimientos de stock, ahora sí del ERP.
+   * Mientras el ajuste viaja, y el motivo si no llegó.
    *
-   * Antes con ERP se mostraban sólo los hechos desde la app, porque la API no
-   * los exponía. Ya los expone (`/inventario/movimientos`), así que se ve el
-   * historial completo: la entrada de una compra cargada en la web también.
-   *
-   * Si el endpoint falla se muestra lo que hizo la app y nada más, que es como
-   * estaba. No se corta la pantalla por el historial.
+   * Local y no en el estado global: no sobrevive a salir de la pantalla ni la
+   * mira nadie más, y un error de guardado que quede pegado en el estado
+   * aparece la próxima vez que se abre el formulario.
    */
-  const { datos: movsErp } = useRemoto(
-    () => (conErp ? repo.inventario.movimientos().catch(() => []) : Promise.resolve([])),
-    [conErp],
+  const [ajGuardando, setAjGuardando] = useState(false);
+  const [ajError, setAjError] = useState("");
+
+  // Con ERP propio hay campos que el ERP no tiene dónde guardar, y el
+  // formulario lo avisa. Es lo único que todavía necesita saberlo.
+  const conErp = usaApiDelErp();
+  /**
+   * El catálogo, del backend y de ninguna otra parte.
+   *
+   * Antes era `s.iExtra.concat(datos)`: lo que devolvía el backend más lo que
+   * se había cargado en esta sesión y vivía sólo en `useState`. Eso era el
+   * síntoma de que el alta no guardaba nada. Ahora el alta guarda, así que lo
+   * cargado vuelve en la lista y no hay dos fuentes que mantener de acuerdo.
+   */
+  const { datos: prods, cargando, error, recargar } = useRemoto(() => repo.inventario.list(), []);
+  /**
+   * Los movimientos de stock, del backend también.
+   *
+   * Con ERP salen del ERP (`/inventario/movimientos`), y sin ERP de nuestras
+   * tablas, donde los deja `inventario.ajustar`. Antes sin ERP se mostraban los
+   * de ejemplo —entradas y salidas de un depósito que no existe— y arriba de
+   * ellos los que había hecho la app en esta sesión; el ajuste que se acababa
+   * de hacer desaparecía al cerrar.
+   *
+   * Si el pedido falla, el historial queda vacío y la pantalla sigue andando.
+   * No se corta el inventario por el libro.
+   */
+  const { datos: allMovs, recargar: recargarMovs } = useRemoto(
+    () => repo.inventario.movimientos().catch(() => []),
+    [],
   );
-  const prods = s.iExtra.concat(datos);
-  const stock = (p: InvProducto) => stockDe(p, s.iDelta);
-  const unidades = prods.reduce((a, p) => a + stock(p), 0);
-  const bajo = prods.filter((p) => stock(p) <= p.minimo);
+  const unidades = prods.reduce((a, p) => a + p.stock, 0);
+  const bajo = prods.filter((p) => p.stock <= p.minimo);
 
   const iq = norm(s.iQuery.trim());
   const filtrados = prods.filter((p) => {
-    const st = stock(p);
+    const st = p.stock;
     if (s.iFiltro === "Bajo mínimo" && !(st > 0 && st <= p.minimo)) return false;
     if (s.iFiltro === "Agotados" && st > 0) return false;
     if (s.iFiltro === "Con stock" && st <= 0) return false;
@@ -72,9 +91,6 @@ export function InventarioScreen() {
   });
 
   const det = prods.find((p) => p.id === s.iSel) ?? null;
-  // Los de ejemplo sólo sin ERP: inventar entradas y salidas de un depósito
-  // ajeno sería grave.
-  const allMovs = conErp ? s.iMovExtra.concat(movsErp) : s.iMovExtra.concat(MOVS);
   const prodName = (id: string) => prods.find((p) => p.id === id)?.nombre ?? "—";
   const prodUnidad = (id: string) => prods.find((p) => p.id === id)?.unidad ?? "";
 
@@ -101,155 +117,58 @@ export function InventarioScreen() {
   const ajCantNum = Number(s.ajCant) || 0;
   const ajNuevoStock = ajProd
     ? s.ajTipo === "SALIDA"
-      ? stock(ajProd) - ajCantNum
-      : stock(ajProd) + ajCantNum
+      ? ajProd.stock - ajCantNum
+      : ajProd.stock + ajCantNum
     : 0;
   const ajPuede = !!ajProd && ajCantNum > 0;
 
-  const guardarAjuste = () => {
-    if (!ajPuede || !ajProd) return;
+  /**
+   * Registra el ajuste de stock.
+   *
+   * Antes movía un delta en memoria y armaba el movimiento a mano, con fecha
+   * "30 sep" fija: el stock subía en pantalla, el libro mostraba una línea, y
+   * al cerrar la app no había pasado nada. El inventario volvía al número de
+   * antes sin que nadie lo tocara.
+   *
+   * Ahora lo graba el backend, que es también el que deja fechado
+   * `ultimo_ajuste` del producto. Esa fecha es lo que hace real el límite de un
+   * ajuste por mes: sin ella el límite se consultaba contra un campo vacío y
+   * pasaba siempre.
+   */
+  const guardarAjuste = async () => {
+    if (!ajPuede || !ajProd || ajGuardando) return;
     // El plan limita cuántas veces al mes se ajusta el mismo producto. Se
     // consulta con la fecha del último ajuste de ESE producto, no de
     // cualquiera: el límite es por producto, que es como se vendió.
     const motivo = motivoBloqueo("inventario.ajuste", plan({ ultimoAjuste: ajProd.ultimoAjuste }));
     if (motivo) return set({ avisoPlan: motivo });
-    const signo = s.ajTipo === "SALIDA" ? -1 : 1;
-    const delta = { ...s.iDelta };
-    delta[ajProd.id] = (delta[ajProd.id] || 0) + signo * ajCantNum;
-    const mov: Movimiento = {
-      id: "nm" + (s.iMovExtra.length + 1),
-      prodId: ajProd.id,
-      tipo: s.ajTipo,
-      cant: signo * ajCantNum,
-      origen: s.ajMotivo,
-      ref: "AJU-0000" + (32 + s.iMovExtra.length),
-      fecha: "30 sep",
-      usuario: "Ulises G.",
-    };
-    set({ iDelta: delta, iMovExtra: [mov].concat(s.iMovExtra), iSub: "movs", iMovFiltro: "Todos" });
+
+    setAjGuardando(true);
+    setAjError("");
+    try {
+      await repo.inventario.ajustar({
+        prodId: ajProd.id,
+        tipo: s.ajTipo,
+        cantidad: ajCantNum,
+        motivo: s.ajMotivo,
+      });
+      setAjGuardando(false);
+      // Las dos listas: el stock del producto y el libro. El movimiento recién
+      // grabado tiene que estar en el historial al que se llega enseguida.
+      recargar();
+      recargarMovs();
+      set({ iSub: "movs", iMovFiltro: "Todos" });
+    } catch (e) {
+      setAjGuardando(false);
+      setAjError(e instanceof Error ? e.message : "No se pudo registrar el ajuste.");
+    }
   };
 
   /* ---- new product ---- */
-  const npSkuSugerido =
-    (s.npNombre.trim() ? norm(s.npNombre).replace(/[^a-z]/g, "").slice(0, 3).toUpperCase() : "SKU") +
-    "-" +
-    (101 + s.iExtra.length);
-  const npCostoNum = Number(s.npCosto) || 0;
-  const npPrecioNum = Number(s.npPrecio) || 0;
-  const npMarkupCalc = npCostoNum > 0 ? (npPrecioNum / npCostoNum - 1) * 100 : 0;
-  const npPuede = s.npNombre.trim().length >= 2 && npCostoNum > 0 && npPrecioNum > 0;
-
   /**
-   * El tope de productos del plan.
+   * Qué trae el plan en este formulario.
    *
-   * Se cuenta sobre lo que hay cargado, no sobre lo que se ve filtrado: el
-   * límite es de la empresa, no de la búsqueda que alguien tenga escrita.
-   */
-  const ctxAlta = plan({ productos: datos.length });
-  const topeAlta = motivoBloqueo("inventario.alta", ctxAlta);
-  const { tope } = cupoProductos(ctxAlta);
-  const resumenConCupo =
-    tope === null
-      ? `${prods.length} productos · ${num(unidades)} unidades`
-      : `${datos.length} de ${tope} productos · ${num(unidades)} unidades`;
-
-  /**
-   * Da de alta el producto.
-   *
-   * Con ERP conectado va al ERP. Antes no iba a ninguna parte: el producto se
-   * guardaba en la memoria del teléfono, aparecía en la lista como si estuviera
-   * cargado, y al cerrar la app desaparecía. Quien lo cargó se enteraba cuando
-   * fue a venderlo.
-   *
-   * Tres campos del formulario no los guarda este ERP, porque no tiene dónde:
-   * el IVA por producto (todo se factura al 10%), el precio mayorista y el
-   * vencimiento. Los dos últimos son de Max y viven en el Supabase de Zentra.
-   * El formulario lo avisa en pantalla; perderlos en silencio sería peor.
-   *
-   * El movimiento de inventario inicial lo graba el ERP solo cuando el stock
-   * inicial es mayor a cero, así que acá no se arma a mano como en el modo de
-   * ejemplo: se vuelve a pedir la lista y el historial sale del ERP.
-   */
-  const guardarProducto = async () => {
-    if (!npPuede) {
-      set({ npError: true });
-      return;
-    }
-    const stockIni = Number(s.npStock) || 0;
-
-    if (conErp) {
-      set({ npGuardando: true, npErrorTexto: "" });
-      try {
-        const creado = await repo.inventario.create({
-          nombre: s.npNombre.trim(),
-          sku: (s.npSku || npSkuSugerido).toUpperCase(),
-          barras: s.npBarras.trim(),
-          unidad: s.npUnidad,
-          categoria: s.npCategoria.trim(),
-          // Depósito, método y código de barras no se preguntan en el alta
-          // desde el celular: son decisiones del ERP. Va vacío para que el ERP
-          // ponga lo que corresponda, en vez de inventar un depósito que
-          // quizás no existe.
-          deposito: "",
-          costo: npCostoNum,
-          precio: Math.round(npPrecioNum),
-          iva: s.npIva,
-          stockInicial: stockIni,
-          minimo: Number(s.npMinimo) || 0,
-          metodo: "CPP",
-          precioMayorista: s.npMayorista.trim() ? Number(s.npMayorista) : null,
-          vencimiento: s.npVencimiento.trim() || null,
-        });
-        set({ iSub: "detalle", iSel: creado.id, npGuardando: false });
-        recargar();
-      } catch (e) {
-        set({
-          npGuardando: false,
-          npErrorTexto: e instanceof Error ? e.message : "No se pudo guardar el producto.",
-        });
-      }
-      return;
-    }
-
-    const id = "np" + (s.iExtra.length + 1);
-    const nuevo: InvProducto = {
-      id,
-      nombre: s.npNombre.trim(),
-      sku: (s.npSku || npSkuSugerido).toUpperCase(),
-      stock: stockIni,
-      minimo: Number(s.npMinimo) || 0,
-      costo: npCostoNum,
-      precio: Math.round(npPrecioNum),
-      unidad: s.npUnidad,
-      categoria: s.npCategoria.trim() || "Sin categoría",
-      deposito: "",
-      iva: s.npIva,
-      metodo: "CPP",
-      barras: s.npBarras.trim(),
-    };
-    // El stock inicial queda como ENTRADA para que el historial cierre.
-    const movs =
-      stockIni > 0
-        ? ([
-            {
-              id: "nm" + (s.iMovExtra.length + 1),
-              prodId: id,
-              tipo: "ENTRADA" as MovTipo,
-              cant: stockIni,
-              origen: "Inventario inicial",
-              ref: "INI-0000" + (s.iExtra.length + 1),
-              fecha: "30 sep",
-              usuario: "Ulises G.",
-            },
-          ] as Movimiento[]).concat(s.iMovExtra)
-        : s.iMovExtra;
-    set({ iExtra: [nuevo].concat(s.iExtra), iMovExtra: movs, iSub: "detalle", iSel: id });
-  };
-
-  /**
-   * Abre la ficha para corregirla, con los campos ya cargados.
-   *
-   * Reusa el mismo formulario del alta: son los mismos datos, y tener dos
+   * El alta y la edición reusan el mismo: son los mismos datos, y tener dos
    * formularios para el mismo producto garantiza que uno se quede atrás.
    */
   const editando = s.iSub === "editar";
@@ -260,15 +179,115 @@ export function InventarioScreen() {
   const sinMinimo = Boolean(motivoBloqueo("inventario.minimo", plan()));
   // El aviso va con el mismo permiso que el campo: sin mínimo no hay qué avisar.
   const sinAvisoMinimo = sinMinimo;
-  const sinCategoria = Boolean(motivoBloqueo("inventario.categoria", plan()));
+  const sinCategoria = motivoBloqueo("inventario.categoria", plan());
 
   /**
    * Las categorías que ya existen, para poder elegirlas en vez de escribirlas.
    *
    * Salen del propio inventario y no de una tabla aparte: no hace falta un
    * catálogo para evitar que alguien escriba "bebidas" cuando ya hay "Bebidas".
+   * Y son también las que se pueden usar sin plan pago: elegir una que ya está
+   * no crea nada.
    */
   const categorias = [...new Set(prods.map((p) => p.categoria).filter((c) => c && c !== "Sin categoría"))].sort();
+
+  const npSkuSugerido =
+    (s.npNombre.trim() ? norm(s.npNombre).replace(/[^a-z]/g, "").slice(0, 3).toUpperCase() : "SKU") +
+    "-" +
+    (101 + prods.length);
+  const npCostoNum = Number(s.npCosto) || 0;
+  const npPrecioNum = Number(s.npPrecio) || 0;
+  const npMarkupCalc = npCostoNum > 0 ? (npPrecioNum / npCostoNum - 1) * 100 : 0;
+  const npPuede = s.npNombre.trim().length >= 2 && npCostoNum > 0 && npPrecioNum > 0;
+
+  /**
+   * El tope de productos del plan.
+   *
+   * Se cuenta sobre lo que hay cargado, no sobre lo que se ve filtrado: el
+   * límite es de la empresa, no de la búsqueda que alguien tenga escrita.
+   *
+   * Y se cuenta sobre todo lo cargado. Contaba sólo lo que devolvía el backend
+   * mientras las altas se guardaban en la memoria del teléfono, así que el
+   * número no se movía nunca: en Gratis se podían cargar cien productos y el
+   * contador seguía en "0 de 20". Ahora el alta guarda y esta lista es la
+   * única, así que contar lo que hay es contar de verdad.
+   */
+  const ctxAlta = plan({ productos: prods.length });
+  const topeAlta = motivoBloqueo("inventario.alta", ctxAlta);
+  const { tope } = cupoProductos(ctxAlta);
+  const resumenConCupo =
+    tope === null
+      ? `${prods.length} productos · ${num(unidades)} unidades`
+      : `${prods.length} de ${tope} productos · ${num(unidades)} unidades`;
+
+  /**
+   * Da de alta el producto.
+   *
+   * Va al backend, siempre. Antes preguntaba si había ERP conectado y, si no,
+   * guardaba el producto en la memoria del teléfono: aparecía en la lista como
+   * si estuviera cargado y al cerrar la app no quedaba nada. Y como el APK se
+   * compila contra Supabase, ésa era la rama que corría para casi todos: el
+   * cliente típico perdía cada producto que cargaba y se enteraba cuando fue a
+   * venderlo.
+   *
+   * Los dos límites del plan se revisan acá, no sólo en el botón: el tope de
+   * productos y la categoría nueva. Un botón apagado es una cortesía para no
+   * hacer perder el tiempo —el formulario se puede dejar abierto, cambiar de
+   * plan y volver—, y un límite que sólo vive en un `disabled` no es un límite.
+   *
+   * Dos campos del formulario no los guarda el ERP de un cliente, porque no
+   * tiene dónde: el precio mayorista y el vencimiento, que son de Max y viven
+   * en nuestras tablas. El formulario lo avisa en pantalla; perderlos en
+   * silencio sería peor.
+   *
+   * El movimiento del stock inicial lo graba el backend cuando el stock inicial
+   * es mayor a cero, así que acá no se arma a mano: se vuelve a pedir la lista y
+   * el historial sale de donde salen los demás movimientos.
+   */
+  const guardarProducto = async () => {
+    if (!npPuede) {
+      set({ npError: true });
+      return;
+    }
+    if (topeAlta) return set({ avisoPlan: topeAlta });
+    const porLaCategoria = motivoCategoria(s.npCategoria, categorias, sinCategoria);
+    if (porLaCategoria) return set({ avisoPlan: porLaCategoria });
+
+    set({ npGuardando: true, npErrorTexto: "" });
+    try {
+      const creado = await repo.inventario.create({
+        nombre: s.npNombre.trim(),
+        sku: (s.npSku || npSkuSugerido).toUpperCase(),
+        barras: s.npBarras.trim(),
+        unidad: s.npUnidad,
+        categoria: s.npCategoria.trim(),
+        // Depósito y método no se preguntan en el alta desde el celular: son
+        // decisiones del backend. Va vacío para que ponga lo que corresponda,
+        // en vez de inventar un depósito que quizás no existe.
+        deposito: "",
+        costo: npCostoNum,
+        precio: Math.round(npPrecioNum),
+        iva: s.npIva,
+        stockInicial: Number(s.npStock) || 0,
+        minimo: Number(s.npMinimo) || 0,
+        metodo: "CPP",
+        precioMayorista: s.npMayorista.trim() ? Number(s.npMayorista) : null,
+        vencimiento: s.npVencimiento.trim() || null,
+      });
+      // Se abre la ficha del que devolvió el backend, no la de un id armado
+      // acá: ese id es el que sirve para ajustar, vender y comprar después.
+      set({ iSub: "detalle", iSel: creado.id, npGuardando: false });
+      recargar();
+      recargarMovs();
+    } catch (e) {
+      // Nada quedó en la lista: lo que se ve es lo que hay guardado. Una fila
+      // fantasma que sobrevive al error es peor que el error.
+      set({
+        npGuardando: false,
+        npErrorTexto: e instanceof Error ? e.message : "No se pudo guardar el producto.",
+      });
+    }
+  };
 
   /**
    * Avisa cuando un producto cae bajo el mínimo.
@@ -309,17 +328,20 @@ export function InventarioScreen() {
   };
 
   /**
-   * Guarda la corrección.
+   * Guarda la corrección, contra el backend.
    *
-   * Los productos que vienen del backend se corrigen contra el backend. Los que
-   * se cargaron en esta sesión y todavía viven sólo en pantalla se corrigen
-   * ahí: en la demo no hay a dónde mandarlos.
+   * Tenía una rama para los productos que vivían sólo en pantalla. Ya no hay:
+   * todo lo que está en la lista está guardado, así que corregirlo es una sola
+   * operación y no dos caminos que se pueden desincronizar.
    */
   const guardarEdicion = async () => {
     if (!npPuede || !s.iSel) {
       set({ npError: true });
       return;
     }
+    const porLaCategoria = motivoCategoria(s.npCategoria, categorias, sinCategoria);
+    if (porLaCategoria) return set({ avisoPlan: porLaCategoria });
+
     const cambios = {
       nombre: s.npNombre.trim(),
       sku: (s.npSku || npSkuSugerido).toUpperCase(),
@@ -333,18 +355,6 @@ export function InventarioScreen() {
       precioMayorista: s.npMayorista.trim() ? Number(s.npMayorista) : null,
       vencimiento: s.npVencimiento.trim() || null,
     };
-
-    const local = s.iExtra.findIndex((p) => p.id === s.iSel);
-    if (local >= 0) {
-      const copia = s.iExtra.slice();
-      copia[local] = {
-        ...copia[local],
-        ...cambios,
-        categoria: cambios.categoria || "Sin categoría",
-      };
-      set({ iExtra: copia, iSub: "detalle", npGuardando: false });
-      return;
-    }
 
     set({ npGuardando: true, npErrorTexto: "" });
     try {
@@ -472,7 +482,7 @@ export function InventarioScreen() {
               }}
             />
             <div style={{ display: "flex", gap: 10 }}>
-              <StatTile label="Valuación" valor={gs(prods.reduce((a, p) => a + stock(p) * p.costo, 0))} />
+              <StatTile label="Valuación" valor={gs(prods.reduce((a, p) => a + p.stock * p.costo, 0))} />
               <StatTile label="Bajo mínimo" valor={`${bajo.length} prod.`} valorInk={MARCA.avisoInk} />
             </div>
             <SearchInput
@@ -490,7 +500,8 @@ export function InventarioScreen() {
               <GhostButton
                 label="Ajustar stock"
                 flex={1}
-                onClick={() =>
+                onClick={() => {
+                  setAjError("");
                   set({
                     iSub: "ajuste",
                     ajProd: null,
@@ -498,8 +509,8 @@ export function InventarioScreen() {
                     ajCant: "",
                     ajTipo: "ENTRADA",
                     ajMotivo: "Inventario físico",
-                  })
-                }
+                  });
+                }}
               />
             </div>
           </div>
@@ -508,7 +519,7 @@ export function InventarioScreen() {
             {cargando && <Cargando t={t} que="el inventario" />}
             {error && <Falla t={t} mensaje={error} onReintentar={recargar} />}
             {!cargando && !error && filtrados.map((p) => {
-              const st = stock(p);
+              const st = p.stock;
               const agotado = st <= 0;
               const esBajo = st > 0 && st <= p.minimo;
               // The bar fills relative to twice the minimum, so "at minimum" sits mid-way.
@@ -632,8 +643,8 @@ export function InventarioScreen() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <StatTile label="Stock" valor={`${stock(det)} ${det.unidad}`} onDark />
-              <StatTile label="Valuación" valor={gs(stock(det) * det.costo)} onDark />
+              <StatTile label="Stock" valor={`${det.stock} ${det.unidad}`} onDark />
+              <StatTile label="Valuación" valor={gs(det.stock * det.costo)} onDark />
             </div>
           </div>
 
@@ -667,7 +678,8 @@ export function InventarioScreen() {
             </Card>
 
             <button
-              onClick={() =>
+              onClick={() => {
+                setAjError("");
                 set({
                   iSub: "ajuste",
                   ajProd: s.iSel,
@@ -675,8 +687,8 @@ export function InventarioScreen() {
                   ajCant: "",
                   ajTipo: "AJUSTE",
                   ajMotivo: "Inventario físico",
-                })
-              }
+                });
+              }}
               style={{
                 height: 50,
                 border: 0,
@@ -784,7 +796,7 @@ export function InventarioScreen() {
                   <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                     <span style={{ font: "600 13px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{p.nombre}</span>
                     <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
-                      {stock(p)} {p.unidad}
+                      {p.stock} {p.unidad}
                     </span>
                   </span>
                 </button>
@@ -850,7 +862,7 @@ export function InventarioScreen() {
                   {ajNuevoStock} {ajProd.unidad}
                 </span>
                 <span style={{ font: "400 11.5px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
-                  Antes: {stock(ajProd)} {ajProd.unidad} · mín. {ajProd.minimo}
+                  Antes: {ajProd.stock} {ajProd.unidad} · mín. {ajProd.minimo}
                 </span>
               </Card>
             )}
@@ -860,11 +872,20 @@ export function InventarioScreen() {
                 La salida deja el stock en negativo. Revisá si falta registrar una entrada.
               </Notice>
             )}
+
+            {/* Si el ajuste no se grabó, se dice. El stock que se ve sigue
+                siendo el de antes, que es la verdad. */}
+            {ajError && (
+              <Notice bg="#FBE9E7" ink="#8C2F2B" border="#E8B4AE">
+                {ajError}
+              </Notice>
+            )}
           </ScrollBody>
 
           <div style={{ padding: "11px 14px 13px", background: t.card, borderTop: `1px solid ${t.border}` }}>
             <button
-              onClick={guardarAjuste}
+              onClick={() => void guardarAjuste()}
+              disabled={ajGuardando}
               style={{
                 width: "100%",
                 height: 50,
@@ -872,11 +893,12 @@ export function InventarioScreen() {
                 borderRadius: 13,
                 color: "#fff",
                 font: "600 14.5px/1 var(--font-barlow),Barlow,sans-serif",
-                cursor: "pointer",
+                cursor: ajGuardando ? "default" : "pointer",
                 background: ajPuede ? AZUL : "#5C7A85",
+                opacity: ajGuardando ? 0.6 : 1,
               }}
             >
-              Registrar movimiento
+              {ajGuardando ? "Registrando…" : "Registrar movimiento"}
             </button>
           </div>
         </>
