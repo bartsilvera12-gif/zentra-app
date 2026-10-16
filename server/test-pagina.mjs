@@ -250,6 +250,19 @@ t("con la clave en la direccion, lo dice y la conserva al reenviar", async () =>
   if (!html.includes(`name="clave"`)) throw new Error("se pierde la clave al enviar");
 });
 
+t("la politica de privacidad se puede leer sin cuenta", async () => {
+  const r = await fetch(SRV + "/privacidad");
+  if (r.status !== 200) throw new Error("no contesta: " + r.status);
+  const html = await r.text();
+  // Lo que Play exige que diga, y lo que declaramos en el formulario de
+  // seguridad de datos: si la pagina y el formulario no coinciden, rechazan.
+  for (const debe of ["Eliminar mi cuenta", "Ubicación", "HTTPS", "No vendemos datos"]) {
+    if (!html.includes(debe)) throw new Error("no dice: " + debe);
+  }
+  // Una politica con noindex es una politica que Google no puede confirmar.
+  if (html.includes("noindex")) throw new Error("quedó con noindex");
+});
+
 let malas = 0;
 for (const [n, f] of casos) {
   try {

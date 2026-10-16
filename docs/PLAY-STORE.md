@@ -128,10 +128,15 @@ público.
 | Ícono | 512 × 512 PNG, sin transparencia |
 | Gráfico destacado | 1024 × 500 PNG o JPG |
 | Capturas de teléfono | Entre 2 y 8, mínimo 320 px de lado corto |
-| Política de privacidad | Una URL pública. No puede ser un PDF ni un documento de Drive |
+| Política de privacidad | `https://cobros.neura.com.py/privacidad` — la sirve el mismo server de cobros (`server/src/pagina.js`) |
 | Correo de contacto | Visible en la ficha |
 
-La política de privacidad es la única que bloquea de verdad: sin esa URL no se
-puede publicar, y tiene que decir qué datos se recolectan, para qué, con quién
-se comparten y cómo se piden de vuelta. Tiene que coincidir con lo declarado
-arriba; si dicen cosas distintas, es motivo de rechazo.
+La política de privacidad está escrita y servida en
+`https://cobros.neura.com.py/privacidad`, por el mismo server de cobros: es el
+único dominio nuestro que ya está publicado con certificado, y una política que
+se cae el día que la revisan es peor que no tenerla.
+
+**La página y la tabla de "Seguridad de los datos" de arriba se cambian
+juntas.** Si dicen cosas distintas, es motivo de rechazo. El correo de contacto
+de la página sale de `CONTACTO_EMAIL` en el `.env` del server; sin esa variable
+queda sólo el WhatsApp, que es un contacto real.

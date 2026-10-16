@@ -40,7 +40,7 @@ import {
   registrarPago,
   usuarioDelToken,
 } from "./db.js";
-import { paginaPagar, paginaResultado } from "./pagina.js";
+import { paginaPagar, paginaPrivacidad, paginaResultado } from "./pagina.js";
 import { esCobroDePrueba } from "./cobro-prueba.js";
 
 const PORT = Number(process.env.PORT || 8790);
@@ -350,6 +350,25 @@ function anotarFallo(ip) {
   if (!x || Date.now() - x.desde > VENTANA_MS) intentos.set(ip, { n: 1, desde: Date.now() });
   else x.n += 1;
 }
+
+/**
+ * La politica de privacidad.
+ *
+ * Google Play no publica una app sin una direccion web publica que la
+ * explique, y tiene que seguir en pie despues: si el dia que la revisan da
+ * 404, la baja es automatica. Por eso vive en el mismo server que ya esta
+ * publicado y andando, y no en un sitio aparte que habria que mantener.
+ *
+ * No pide sesion ni nada: es para que la lea cualquiera.
+ */
+app.get("/privacidad", (_req, res) => {
+  res.type("html").send(
+    paginaPrivacidad({
+      whatsapp: process.env.SOPORTE_WHATSAPP || "595973989068",
+      email: process.env.CONTACTO_EMAIL || "",
+    }),
+  );
+});
 
 app.get("/pagar", async (req, res) => {
   // La clave de prueba viaja en la direccion y vuelve a salir en el

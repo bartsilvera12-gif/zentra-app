@@ -33,13 +33,13 @@ export function gs(n) {
   return "Gs. " + Math.round(Number(n) || 0).toLocaleString("es-PY");
 }
 
-function marco(titulo, cuerpo, ancha = false) {
+function marco(titulo, cuerpo, ancha = false, indexable = false) {
   return `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
+${indexable ? "" : '<meta name="robots" content="noindex">'}
 <title>${esc(titulo)} · Zentra</title>
 <style>
   :root { color-scheme: light; }
@@ -374,5 +374,108 @@ export function paginaResultado(cobro) {
       ${pagado && vence ? `<div class="dato"><span>Pagado hasta</span><span>${esc(vence)}</span></div>` : ""}
       <div class="pie">Guardá el correo que te manda PagoPar: es tu comprobante.</div>
     </div>`,
+  );
+}
+
+/**
+ * La política de privacidad.
+ *
+ * Google Play no publica una app sin una dirección web pública que la
+ * explique. No sirve un PDF, ni un documento de Drive, ni un texto adentro de
+ * la app: tiene que ser una página que cualquiera pueda abrir sin cuenta.
+ *
+ * Vive en el server de cobros y no en un sitio aparte por una razón práctica:
+ * es el único dominio nuestro que ya está publicado, con certificado y
+ * andando. Una política que se cae el día que alguien mira es peor que no
+ * tenerla.
+ *
+ * Lo que dice tiene que coincidir con lo declarado en el formulario de
+ * "Seguridad de los datos" de Play (ver `docs/PLAY-STORE.md`). Si dicen cosas
+ * distintas, es motivo de rechazo, así que los dos se cambian juntos o no se
+ * cambia ninguno.
+ *
+ * El correo de contacto sale del entorno porque no es del código: si no está
+ * configurado, queda sólo el WhatsApp, que es un contacto real. Inventar una
+ * casilla que nadie lee sería peor que no poner ninguna.
+ */
+export function paginaPrivacidad({ whatsapp = "", email = "", actualizada = "" } = {}) {
+  const tel = String(whatsapp || "").replace(/\D/g, "");
+  const contacto = [
+    tel ? `<li>WhatsApp: <a href="https://wa.me/${esc(tel)}">+${esc(tel)}</a></li>` : "",
+    email ? `<li>Correo: <a href="mailto:${esc(email)}">${esc(email)}</a></li>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return marco(
+    "Política de privacidad",
+    `<h1>Política de privacidad de Zentra</h1>
+    <p class="sub">Última actualización: ${esc(actualizada || "16 de octubre de 2026")}</p>
+
+    <div class="tarjeta datos">
+      <h2>Quiénes somos</h2>
+      <p>Zentra es una aplicación para manejar las ventas, el inventario y los
+      clientes de un comercio, desarrollada por Neura, en Paraguay. Esta
+      política explica qué datos usa la app, para qué, y cómo se piden de
+      vuelta.</p>
+
+      <h2>Qué datos tratamos</h2>
+      <ul>
+        <li><strong>De tu cuenta:</strong> nombre, correo electrónico y la
+        empresa a la que pertenecés. Hacen falta para que puedas entrar y para
+        saber qué datos te corresponden.</li>
+        <li><strong>Del negocio:</strong> lo que cargás en la app — productos,
+        ventas, compras, clientes y proveedores, con sus datos de contacto y
+        su RUC o cédula. Son tuyos: nosotros los guardamos para que puedas
+        usarlos desde cualquier dispositivo.</li>
+        <li><strong>Fotos, archivos y audios:</strong> sólo los que elegís
+        enviar por el chat. La app no recorre tu galería ni tus archivos.</li>
+        <li><strong>Ubicación:</strong> sólo en el momento en que tocás
+        "Ubicación" para mandarla por el chat. No se registra ubicación en
+        segundo plano ni mientras la app está cerrada.</li>
+        <li><strong>Mensajes:</strong> las conversaciones de WhatsApp de tu
+        negocio, si usás esa función.</li>
+        <li><strong>Identificador del dispositivo:</strong> un código que
+        entrega Google para poder mandarte notificaciones. Si no activás las
+        notificaciones, no se guarda.</li>
+      </ul>
+
+      <h2>Para qué los usamos</h2>
+      <p>Únicamente para que la aplicación funcione: mostrarte tus datos,
+      registrar tus operaciones, mandarte los avisos que pediste y darte
+      soporte cuando lo pedís.</p>
+
+      <h2>Con quién se comparten</h2>
+      <p><strong>Con nadie.</strong> No vendemos datos, no los cedemos a
+      terceros y no los usamos para publicidad. Los proveedores de
+      infraestructura que almacenan la información —la base de datos y el
+      servicio de notificaciones— la procesan por cuenta nuestra y no pueden
+      usarla para otra cosa.</p>
+
+      <h2>Cuánto tiempo los guardamos</h2>
+      <p>Mientras tengas la cuenta abierta. Si la eliminás, se borran.</p>
+
+      <h2>Cómo eliminar tus datos</h2>
+      <p>Desde la app: <strong>Configuración → Eliminar mi cuenta</strong>. Se
+      borra la cuenta y los datos asociados. También podés pedirlo por
+      cualquiera de los contactos de abajo.</p>
+
+      <h2>Seguridad</h2>
+      <p>Todo viaja cifrado por HTTPS. El acceso a los datos de una empresa
+      está restringido a los usuarios de esa empresa.</p>
+
+      <h2>Menores</h2>
+      <p>Zentra es una herramienta de trabajo y no está dirigida a menores de
+      18 años.</p>
+
+      <h2>Cambios</h2>
+      <p>Si esta política cambia, se actualiza esta misma página con una fecha
+      nueva arriba.</p>
+
+      <h2>Contacto</h2>
+      <ul>${contacto || "<li>Escribinos desde la app, en Configuración → Escribir a soporte.</li>"}</ul>
+    </div>`,
+    false,
+    true,
   );
 }
