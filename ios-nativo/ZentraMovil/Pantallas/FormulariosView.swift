@@ -510,7 +510,7 @@ struct NuevoProveedorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") { Task { await guardar() } }.disabled(!puede)
+                    Button("Registrar") { Task { await guardar() } }.disabled(!puede)
                 }
             }
             .task { rubros = await RepoERP.categoriasProveedor() }
@@ -576,6 +576,9 @@ struct NuevaCompraView: View {
     @State private var cuentaContableId = ""
     @State private var cuentaPagoId = ""
     @State private var nuevoProv = false
+    @State private var lineas: [CompraLinea] = []
+    @State private var moneda = "PYG"
+    @State private var tipoCambio = ""
     @State private var guardando = false
     @State private var error: String?
     @State private var aviso: String?
@@ -584,15 +587,42 @@ struct NuevaCompraView: View {
 
     private var n: Double { Double(cantidad.replacingOccurrences(of: ",", with: ".")) ?? 0 }
     private var cu: Double { Double(costo) ?? 0 }
-    /// En compras el IVA va POR ENCIMA del costo: el proveedor cotiza neto.
-    private var neto: Int { Int((cu * n).rounded()) }
-    private var impuesto: Int { Int((Double(neto) * RepoERP.tasa(iva)).rounded()) }
     private var prov: Proveedor? { provs.first { $0.id == provId } }
     private var prod: InvProducto? { prods.first { $0.id == prodId } }
+
+    /// En compras el IVA va POR ENCIMA del costo: el proveedor cotiza neto.
+    /// Es al revés que en ventas, y confundirlo cambia el total.
+    private var neto: Int {
+        lineas.reduce(0) { $0 + Int((Double($1.costo) * $1.cantidad).rounded()) }
+    }
+    private var impuesto: Int {
+        lineas.reduce(0) { $0 + Int((Double($1.costo) * $1.cantidad * RepoERP.tasa($1.iva)).rounded()) }
+    }
+    private var unidades: Double { lineas.reduce(0) { $0 + $1.cantidad } }
+
+    /// A cuánto está el dólar. Sólo cuenta si la compra es en dólares.
+    private var cambio: Double { Double(tipoCambio.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+
+    /// Si la línea que se está armando se puede agregar.
+    private var puedeAgregar: Bool { prod != nil && n > 0 && cu > 0 }
+
     private var puede: Bool {
-        prov != nil && prod != nil && n > 0 && cu > 0
+        prov != nil && !lineas.isEmpty
             && !cuentaContableId.isEmpty && (credito || !cuentaPagoId.isEmpty)
+            && (moneda == "PYG" || cambio > 0)
             && !guardando
+    }
+
+    /// Suma la línea que se está armando y limpia el renglón.
+    ///
+    /// No se junta con otra del mismo producto: el mismo producto puede venir
+    /// dos veces en el mismo remito con costos distintos por lote, y sumarlas
+    /// promediaría un costo que no es el de ninguna.
+    private func agregarLinea() {
+        guard let pd = prod, n > 0, cu > 0 else { return }
+        lineas.append(CompraLinea(prodId: pd.id, nombre: pd.nombre, unidad: pd.unidad,
+                                  cantidad: n, costo: Int(cu.rounded()), iva: iva))
+        prodId = ""; cantidad = ""; costo = ""
     }
 
     var body: some View {
@@ -608,6 +638,10 @@ struct NuevaCompraView: View {
                             .pickerStyle(.menu).tint(C.azulMedio)
                             // Cargar un proveedor sin salir de la compra: si hay
                             // que volver atrás, se pierde lo ya cargado.
+                            if provs.isEmpty {
+                                Text("Sin proveedores")
+                                    .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink3)
+                            }
                             Button("Cargar un proveedor nuevo") {
                                 if let m = Planes.motivoBloqueo(.comprasNuevoProveedor,
                                                                 estado.contextoPlan()) {
@@ -617,7 +651,38 @@ struct NuevaCompraView: View {
                             .font(Tipo.barlow(.semibold, 13))
                             .foregroundStyle(C.azulMedio)
                         }
-                        Bloque(titulo: "PRODUCTO") {
+                        if !lineas.isEmpty {
+                            Bloque(titulo: lineas.count == 1
+                                   ? "1 PRODUCTO EN LA COMPRA"
+                                   : "\(lineas.count) PRODUCTOS EN LA COMPRA") {
+                                ForEach(lineas) { l in
+                                    HStack(spacing: 10) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(l.nombre)
+                                                .font(Tipo.barlow(.semibold, 13.5))
+                                                .foregroundStyle(t.ink).lineLimit(1)
+                                            Text("\(Formato.miles(l.cantidad)) \(l.unidad) × \(Panel.gs(l.costo)) · IVA \(l.iva.rawValue)")
+                                                .font(Tipo.barlow(.regular, 11))
+                                                .foregroundStyle(t.ink2)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Text(Panel.gs(l.subtotal))
+                                            .font(Tipo.barlow(.semibold, 13.5))
+                                            .foregroundStyle(t.ink)
+                                        Button {
+                                            lineas.removeAll { $0.id == l.id }
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(Tint.errorInk)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+
+                        Bloque(titulo: lineas.isEmpty ? "AGREGAR PRODUCTO" : "AÑADIR OTRO PRODUCTO") {
                             Picker("Producto", selection: $prodId) {
                                 Text("Elegir…").tag("")
                                 ForEach(prods) { Text($0.nombre).tag($0.id) }
@@ -635,6 +700,46 @@ struct NuevaCompraView: View {
                                 Text("Exenta").tag(Iva.exenta)
                             }
                             .pickerStyle(.segmented)
+
+                            if puedeAgregar {
+                                Dato(k: "Subtotal de la línea",
+                                     v: Panel.gs(Int((cu * n * (1 + RepoERP.tasa(iva))).rounded())))
+                            }
+                            Button {
+                                withAnimation(.easeOut(duration: 0.18)) { agregarLinea() }
+                            } label: {
+                                Text(lineas.isEmpty ? "Agregar producto" : "Añadir otro producto")
+                                    .font(Tipo.barlow(.semibold, 13.5))
+                                    .foregroundStyle(puedeAgregar ? C.azulMedio : t.ink3)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!puedeAgregar)
+                            if !puedeAgregar, prod != nil {
+                                Text("Completá cantidad y costo")
+                                    .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+                            }
+                        }
+
+                        // Comprar en dólares es de plan Max: el ERP lleva los
+                        // libros en guaraníes y necesita a cuánto se pactó.
+                        Bloque(titulo: "MONEDA") {
+                            Picker("", selection: $moneda) {
+                                Text("Guaraníes").tag("PYG")
+                                Text("Dólares").tag("USD")
+                            }
+                            .pickerStyle(.segmented)
+                            .onChange(of: moneda) { _, nuevo in
+                                if nuevo == "USD",
+                                   let m = Planes.motivoBloqueo(.comprasDolares,
+                                                                estado.contextoPlan()) {
+                                    moneda = "PYG"
+                                    withAnimation(.spring(duration: 0.3)) { aviso = m }
+                                }
+                            }
+                            if moneda == "USD" {
+                                campo("Tipo de cambio (₲ por USD)", $tipoCambio,
+                                      teclado: .decimalPad)
+                            }
                         }
                         Bloque(titulo: "COMPROBANTE") {
                             campo("Timbrado", $timbrado, teclado: .numberPad)
@@ -656,28 +761,41 @@ struct NuevaCompraView: View {
                         // Las dos cuentas no son decorativas: sin ellas el ERP
                         // no puede asentar el movimiento y rechaza la compra.
                         Bloque(titulo: "CONTABILIDAD") {
-                            Text("Elegí en qué cuenta contable se asienta la compra.")
-                                .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink3)
-                            Picker("Cuenta contable", selection: $cuentaContableId) {
-                                Text("Elegir…").tag("")
+                            Picker("Cuenta contable de la compra", selection: $cuentaContableId) {
+                                Text("Elegí una cuenta…").tag("")
                                 ForEach(cuentas) { Text($0.nombre).tag($0.id) }
                             }
                             .pickerStyle(.menu).tint(C.azulMedio)
-                            if !credito {
-                                Picker("Cuenta de pago", selection: $cuentaPagoId) {
-                                    Text("Elegir…").tag("")
-                                    ForEach(cuentas) { Text($0.nombre).tag($0.id) }
-                                }
-                                .pickerStyle(.menu).tint(C.azulMedio)
-                                Text("Elegí de qué cuenta sale el pago.")
-                                    .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+
+                            // A crédito la cuenta de pago es opcional: todavía
+                            // no salió plata de ningún lado, y el ERP tiene su
+                            // cuenta de proveedores configurada.
+                            Picker(credito ? "Cuenta a pagar (opcional)" : "Cuenta de pago",
+                                   selection: $cuentaPagoId) {
+                                Text(credito ? "La que tenga configurada el ERP"
+                                     : "Elegí una cuenta…").tag("")
+                                ForEach(cuentas) { Text($0.nombre).tag($0.id) }
+                            }
+                            .pickerStyle(.menu).tint(C.azulMedio)
+
+                            Text(credito
+                                 ? "Si la dejás vacía, el ERP usa su cuenta de proveedores."
+                                 : "De dónde sale la plata: caja, banco.")
+                                .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+
+                            if cuentas.isEmpty {
+                                Text("No se pudieron cargar las cuentas contables de tu ERP. Probá volver a entrar.")
+                                    .font(Tipo.barlow(.regular, 11.5))
+                                    .foregroundStyle(Tint.avisoInk)
                             }
                         }
                         if let error { Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk) }
                         if neto > 0 {
                             Bloque(titulo: "TOTAL") {
+                                Dato(k: "Unidades",
+                                     v: "\(Formato.miles(unidades)) un. · \(lineas.count) producto\(lineas.count == 1 ? "" : "s")")
                                 Dato(k: "Neto", v: Panel.gs(neto))
-                                Dato(k: "IVA \(iva.rawValue) sobre el costo", v: Panel.gs(impuesto))
+                                Dato(k: "IVA sobre el costo", v: Panel.gs(impuesto))
                                 HStack {
                                     Text("TOTAL").font(Tipo.barlow(.semibold, 12)).tracking(1.2)
                                         .foregroundStyle(t.ink2)
@@ -692,7 +810,7 @@ struct NuevaCompraView: View {
                 .padding(.vertical, 12)
             }
             .background(t.bg)
-            .navigationTitle("Nueva compra")
+            .navigationTitle("Registrar compra")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
@@ -719,15 +837,32 @@ struct NuevaCompraView: View {
     }
 
     private func guardar() async {
-        guard let pv = prov, let pd = prod else { return }
+        guard let pv = prov else { return }
+        // La línea a medio cargar también entra: si alguien completó el
+        // renglón y le dio a Guardar sin tocar "Añadir", perder ese producto
+        // en silencio sería peor que sumarlo.
+        if puedeAgregar { agregarLinea() }
+        guard !lineas.isEmpty else {
+            error = "Agregá al menos un producto a la compra."
+            return
+        }
+        guard !timbrado.trimmingCharacters(in: .whitespaces).isEmpty else {
+            error = "Falta el timbrado de la factura: tu ERP no acepta la compra sin él."
+            return
+        }
+        guard !credito || (plazo > 0 && cuotas >= 1) else {
+            error = "Para crédito hace falta el plazo y al menos una cuota."
+            return
+        }
         guardando = true; error = nil
         do {
             let c = try await RepoERP.crearCompra(
                 provId: pv.id, provNombre: pv.nombre,
-                prod: pd, cantidad: n, costo: Int(cu.rounded()), iva: iva,
+                lineas: lineas,
                 credito: credito, plazoDias: plazo, cuotas: cuotas,
                 timbrado: timbrado, comprobante: comprobante,
-                cuentaContableId: cuentaContableId, cuentaPagoId: cuentaPagoId
+                cuentaContableId: cuentaContableId, cuentaPagoId: cuentaPagoId,
+                moneda: moneda, tipoCambio: cambio
             )
             alGuardar(c)
             cerrar()
