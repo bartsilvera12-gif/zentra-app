@@ -1,11 +1,11 @@
 "use client";
+import { useState } from "react";
 
 import { MARCA } from "@/lib/theme";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { gs, norm } from "@/lib/format";
-import type { Cliente } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
@@ -31,11 +31,16 @@ const ACCENT = MARCA.header;
 
 export function ClientesScreen() {
   const { s, t, set } = useApp();
+  /** Mientras el alta viaja, y el motivo si no llegó. */
+  const [guardando, setGuardando] = useState(false);
+  const [errorAlta, setErrorAlta] = useState("");
+  /** Lo mismo para la consulta del RUC, que es otro viaje y otro error. */
+  const [consultando, setConsultando] = useState(false);
+  const [errorSet, setErrorSet] = useState("");
 
-  // Los clientes salen del ERP de la empresa. Antes salían de un archivo de
-  // ejemplo: la pantalla se veía llena de gente que no existe.
-  const { datos, cargando, error, recargar } = useRemoto(() => repo.clientes.list(), []);
-  const todos = datos.concat(s.cExtra);
+  // Los clientes salen del backend de la empresa. Antes salían de un archivo
+  // de ejemplo: la pantalla se veía llena de gente que no existe.
+  const { datos: todos, cargando, error, recargar } = useRemoto(() => repo.clientes.list(), []);
   const activos = todos.filter((c) => c.estado === "Activo").length;
   const cq = norm(s.cQuery.trim());
 
@@ -60,7 +65,9 @@ export function ClientesScreen() {
     };
   });
 
-  const abrirNuevo = () =>
+  const abrirNuevo = () => {
+    setErrorAlta("");
+    setErrorSet("");
     set({
       cSub: "nuevo",
       fOrigen: "modulo",
@@ -78,58 +85,111 @@ export function ClientesScreen() {
       fLimite: "",
       fPlazoCli: "30",
     });
+  };
 
   const cancelarNuevo = () =>
     s.fOrigen === "venta" ? set({ screen: "venta", cSub: "lista" }) : set({ cSub: "lista" });
 
-  const consultarSet = () => {
-    const d = s.fDoc.trim();
-    if (!d) return;
-    const digits = d.replace(/[^0-9]/g, "");
-    set({
-      fSet: `COMERCIAL ${digits.slice(0, 8)} S.A. · contribuyente activo`,
-      fNombre: s.fNombre || `Comercial ${digits.slice(0, 4)} S.A.`,
-    });
+  /**
+   * Consulta el RUC en la SET, de verdad.
+   *
+   * Antes armaba la respuesta acá: devolvía `COMERCIAL <los dígitos que
+   * escribiste> S.A. · contribuyente activo` y lo mostraba bajo el título
+   * "Datos encontrados en la SET". Nunca se consultó nada. Y la razón social es
+   * justamente lo que después sale impreso en la factura, así que no era un
+   * dato de relleno: era un dato fiscal inventado con cara de oficial.
+   *
+   * Ahora pregunta al puerto, que es el único que sabe si hay servicio. Donde
+   * no lo hay, lo dice y la razón social se escribe a mano —que es lo que de
+   * hecho pasaba, sólo que sin saberlo.
+   */
+  const consultarSet = async () => {
+    const doc = s.fDoc.trim();
+    if (!doc || consultando) return;
+    setConsultando(true);
+    setErrorSet("");
+    set({ fSet: null });
+    try {
+      const r = await repo.clientes.consultarSet(doc);
+      setConsultando(false);
+      if (!r) {
+        setErrorSet("Ese documento no figura en la SET. Revisalo o escribí el nombre a mano.");
+        return;
+      }
+      set({
+        fSet: `${r.razonSocial} · ${r.activo ? "contribuyente activo" : "contribuyente no activo"}`,
+        // El nombre que ya estaba escrito no se pisa: puede ser el nombre de
+        // fantasía con el que lo conocen, y es más útil que la razón social.
+        fNombre: s.fNombre || r.razonSocial,
+        fError: false,
+      });
+    } catch (e) {
+      setConsultando(false);
+      setErrorSet(e instanceof Error ? e.message : "No se pudo consultar la SET.");
+    }
   };
 
-  const guardar = () => {
+  /**
+   * Da de alta el cliente.
+   *
+   * Va al backend, siempre. Antes se armaba la ficha acá y se guardaba en
+   * `useState`: el cliente aparecía en la lista, se le podía facturar, y al
+   * cerrar la app no existía. `clientes.create` estaba en el puerto, con las
+   * dos implementaciones escritas, y no lo llamaba nadie.
+   *
+   * Abierto desde una venta, la venta sigue con el id que devolvió el backend.
+   * Con un id armado en el teléfono, la venta quedaba contra un cliente que no
+   * existe para nadie más.
+   */
+  const guardar = async () => {
     const nombre = s.fNombre.trim();
     if (nombre.length < 2) {
       set({ fError: true });
       return;
     }
-    const doc = s.fDoc.trim();
-    const nuevo: Cliente = {
-      id: "n" + (s.cExtra.length + 1),
-      nombre,
-      // More than 9 characters reads as a RUC; shorter is a cédula.
-      doc: doc ? (doc.length > 9 ? "RUC " + doc : "CI " + doc) : "Sin documento",
-      contacto: s.fContacto.trim() || nombre,
-      tel: s.fTel.trim() || "—",
-      email: s.fEmail.trim() || "—",
-      estado: "Activo",
-      origen: s.fOrigen === "venta" ? "Venta" : "Manual",
-      saldo: 0,
-      compras: 0,
-      desde: "sep 2026",
-      zona: s.fZona.trim() || "Sin zona",
-      direccion: s.fDireccion.trim() || "—",
-      lista: s.fLista,
-      credito: s.fCredito ? `Hasta ₲ ${s.fLimite || "0"} · ${s.fPlazoCli || 0} días` : "No habilitado",
-    };
-    const extra = s.cExtra.concat([nuevo]);
-    if (s.fOrigen === "venta") {
-      set({
-        cExtra: extra,
-        screen: "venta",
-        vPaso: "cliente",
-        vCliente: nuevo.id,
-        vSinNombre: false,
-        vQCliente: "",
-        cSub: "lista",
+    if (guardando) return;
+    setGuardando(true);
+    setErrorAlta("");
+    try {
+      const creado = await repo.clientes.create({
+        nombre,
+        doc: s.fDoc.trim(),
+        contacto: s.fContacto.trim() || nombre,
+        tel: s.fTel.trim(),
+        email: s.fEmail.trim(),
+        zona: s.fZona.trim(),
+        direccion: s.fDireccion.trim(),
+        lista: s.fLista,
+        credito: s.fCredito
+          ? {
+              // El campo acepta los puntos de miles que la gente escribe
+              // ("3.000.000"), y `Number("3.000.000")` es NaN: el límite se
+              // habría guardado en cero, que es un crédito que no existe.
+              limite: Number(s.fLimite.replace(/\./g, "")) || 0,
+              plazoDias: Number(s.fPlazoCli) || 0,
+            }
+          : null,
+        origen: s.fOrigen === "venta" ? "Venta" : "Manual",
       });
-    } else {
-      set({ cExtra: extra, cSub: "detalle", cSel: nuevo.id });
+      setGuardando(false);
+      if (s.fOrigen === "venta") {
+        set({
+          screen: "venta",
+          vPaso: "cliente",
+          vCliente: creado.id,
+          vSinNombre: false,
+          vQCliente: "",
+          cSub: "lista",
+        });
+        return;
+      }
+      set({ cSub: "detalle", cSel: creado.id });
+      recargar();
+    } catch (e) {
+      // El formulario queda como está, con lo escrito, para corregir y
+      // reintentar. Y la lista no gana una fila que no se guardó.
+      setGuardando(false);
+      setErrorAlta(e instanceof Error ? e.message : "No se pudo guardar el cliente.");
     }
   };
 
@@ -375,7 +435,10 @@ export function ClientesScreen() {
                 <input
                   type="text"
                   value={s.fDoc}
-                  onChange={(e) => set({ fDoc: e.target.value, fSet: null })}
+                  onChange={(e) => {
+                    set({ fDoc: e.target.value, fSet: null });
+                    setErrorSet("");
+                  }}
                   placeholder="80012345-6"
                   style={{
                     height: 44,
@@ -389,7 +452,8 @@ export function ClientesScreen() {
                   }}
                 />
                 <button
-                  onClick={consultarSet}
+                  onClick={() => void consultarSet()}
+                  disabled={consultando}
                   style={{
                     alignSelf: "flex-start",
                     borderRadius: 10,
@@ -401,7 +465,7 @@ export function ClientesScreen() {
                     color: ACCENT,
                   }}
                 >
-                  Consultar en la SET
+                  {consultando ? "Consultando…" : "Consultar en la SET"}
                 </button>
               </label>
 
@@ -422,6 +486,14 @@ export function ClientesScreen() {
                   </span>
                   <span style={{ font: "400 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#0C5F58" }}>{s.fSet}</span>
                 </div>
+              )}
+
+              {/* Lo que dijo la consulta cuando no trajo nada. Antes no podía
+                  decir nada: siempre "encontraba" algo. */}
+              {errorSet && (
+                <Notice bg="#FFF3DC" ink="#6B4A00">
+                  {errorSet}
+                </Notice>
               )}
 
               <FormField
@@ -531,20 +603,35 @@ export function ClientesScreen() {
               </Notice>
             )}
 
+            {/* El error del backend va aparte del de validación: uno lo arregla
+                la persona, el otro no, y mezclarlos hace buscar el campo
+                equivocado. */}
+            {errorAlta && (
+              <Notice bg="#FBE9E7" ink="#8C2F2B" border="#E8B4AE">
+                {errorAlta}
+              </Notice>
+            )}
+
             <button
-              onClick={guardar}
+              onClick={() => void guardar()}
+              disabled={guardando}
               style={{
                 height: 50,
                 border: 0,
                 borderRadius: 13,
                 color: "#fff",
                 font: "600 14.5px/1 var(--font-barlow),Barlow,sans-serif",
-                cursor: "pointer",
+                cursor: guardando ? "default" : "pointer",
                 background: s.fNombre.trim().length >= 2 ? ACCENT : "#5C7A85",
+                opacity: guardando ? 0.6 : 1,
                 flex: "0 0 auto",
               }}
             >
-              {s.fOrigen === "venta" ? "Guardar y continuar" : "Guardar cliente"}
+              {guardando
+                ? "Guardando…"
+                : s.fOrigen === "venta"
+                  ? "Guardar y continuar"
+                  : "Guardar cliente"}
             </button>
             <button
               onClick={cancelarNuevo}

@@ -1,7 +1,8 @@
 "use client";
+import { useState } from "react";
 
 import { MARCA } from "@/lib/theme";
-import { repo, usaApiDelErp } from "@/lib/repo";
+import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { totalCompra } from "@/lib/calc";
@@ -9,7 +10,7 @@ import { gs, norm, plural } from "@/lib/format";
 import type { Proveedor } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { motivoBloqueo } from "@/lib/planes";
-import { nombreValido, nuevoProveedor } from "@/lib/proveedor";
+import { nombreValido } from "@/lib/proveedor";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -35,17 +36,18 @@ const ORO = MARCA.header;
 
 export function ProveedoresScreen() {
   const { s, t, set, abrirChat, plan } = useApp();
+  /** La consulta del RUC: mientras viaja, y el motivo si no trajo nada. */
+  const [consultando, setConsultando] = useState(false);
+  const [errorSet, setErrorSet] = useState("");
 
-  // Con ERP el alta va al ERP; sin ERP queda en pantalla, que es lo único que
-  // se puede hacer con datos de ejemplo.
-  const conErp = usaApiDelErp();
-  const { datos, cargando, error, recargar } = useRemoto(() => repo.proveedores.list(), []);
+  const { datos: todos, cargando, error, recargar } = useRemoto(
+    () => repo.proveedores.list(),
+    [],
+  );
   // Las compras dan la deuda de cada proveedor; si fallan, se muestra el
   // proveedor sin deuda antes que no mostrarlo.
-  const { datos: comprasErp } = useRemoto(() => repo.compras.list(), []);
-  const todos = s.vwExtra.concat(datos);
+  const { datos: compras } = useRemoto(() => repo.compras.list(), []);
   const activos = todos.filter((p) => p.estado === "Activo").length;
-  const compras = s.kExtra.concat(comprasErp);
   const pendientes = compras.filter((c) => c.estado === "Pendiente");
 
   const deudaDe = (id: string) =>
@@ -89,16 +91,44 @@ export function ProveedoresScreen() {
       pfEntrega: "",
       pfSet: null,
       pfError: false,
+      pfGuardando: false,
+      pfErrorTexto: "",
     });
 
-  const consultarSet = () => {
-    const d = s.pfDoc.trim();
-    if (!d) return;
-    const base = d.replace(/[^0-9]/g, "").slice(0, 8);
-    set({
-      pfSet: `COMERCIAL ${base} S.A. · contribuyente activo`,
-      pfNombre: s.pfNombre || `Comercial ${base.slice(0, 4)} S.A.`,
-    });
+  /**
+   * Consulta el RUC en la SET, de verdad.
+   *
+   * Antes la respuesta se armaba acá con los dígitos tipeados: `COMERCIAL
+   * 80025431 S.A. · contribuyente activo`, abajo del título "Datos encontrados
+   * en la SET". No se consultaba nada, y la razón social es lo que termina
+   * impreso en la factura de compra. Un dato fiscal inventado con cara de
+   * oficial es peor que no tener el botón.
+   *
+   * Ahora pregunta al puerto, que es el único que sabe si hay servicio. Donde
+   * no lo hay, lo dice, y la razón social se escribe a mano.
+   */
+  const consultarSet = async () => {
+    const doc = s.pfDoc.trim();
+    if (!doc || consultando) return;
+    setConsultando(true);
+    setErrorSet("");
+    set({ pfSet: null });
+    try {
+      const r = await repo.proveedores.consultarSet(doc);
+      setConsultando(false);
+      if (!r) {
+        setErrorSet("Ese RUC no figura en la SET. Revisalo o escribí la razón social a mano.");
+        return;
+      }
+      set({
+        pfSet: `${r.razonSocial} · ${r.activo ? "contribuyente activo" : "contribuyente no activo"}`,
+        pfNombre: s.pfNombre || r.razonSocial,
+        pfError: false,
+      });
+    } catch (e) {
+      setConsultando(false);
+      setErrorSet(e instanceof Error ? e.message : "No se pudo consultar la SET.");
+    }
   };
 
   const editandoProv = s.vwSub === "editar";
@@ -129,8 +159,10 @@ export function ProveedoresScreen() {
   };
 
   /**
-   * Guarda la corrección. Los que vienen del backend se corrigen contra el
-   * backend; los cargados en esta sesión viven sólo en pantalla.
+   * Guarda la corrección, contra el backend.
+   *
+   * Tenía una rama para los cargados en esta sesión, que vivían sólo en
+   * pantalla. Ya no hay ninguno así: lo que está en la lista está guardado.
    */
   const guardarEdicionProv = async () => {
     const nombre = s.pfNombre.trim();
@@ -150,26 +182,6 @@ export function ProveedoresScreen() {
       entregaDias: Number(s.pfEntrega) || 1,
     };
 
-    const local = s.vwExtra.findIndex((p) => p.id === s.vwSel);
-    if (local >= 0) {
-      const copia = s.vwExtra.slice();
-      const p = copia[local];
-      copia[local] = {
-        ...p,
-        nombre,
-        doc: cambios.doc ? "RUC " + cambios.doc : "Sin RUC",
-        condicion: s.pfCredito ? `Crédito ${s.pfPlazo} días` : "Contado",
-        rubro: cambios.rubro || "Sin rubro",
-        ciudad: cambios.ciudad || "Sin ciudad",
-        contacto: cambios.contacto,
-        tel: cambios.tel || "—",
-        email: cambios.email || "—",
-        entrega: cambios.entregaDias,
-      };
-      set({ vwExtra: copia, vwSub: "detalle" });
-      return;
-    }
-
     set({ pfGuardando: true, pfErrorTexto: "" });
     try {
       await repo.proveedores.update(s.vwSel, cambios);
@@ -186,38 +198,23 @@ export function ProveedoresScreen() {
   /**
    * Da de alta el proveedor.
    *
-   * Con ERP conectado va al ERP. Antes no: el proveedor se guardaba sólo en la
-   * memoria del teléfono, se veía en la lista como si estuviera cargado, y al
-   * cerrar la app no quedaba nada. El que lo cargó se enteraba al otro día.
+   * Va al backend, siempre. Antes preguntaba si había ERP conectado y, si no,
+   * armaba la ficha con `nuevoProveedor` y la dejaba en la memoria del
+   * teléfono: se veía en la lista como si estuviera cargada, y al cerrar la app
+   * no quedaba nada. Como el APK se compila contra Supabase, ésa era la rama
+   * que corría para el cliente típico, y el que lo cargó se enteraba al otro
+   * día.
    *
-   * Si el ERP lo rechaza —un RUC repetido, por ejemplo— el formulario queda
-   * como está, con el mensaje del ERP, para corregir y reintentar.
+   * Si el backend lo rechaza —un RUC repetido, por ejemplo— el formulario queda
+   * como está, con el motivo, para corregir y reintentar. Y la lista no gana un
+   * proveedor que no se guardó.
    */
   const guardar = async () => {
     if (!nombreValido(s.pfNombre)) {
       set({ pfError: true });
       return;
     }
-
-    if (!conErp) {
-      const nuevo = nuevoProveedor(
-        {
-          nombre: s.pfNombre,
-          doc: s.pfDoc,
-          rubro: s.pfRubro,
-          ciudad: s.pfCiudad,
-          contacto: s.pfContacto,
-          tel: s.pfTel,
-          email: s.pfEmail,
-          credito: s.pfCredito,
-          plazo: s.pfPlazo,
-          entrega: s.pfEntrega,
-        },
-        s.vwExtra,
-      );
-      set({ vwExtra: [nuevo].concat(s.vwExtra), vwSub: "detalle", vwSel: nuevo.id });
-      return;
-    }
+    if (s.pfGuardando) return;
 
     set({ pfGuardando: true, pfErrorTexto: "" });
     try {
@@ -232,8 +229,8 @@ export function ProveedoresScreen() {
         credito: s.pfCredito ? { plazoDias: s.pfPlazo } : null,
         entregaDias: Number(s.pfEntrega) || 1,
       });
-      // Se abre la ficha del que devolvió el ERP, no la de un id inventado
-      // acá: el id del ERP es el que sirve para todo lo que venga después.
+      // Se abre la ficha del que devolvió el backend, no la de un id armado
+      // acá: ese id es el que sirve para todo lo que venga después.
       set({ vwSub: "detalle", vwSel: creado.id, pfGuardando: false });
       recargar();
     } catch (e) {
@@ -562,7 +559,10 @@ export function ProveedoresScreen() {
                 <input
                   type="text"
                   value={s.pfDoc}
-                  onChange={(e) => set({ pfDoc: e.target.value, pfSet: null })}
+                  onChange={(e) => {
+                    set({ pfDoc: e.target.value, pfSet: null });
+                    setErrorSet("");
+                  }}
                   placeholder="80025431-7"
                   style={{
                     height: 44,
@@ -576,7 +576,8 @@ export function ProveedoresScreen() {
                   }}
                 />
                 <button
-                  onClick={consultarSet}
+                  onClick={() => void consultarSet()}
+                  disabled={consultando}
                   style={{
                     alignSelf: "flex-start",
                     borderRadius: 10,
@@ -588,7 +589,7 @@ export function ProveedoresScreen() {
                     color: HEADER,
                   }}
                 >
-                  Consultar en la SET
+                  {consultando ? "Consultando…" : "Consultar en la SET"}
                 </button>
               </label>
 
@@ -609,6 +610,14 @@ export function ProveedoresScreen() {
                   </span>
                   <span style={{ font: "400 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#0C5F58" }}>{s.pfSet}</span>
                 </div>
+              )}
+
+              {/* Lo que dijo la consulta cuando no trajo nada. Antes no podía
+                  decir nada: siempre "encontraba" algo. */}
+              {errorSet && (
+                <Notice bg="#FFF3DC" ink="#6B4A00">
+                  {errorSet}
+                </Notice>
               )}
 
               <FormField
@@ -774,8 +783,9 @@ export function ProveedoresScreen() {
                 borderRadius: 13,
                 color: "#fff",
                 font: "600 14.5px/1 var(--font-barlow),Barlow,sans-serif",
-                cursor: "pointer",
+                cursor: s.pfGuardando ? "default" : "pointer",
                 background: s.pfNombre.trim().length >= 2 ? HEADER : "#5C7A85",
+                opacity: s.pfGuardando ? 0.6 : 1,
               }}
             >
               {s.pfGuardando ? "Guardando…" : editandoProv ? "Guardar cambios" : "Guardar proveedor"}

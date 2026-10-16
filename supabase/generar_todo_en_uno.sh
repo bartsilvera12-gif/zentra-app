@@ -11,7 +11,11 @@ out=todo_en_uno.sql
   echo "-- Generado automáticamente: no editar a mano, editar los archivos sueltos."
   echo "-- ============================================================================="
   echo
-  for f in 0*.sql; do
+  # `0*.sql` dejaba afuera todo lo que pasara del 09. Ya había pasado: el
+  # pegado único no traía `10_planes_lectura_publica.sql`, así que quien
+  # instalaba con `todo_en_uno.sql` se quedaba sin la lista de precios y la
+  # hoja de planes le mentía por omisión.
+  for f in [0-9]*.sql; do
     [ "$f" = "$out" ] && continue
     echo
     echo "-- >>>>>>>>>>>>>>>>>>>>>>>> $f <<<<<<<<<<<<<<<<<<<<<<<<"

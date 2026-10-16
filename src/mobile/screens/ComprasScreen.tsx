@@ -6,12 +6,12 @@ import { repo, usaApiDelErp } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
-import { lineasDeCompra, stockDe, totalCompra } from "@/lib/calc";
+import { lineasDeCompra, totalCompra } from "@/lib/calc";
 import { gs, norm } from "@/lib/format";
-import type { Compra, CompraLinea, CuentaContable, Iva, ThemeTokens } from "@/lib/types";
+import type { CompraLinea, CuentaContable, Iva, ThemeTokens } from "@/lib/types";
 import { useApp } from "@/store/AppContext";
 import { motivoBloqueo } from "@/lib/planes";
-import { nombreValido, nuevoProveedor } from "@/lib/proveedor";
+import { nombreValido } from "@/lib/proveedor";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -41,7 +41,7 @@ export function ComprasScreen() {
   // Las tres listas salen del ERP. Las compras son lo que se muestra; los
   // proveedores y el catálogo hacen falta para cargar una nueva.
   const conErp = usaApiDelErp();
-  const { datos: comprasErp, cargando, error, recargar } = useRemoto(() => repo.compras.list(), []);
+  const { datos: todas, cargando, error, recargar } = useRemoto(() => repo.compras.list(), []);
   /**
    * El plan de cuentas. Sólo con ERP: es el ERP el que lleva los libros, y sin
    * cuenta contable no acepta la compra.
@@ -53,13 +53,18 @@ export function ComprasScreen() {
     () => (conErp ? repo.compras.cuentas().catch(() => []) : Promise.resolve([])),
     [conErp],
   );
-  const { datos: provsErp } = useRemoto(() => repo.proveedores.list(), []);
-  const { datos: prodsErp } = useRemoto(() => repo.inventario.list(), []);
-  const provs = s.vwExtra.concat(provsErp);
-  const prods = s.iExtra.concat(prodsErp);
+  /**
+   * Proveedores y catálogo, del backend y de ninguna otra parte.
+   *
+   * Las tres listas llevaban pegado adelante lo que se había cargado en esta
+   * sesión (`vwExtra`, `iExtra`, `kExtra`). Eso era el síntoma de que las altas
+   * no guardaban nada. Ahora guardan, así que lo cargado vuelve en la lista y
+   * `recargarProvs` es lo que la actualiza después de un alta.
+   */
+  const { datos: provs, recargar: recargarProvs } = useRemoto(() => repo.proveedores.list(), []);
+  const { datos: prods } = useRemoto(() => repo.inventario.list(), []);
   const provName = (id: string | null) => provs.find((x) => x.id === id)?.nombre ?? "—";
 
-  const todas = s.kExtra.concat(comprasErp);
   const pend = todas.filter((c) => c.estado === "Pendiente");
   const kq = norm(s.kQuery.trim());
   const filtradas = todas.filter((c) => {
@@ -196,6 +201,8 @@ export function ComprasScreen() {
       pfPlazo: 30,
       pfEntrega: "",
       pfError: false,
+      pfGuardando: false,
+      pfErrorTexto: "",
     });
   };
 
@@ -205,27 +212,47 @@ export function ComprasScreen() {
    * Pide sólo el nombre. Lo demás —RUC, rubro, ciudad— se completa después en
    * la ficha: pedirlo todo acá sería frenar la compra para llenar un
    * formulario, y el que está cargando una factura no lo tiene a mano.
+   *
+   * Primero se crea el proveedor y se espera su id real; después sigue la
+   * compra. El orden es el arreglo: antes el proveedor quedaba en la memoria
+   * del teléfono con un id propio ("pvn1") y ese id se mandaba como `provId` de
+   * la compra. Con ERP la compra terminaba asentada contra un proveedor que no
+   * existe; sin ERP no se guardaba nada de las dos cosas.
+   *
+   * Si el alta falla no se avanza: quedarse en el paso con el motivo a la vista
+   * es mejor que seguir con una compra que no va a poder registrarse.
    */
-  const guardarAltaProv = () => {
+  const guardarAltaProv = async () => {
     if (!nombreValido(s.pfNombre)) return set({ pfError: true });
-    const p = nuevoProveedor(
-      {
-        nombre: s.pfNombre,
-        doc: s.pfDoc,
-        contacto: s.pfContacto,
-        tel: s.pfTel,
-        credito: s.pfCredito,
-        plazo: s.pfPlazo,
-      },
-      s.vwExtra,
-    );
-    set({
-      vwExtra: [p].concat(s.vwExtra),
-      kProv: p.id,
-      kPago: s.pfCredito ? "Crédito" : "Contado",
-      kProvNuevo: false,
-      kQProv: "",
-    });
+    if (s.pfGuardando) return;
+    const nombre = s.pfNombre.trim();
+    set({ pfGuardando: true, pfErrorTexto: "" });
+    try {
+      const creado = await repo.proveedores.create({
+        nombre,
+        doc: s.pfDoc.trim(),
+        rubro: "",
+        ciudad: "",
+        contacto: s.pfContacto.trim() || nombre,
+        tel: s.pfTel.trim(),
+        email: "",
+        credito: s.pfCredito ? { plazoDias: s.pfPlazo } : null,
+        entregaDias: 1,
+      });
+      recargarProvs();
+      set({
+        pfGuardando: false,
+        kProv: creado.id,
+        kPago: s.pfCredito ? "Crédito" : "Contado",
+        kProvNuevo: false,
+        kQProv: "",
+      });
+    } catch (e) {
+      set({
+        pfGuardando: false,
+        pfErrorTexto: e instanceof Error ? e.message : "No se pudo guardar el proveedor.",
+      });
+    }
   };
 
   const back = () => {
@@ -238,10 +265,12 @@ export function ComprasScreen() {
   /**
    * Registra la compra.
    *
-   * Con ERP conectado va al ERP, que en el mismo movimiento aumenta el stock,
-   * arma el asiento contable y la hace aparecer en el libro de compras. Antes
-   * la compra se guardaba sólo en la memoria del teléfono: el stock nunca subía
-   * y la compra no existía para nadie más.
+   * Va al backend, siempre: en el mismo movimiento suma el stock y deja la
+   * compra en el libro (y con ERP, además, el asiento contable). Antes
+   * preguntaba si había ERP y, si no, armaba la compra a mano —con número
+   * "COMP-000148" y fecha "30 sep 2026" fijos— y la dejaba en la memoria del
+   * teléfono: el stock nunca subía, el proveedor nunca quedaba con deuda, y la
+   * compra no existía para nadie más. Era la rama que corría en el APK.
    *
    * Si el ERP la rechaza —falta configurar la cuenta de IVA crédito, el
    * proveedor no existe— el mensaje viene escrito para una persona y se muestra
@@ -278,32 +307,7 @@ export function ComprasScreen() {
 
   const next = () => {
     if (!puede) return;
-    if (s.kPaso === "condiciones") {
-      if (conErp) return void registrar();
-
-      const seq = 148 + s.kExtra.length;
-      const numero = "COMP-000" + seq;
-      const nuevaCompra: Compra = {
-        id: "n" + (s.kExtra.length + 1),
-        numero,
-        provId: s.kProv,
-        producto: s.kLineas.length === 1 ? s.kLineas[0]!.nombre : `${s.kLineas.length} productos`,
-        lineas: s.kLineas,
-        cantidad: unidades,
-        costo: neto / Math.max(1, unidades),
-        iva: s.kLineas.length === 1 ? s.kLineas[0]!.iva : "Mixto",
-        pago: s.kPago,
-        plazo: Number(s.kPlazo) || 0,
-        cuotas: cuotasNum || 1,
-        // Al contado se cierra en el acto; a crédito queda abierta.
-        estado: s.kPago === "Crédito" ? "Pendiente" : "Pagada",
-        fecha: "30 sep 2026",
-        factura: s.kNroFac || "—",
-        timbrado: s.kTimbrado || "—",
-      };
-      set({ kExtra: s.kExtra.concat([nuevaCompra]), kPaso: "listo", kUltimo: numero });
-      return;
-    }
+    if (s.kPaso === "condiciones") return void registrar();
     set({ kPaso: PASOS_COMPRA[kIdx + 1]!.id as typeof s.kPaso });
   };
 
@@ -600,6 +604,13 @@ export function ComprasScreen() {
                       Poné el nombre del proveedor para poder guardarlo.
                     </span>
                   )}
+                  {/* Si el proveedor no se pudo guardar, la compra no sigue: se
+                      dice acá, donde está el botón que falló. */}
+                  {s.pfErrorTexto && (
+                    <span style={{ font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#B0322F" }}>
+                      {s.pfErrorTexto}
+                    </span>
+                  )}
                   <span style={{ font: "400 11.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
                     Con el nombre alcanza para seguir con la compra. El resto de la ficha se completa
                     después en Proveedores.
@@ -622,19 +633,21 @@ export function ComprasScreen() {
                     Cancelar
                   </button>
                   <button
-                    onClick={guardarAltaProv}
+                    onClick={() => void guardarAltaProv()}
+                    disabled={s.pfGuardando}
                     style={{
                       flex: 1.4,
                       height: 46,
                       border: 0,
                       borderRadius: 12,
-                      cursor: "pointer",
+                      cursor: s.pfGuardando ? "default" : "pointer",
                       background: ORO,
                       color: "#fff",
                       font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                      opacity: s.pfGuardando ? 0.6 : 1,
                     }}
                   >
-                    Guardar y usar
+                    {s.pfGuardando ? "Guardando…" : "Guardar y usar"}
                   </button>
                 </div>
               </>
@@ -844,7 +857,7 @@ export function ComprasScreen() {
                         <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                           <span style={{ font: "600 13px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{p.nombre}</span>
                           <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
-                            Stock {stockDe(p, s.iDelta)} {p.unidad} · costo actual {gs(p.costo)}
+                            Stock {p.stock} {p.unidad} · costo actual {gs(p.costo)}
                           </span>
                         </span>
                       </button>
@@ -873,7 +886,7 @@ export function ComprasScreen() {
                             {prodObj.nombre}
                           </span>
                           <span style={{ font: "400 11px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
-                            Stock {stockDe(prodObj, s.iDelta)} {prodObj.unidad} · costo actual {gs(prodObj.costo)}
+                            Stock {prodObj.stock} {prodObj.unidad} · costo actual {gs(prodObj.costo)}
                           </span>
                         </div>
                         <button
