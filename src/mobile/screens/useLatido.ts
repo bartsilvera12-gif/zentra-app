@@ -18,12 +18,9 @@
  * el momento en que alguien vuelve a la app es justo cuando quiere ver lo que
  * se perdió.
  */
+import { esNativo } from "@/lib/nativo";
 import { useEffect, useRef } from "react";
 
-function esNativo(): boolean {
-  const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-  return typeof cap?.isNativePlatform === "function" && cap.isNativePlatform();
-}
 
 export function useLatido(fn: () => Promise<void>, ms: number, activo: boolean): void {
   // La función cambia en cada render; el intervalo no se tiene que rearmar por

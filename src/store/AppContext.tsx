@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { alVolver } from "@/lib/alVolver";
 import { IVAS } from "@/lib/data";
 import { desactivarPush, escucharAvisos, pushPreferido, reanudarPush } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
@@ -209,6 +210,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       vigente = false;
     };
   }, []);
+
+  /**
+   * Al volver a la app, releer el plan.
+   *
+   * Pagar pasa afuera: se abre el navegador, se paga, se vuelve. La sesión que
+   * tenemos en memoria es la que se leyó al entrar, así que al volver la app
+   * seguía mostrando el plan viejo y los módulos seguían con candado. La única
+   * forma de ver lo pagado era cerrar sesión y entrar de nuevo, que nadie
+   * tiene por qué adivinar: lo que parece es que el pago no entró.
+   *
+   * Se relee la sesión entera y no sólo el plan porque es la misma consulta, y
+   * porque la fecha de vencimiento viene al lado y cambia junto con él.
+   *
+   * Si la consulta falla se deja lo que había. Volver a la app con la pantalla
+   * en blanco porque justo no había señal sería peor que mostrar un plan
+   * desactualizado un rato más.
+   */
+  useEffect(() => {
+    if (!s.sesion) return;
+    return alVolver(() => {
+      void repo.auth
+        .sesionActual()
+        .then((r) => {
+          if (!r) return;
+          setS((prev) => (prev.sesion ? { ...prev, sesion: r.usuario } : prev));
+        })
+        .catch(() => {});
+    });
+  }, [Boolean(s.sesion)]);
 
   // Tocar un aviso desde la bandeja tiene que abrir la pantalla que corresponde,
   // no dejar la app donde estaba. El servidor manda a dónde ir en `data.pantalla`.

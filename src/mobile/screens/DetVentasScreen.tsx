@@ -1,5 +1,6 @@
 "use client";
 
+import { esNativo } from "@/lib/nativo";
 import { MARCA } from "@/lib/theme";
 import { CHATS } from "@/lib/data";
 import { repo, usaApiDelErp } from "@/lib/repo";
@@ -35,10 +36,6 @@ const VIOLETA = MARCA.headerSuave;
  * la función existe y el papel no sale. Lo único que distingue los dos mundos
  * es este global que inyecta Capacitor.
  */
-function esNativo(): boolean {
-  const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-  return typeof cap?.isNativePlatform === "function" && cap.isNativePlatform();
-}
 
 /**
  * Qué pasó de verdad, para decirlo tal cual.

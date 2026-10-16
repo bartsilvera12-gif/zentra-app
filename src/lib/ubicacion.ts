@@ -1,3 +1,4 @@
+import { esNativo } from "./nativo";
 /**
  * Mandar la ubicación por el chat.
  *
@@ -55,10 +56,6 @@ export function posicionValida(p: Posicion | null | undefined): p is Posicion {
   return !(p.lat === 0 && p.lng === 0);
 }
 
-function esNativo(): boolean {
-  const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-  return typeof cap?.isNativePlatform === "function" && cap.isNativePlatform();
-}
 
 /**
  * Dónde está el teléfono.
