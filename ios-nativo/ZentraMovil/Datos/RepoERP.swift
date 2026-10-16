@@ -168,6 +168,30 @@ struct DispositivoAlta {
     var esAgente: Bool?
 }
 
+/// Una línea de una compra. Port de `CompraLinea` en `src/lib/types.ts`.
+///
+/// La compra lleva varias: un remito trae seis productos del mismo proveedor y
+/// con la misma factura. Cargarlos como seis compras rompe el libro de compras
+/// —seis facturas con el mismo número— y el asiento contable.
+struct CompraLinea: Identifiable, Equatable {
+    var prodId: String
+    var nombre: String
+    var unidad: String
+    var cantidad: Double
+    /// Sin IVA: el proveedor cotiza neto y el impuesto va por encima.
+    var costo: Int
+    var iva: Iva
+
+    /// `prodId` no sirve de id: el mismo producto puede ir dos veces en la
+    /// misma compra, con costos distintos por lote.
+    let id = UUID()
+
+    /// Lo que suma esta línea, con su IVA.
+    var subtotal: Int {
+        Int((Double(costo) * cantidad * (1 + RepoERP.tasa(iva))).rounded())
+    }
+}
+
 struct Chat: Identifiable, Equatable {
     var id: String
     var nombre: String
@@ -568,11 +592,18 @@ enum RepoERP {
     /// ellas no puede asentar el movimiento contable, y lo rechaza.
     static func crearCompra(
         provId: String, provNombre: String,
-        prod: InvProducto, cantidad: Double, costo: Int, iva: Iva,
+        lineas: [CompraLinea],
         credito: Bool, plazoDias: Int, cuotas: Int,
         timbrado: String, comprobante: String,
-        cuentaContableId: String, cuentaPagoId: String
+        cuentaContableId: String, cuentaPagoId: String,
+        moneda: String = "PYG", tipoCambio: Double = 1
     ) async throws -> Compra {
+        guard !lineas.isEmpty else {
+            throw ApiError.http(
+                status: 400,
+                mensaje: "Agregá al menos un producto a la compra.",
+                ruta: "/compras")
+        }
         guard !cuentaContableId.isEmpty else {
             throw ApiError.http(
                 status: 400,
@@ -588,7 +619,10 @@ enum RepoERP {
 
         let cuerpo: [String: Any] = [
             "proveedor_id": provId, "proveedor_nombre": provNombre,
-            "origen_compra": "directa", "moneda": "PYG", "tipo_cambio": 1,
+            "origen_compra": "directa",
+            // En dólares el ERP necesita las dos cosas: la moneda en la que se
+            // pactó y a cuánto, porque los libros se llevan en guaraníes.
+            "moneda": moneda, "tipo_cambio": moneda == "PYG" ? 1 : tipoCambio,
             "tipo_pago": credito ? "credito" : "contado",
             "plazo_dias": onull(credito ? plazoDias : nil),
             "cuotas": onull(credito ? cuotas : nil),
@@ -596,12 +630,14 @@ enum RepoERP {
             "numero_comprobante": onull(comprobante),
             "tipo_comprobante": "Factura",
             "cuenta_contrapartida_id": credito ? NSNull() : onull(cuentaPagoId),
-            "items": [[
-                "producto_id": prod.id, "producto_nombre": prod.nombre,
-                "descripcion": prod.nombre, "cantidad": cantidad,
-                "costo_unitario": costo, "iva_tipo": ivaDeCompra(iva),
-                "cuenta_contable_id": cuentaContableId,
-            ]],
+            "items": lineas.map { l in
+                [
+                    "producto_id": l.prodId, "producto_nombre": l.nombre,
+                    "descripcion": l.nombre, "cantidad": l.cantidad,
+                    "costo_unitario": l.costo, "iva_tipo": ivaDeCompra(l.iva),
+                    "cuenta_contable_id": cuentaContableId,
+                ]
+            },
             "idempotency_key": UUID().uuidString,
         ]
         let r = try await ApiERP.post("/compras", cuerpo: cuerpo)
