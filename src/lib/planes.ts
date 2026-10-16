@@ -63,13 +63,13 @@ interface DefinicionPlan {
 }
 
 /**
- * El precio NO está acá.
+ * El precio NO está acá, y lo que incluye cada plan está en docs/PLANES.md.
  *
- * Estuvo, no lo usaba nadie, y decía 49.000 y 89.000 cuando en la base eran
- * 80.000 y 150.000. Un precio en dos lugares es un precio que en algún momento
- * dice dos cosas distintas, y el que importa —el que se cobra— es el de
- * `zentra.planes`, que es de donde lo lee el server. La pantalla de pago lo
- * muestra desde ahí.
+ * El precio estuvo acá, no lo usaba nadie, y decía 49.000 y 89.000 mientras la
+ * base decía 80.000 y 150.000. Los correctos eran estos —coinciden con la
+ * documentación de planes— pero igual no van en el código: el que se cobra es
+ * el de `zentra.planes`, que es de donde lo lee el server, y un precio en dos
+ * lugares es un precio que en algún momento dice dos cosas distintas.
  */
 
 const FREE: Accion[] = ["inventario.alta", "inventario.ajuste"];
