@@ -375,6 +375,7 @@ struct NuevoProductoView: View {
             }
             .background(t.bg)
             .cerrarTeclado()
+            .errorArriba($error)
             .navigationTitle("Nuevo producto")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -508,6 +509,7 @@ struct NuevoProveedorView: View {
             }
             .background(t.bg)
             .cerrarTeclado()
+            .errorArriba($error)
             .navigationTitle("Nuevo proveedor")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -813,8 +815,10 @@ struct NuevaCompraView: View {
                                     .foregroundStyle(Tint.avisoInk)
                             }
                         }
-                        if let error { Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk) }
-                        else if let falta = faltaParaElErp {
+                        // El que falta se muestra mientras no haya un error de
+                        // guardar: el del servidor manda, porque es el que
+                        // explica por qué no entró lo que ya estaba completo.
+                        if error == nil, let falta = faltaParaElErp {
                             Aviso(texto: falta, bg: Tint.avisoBg, ink: Tint.avisoInk)
                         }
                         if neto > 0 {
@@ -838,6 +842,7 @@ struct NuevaCompraView: View {
             }
             .background(t.bg)
             .cerrarTeclado()
+            .errorArriba($error)
             .navigationTitle("Registrar compra")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

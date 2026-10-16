@@ -21,7 +21,44 @@ enum SupabaseDatos {
     /// El schema va en las cabeceras y no en la ruta: las tablas no viven en
     /// `public`, y una instalación sobre el ERP de un cliente puede exponer
     /// vistas en un schema propio.
+    /// Hace el pedido y, si el servidor rechaza el token, lo renueva y
+    /// reintenta **una** vez.
+    ///
+    /// `tokenVigente()` sólo mira la fecha de vencimiento que guardamos acá, y
+    /// hay varias formas de que el servidor rechace un token que para nosotros
+    /// está vigente: el reloj del teléfono corrido, una sesión cerrada desde
+    /// otro lado, el refresh rotado. En todos esos casos el token local parece
+    /// bueno y el servidor dice 401.
+    ///
+    /// Sin esto, el 401 salía como un error cualquiera —y en un formulario
+    /// largo, donde el aviso queda abajo de todo, salía como nada: tocabas
+    /// Guardar y no pasaba absolutamente nada.
     private static func pedir(
+        _ metodo: String, _ ruta: String,
+        query: [String: String] = [:],
+        cuerpo: Any? = nil,
+        preferencia: String? = nil
+    ) async throws -> Any {
+        do {
+            return try await pedirUnaVez(metodo, ruta, query: query, cuerpo: cuerpo,
+                                         preferencia: preferencia)
+        } catch let e as ApiError {
+            guard case .http(401, _, _) = e else { throw e }
+            // Renovar a la fuerza, aunque para nosotros no estuviera vencida.
+            guard (try? await Auth.shared.renovar()) != nil else {
+                throw ApiError.sesionVencida
+            }
+            do {
+                return try await pedirUnaVez(metodo, ruta, query: query, cuerpo: cuerpo,
+                                             preferencia: preferencia)
+            } catch let e2 as ApiError {
+                if case .http(401, _, _) = e2 { throw ApiError.sesionVencida }
+                throw e2
+            }
+        }
+    }
+
+    private static func pedirUnaVez(
         _ metodo: String, _ ruta: String,
         query: [String: String] = [:],
         cuerpo: Any? = nil,
