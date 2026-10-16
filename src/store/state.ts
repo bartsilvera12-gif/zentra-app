@@ -198,7 +198,15 @@ export interface AppState {
   rDesde: string;
   rHasta: string;
   rPreset: string;
-  rExportado: boolean;
+  /**
+   * Cómo terminó la última exportación, para poder decirlo.
+   *
+   * Era un booleano que sólo servía para escribir "✓ Exportado" sin que
+   * hubiera ningún archivo. Ahora guarda qué pasó de verdad, que no es
+   * siempre lo mismo: en el teléfono el archivo se comparte, en el navegador
+   * se descarga, y si ninguna de las dos se puede, queda copiado.
+   */
+  rExportado: "" | "descargado" | "compartido" | "copiado" | "error";
 
   /* Detalle de ventas */
   dvSub: "lista" | "factura";
@@ -464,7 +472,7 @@ export const initialState: AppState = {
   rDesde: haceDias(7),
   rHasta: hoyIso(),
   rPreset: "7 días",
-  rExportado: false,
+  rExportado: "",
 
   dvSub: "lista",
   dvQuery: "",

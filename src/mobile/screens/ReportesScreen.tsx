@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { MARCA } from "@/lib/theme";
 import { fmtIso, gs, haceDias, hoyIso, inicioDeAnio, inicioDeMes } from "@/lib/format";
 import { colorDeBarra } from "@/lib/colores-reporte";
 import { buildReport } from "@/lib/reportes";
+import { csvDeReporte, exportarArchivo, nombreDeArchivo } from "@/lib/exportar";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
@@ -16,6 +18,20 @@ import { Card, EmptyState, ScrollBody, SectionLabel } from "../ui/primitives";
 
 const AZUL = MARCA.header;
 const VIOLETA = MARCA.headerSuave;
+
+/**
+ * Qué decir después de tocar "Exportar".
+ *
+ * Tres finales distintos y tres textos distintos: decir "descargado" cuando en
+ * realidad se abrió el menú de compartir manda a buscar un archivo que no está
+ * en Descargas.
+ */
+const AVISO_EXPORTAR: Record<string, string> = {
+  descargado: "✓ Descargado",
+  compartido: "✓ Compartido",
+  copiado: "✓ Copiado",
+  error: "No se pudo exportar",
+};
 
 export function ReportesScreen() {
   const { s, t, set, plan } = useApp();
@@ -37,6 +53,15 @@ export function ReportesScreen() {
   const cargando = s.rTab === "ventas" ? cV : s.rTab === "compras" ? cC : cI;
   const error = s.rTab === "ventas" ? eV : s.rTab === "compras" ? eC : eI;
   const recargar = s.rTab === "ventas" ? rV : s.rTab === "compras" ? rC : rI;
+
+  // El aviso de la última exportación no sobrevive a un cambio de solapa ni
+  // de fechas: "✓ Descargado" al lado de otro reporte dice que se bajó algo
+  // que nadie bajó.
+  useEffect(() => {
+    if (s.rExportado) set({ rExportado: "" });
+    // Sólo cuando cambia lo que se está mirando.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.rTab, s.rDesde, s.rHasta]);
 
   const oscuro = s.theme === "oscuro";
   const m = buildReport(s.rTab, s.rDesde, s.rHasta, { ventas, compras, productos }, oscuro);
@@ -162,7 +187,15 @@ export function ReportesScreen() {
               </button>
             )}
             <button
-              onClick={() => set({ rExportado: !s.rExportado })}
+              onClick={() => {
+                // El reporte que se baja es el que se está mirando: mismas
+                // fechas, misma solapa, mismos números. Se arma en el momento
+                // y no se guarda nada.
+                void exportarArchivo(
+                  nombreDeArchivo(s.rTab, s.rDesde, s.rHasta),
+                  csvDeReporte(m, { tab: s.rTab, desde: s.rDesde, hasta: s.rHasta }),
+                ).then((r) => r && set({ rExportado: r }));
+              }}
               style={{
                 borderRadius: 999,
                 padding: "8px 13px",
@@ -174,7 +207,7 @@ export function ReportesScreen() {
                 whiteSpace: "nowrap",
               }}
             >
-              {s.rExportado ? "✓ Exportado" : "Exportar"}
+              {AVISO_EXPORTAR[s.rExportado] || "Exportar"}
             </button>
           </div>
         </div>
