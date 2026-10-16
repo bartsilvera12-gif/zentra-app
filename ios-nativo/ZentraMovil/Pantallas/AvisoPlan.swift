@@ -23,7 +23,22 @@ struct HojaPlanes: View {
     private var actual: Plan { estado.tenant?.plan ?? .free }
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
+            // El tirador, dibujado por nosotros y fuera del scroll.
+            //
+            // El del sistema flota encima del contenido, así que al bajar la
+            // lista los precios le pasaban por debajo y quedaban cortados a la
+            // mitad. Acá ocupa su lugar y nada se mete abajo. El gesto de
+            // arrastrar la hoja sigue siendo el del sistema: esta franja no
+            // scrollea, así que el dedo que la agarra mueve la hoja.
+            Capsule()
+                .fill(t.border)
+                .frame(width: 38, height: 4)
+                .padding(.top, 8).padding(.bottom, 10)
+                .frame(maxWidth: .infinity)
+                .background(t.card)
+
+            ScrollView {
             VStack(spacing: 10) {
                 VStack(spacing: 6) {
                     Text("Esto viene con otro plan")
@@ -32,10 +47,7 @@ struct HojaPlanes: View {
                         .font(Tipo.barlow(.regular, 13.5)).foregroundStyle(t.ink2)
                         .multilineTextAlignment(.center)
                 }
-                // El aire de arriba es para la rayita de arrastrar: pegado,
-                // el título se lee como parte del tirador y la hoja no se ve
-                // como algo que se pueda bajar con el dedo.
-                .padding(.horizontal, 6).padding(.top, 18).padding(.bottom, 6)
+                .padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 6)
 
                 ForEach(Plan.orden, id: \.self) { tarjeta($0) }
 
@@ -63,10 +75,12 @@ struct HojaPlanes: View {
                     .padding(.vertical, 12)
             }
             .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 18)
+            }
         }
         .background(t.card)
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        // Apagado: el nuestro va arriba, en la franja que no scrollea.
+        .presentationDragIndicator(.hidden)
         .task { precios = await SupabaseDatos.preciosDePlanes() }
     }
 
