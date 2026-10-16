@@ -42,14 +42,34 @@ enum Config {
 
     /// Dónde se paga el plan. Vacío esconde el botón en vez de mandar a una
     /// página que no existe.
-    ///
-    /// El cobro vive afuera de la app a propósito: vender una suscripción
-    /// adentro de una app Android cobrando en Paraguay choca con la política
-    /// de pagos de Google Play. La app informa, el pago va por el navegador.
     static var cobrosUrl: String { sinBarra(texto("COBROS_URL")) }
 
+    /// Si la app puede mostrar el camino al pago.
+    ///
+    /// **Apagado salvo que se encienda a mano, y a propósito.** Las dos
+    /// tiendas prohíben que una app dirija a pagar afuera —ni botón, ni
+    /// enlace, ni mencionar la dirección— y Paraguay no entra en la excepción
+    /// que abrieron para EE.UU., Reino Unido y el Espacio Económico Europeo.
+    /// Un botón así es rechazo en revisión.
+    ///
+    /// El valor por defecto es el seguro: olvidarse de apagarlo cuesta una
+    /// vuelta de revisión, que son días. Olvidarse de encenderlo, en un canal
+    /// donde sí se puede, no cuesta nada.
+    ///
+    /// Es el mismo interruptor que `NEXT_PUBLIC_LINK_DE_PAGO` en Android, que
+    /// allá va en `0` para la compilación de Play y encendido para el APK que
+    /// se reparte por fuera. En iOS no hay "por fuera": no se puede instalar
+    /// una app sin pasar por Apple, así que en la práctica queda apagado.
+    ///
+    /// Lo que la app **sí** puede hacer es mostrar los planes y lo que incluye
+    /// cada uno. Informar no está prohibido; dirigir a comprar, sí.
+    static var mostrarLinkDePago: Bool {
+        ["1", "true", "si", "sí"].contains(texto("LINK_DE_PAGO").lowercased())
+    }
+
     static var linkDePago: URL? {
-        cobrosUrl.isEmpty ? nil : URL(string: cobrosUrl + "/pagar")
+        guard mostrarLinkDePago, !cobrosUrl.isEmpty else { return nil }
+        return URL(string: cobrosUrl + "/pagar")
     }
 
     static var timeout: TimeInterval { 15 }
