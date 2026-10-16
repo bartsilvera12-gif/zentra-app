@@ -408,6 +408,17 @@ enum SupabaseDatos {
         return (raiz.isEmpty ? "PROD" : raiz) + "-" + String(Int(Date().timeIntervalSince1970) % 100000)
     }
 
+    /// Borra la cuenta de quien está en sesión. **No se puede deshacer.**
+    ///
+    /// Lo hace una función del servidor y no un `DELETE` desde acá: la clave
+    /// pública de la app no puede tocar `auth.users`, y además la decisión de
+    /// qué se arrastra —la empresa entera si era el último usuario, sólo el
+    /// perfil si quedan compañeros— es del servidor, que es el único que ve a
+    /// todos.
+    static func eliminarMiCuenta() async throws {
+        _ = try await pedir("POST", "/rpc/eliminar_mi_cuenta", cuerpo: [String: Any]())
+    }
+
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
         let crudo = try await pedir("POST", "/clientes", cuerpo: [campos],
                                     preferencia: "return=representation")

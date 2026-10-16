@@ -239,6 +239,9 @@ enum RepoERP {
     ///
     /// Se resuelve en cada llamada y no al arrancar: cuando se carga este
     /// archivo todavía no hubo login y no se sabe de qué empresa es quien entra.
+    /// Lo mismo que `conErp()`, para las pantallas.
+    static func usaErp() async -> Bool { await conErp() }
+
     private static func conErp() async -> Bool {
         !((await Auth.shared.tenantActivo()?.apiUrl) ?? "").isEmpty
     }
@@ -867,6 +870,22 @@ enum RepoERP {
     private static func urlEnTexto(_ t: String) -> String? {
         guard let r = t.range(of: #"https?://\S+"#, options: .regularExpression) else { return nil }
         return String(t[r])
+    }
+
+    /// Borra la cuenta, si es nuestra.
+    ///
+    /// En una instalación sobre un ERP la cuenta es del ERP, no de la app: el
+    /// vendedor que se da de baja de la app no puede perder el acceso al
+    /// sistema de su empresa. Lo da de baja quien administra el ERP, y la app
+    /// lo dice en vez de fingir que lo puede hacer.
+    static func eliminarMiCuenta() async throws {
+        if await conErp() {
+            throw ApiError.http(
+                status: 400,
+                mensaje: "Tu cuenta es la del sistema de tu empresa, así que no se borra desde acá. Pedíselo a quien administra el ERP.",
+                ruta: "/cuenta")
+        }
+        try await SupabaseDatos.eliminarMiCuenta()
     }
 
     private static func aChat(_ c: [String: Any]) -> Chat {

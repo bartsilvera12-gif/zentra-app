@@ -13,6 +13,10 @@ struct ConfiguracionView: View {
     @State private var confirmarSalir = false
     @State private var confirmarBorrar = false
     @State private var textoBorrar = ""
+    @State private var borrando = false
+    @State private var errorBorrar: String?
+    /// La instalación tiene ERP propio: entonces la cuenta no es nuestra.
+    @State private var conErp = false
 
     var body: some View {
         @Bindable var a = ajustes
@@ -220,6 +224,34 @@ struct ConfiguracionView: View {
         }
     }
 
+    /// Se escribe la palabra sin importar mayúsculas, igual que en Android.
+    private var puedeBorrar: Bool {
+        !borrando && textoBorrar.trimmingCharacters(in: .whitespaces).uppercased() == "ELIMINAR"
+    }
+
+    /// Borra la cuenta y vuelve al login.
+    ///
+    /// La sesión guardada apunta a un usuario que ya no existe: hay que
+    /// soltarla, o la próxima apertura intenta entrar con ella y falla sin que
+    /// se entienda por qué.
+    private func borrarCuenta() async {
+        guard puedeBorrar else { return }
+        borrando = true; errorBorrar = nil
+        do {
+            try await RepoERP.eliminarMiCuenta()
+            // `salir()` y no sólo olvidar la sesión: también da de baja el
+            // token push de este teléfono. Sin eso, el servidor seguiría
+            // mandándole avisos a una cuenta que ya no existe.
+            await estado.salir()
+            confirmarBorrar = false
+            textoBorrar = ""
+        } catch {
+            errorBorrar = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos borrar la cuenta."
+        }
+        borrando = false
+    }
+
     /// Pide escribir ELIMINAR: un toque accidental no puede borrar un negocio.
     private var hojaBorrar: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -238,24 +270,37 @@ struct ConfiguracionView: View {
                 .background(t.card, in: .rect(cornerRadius: 12))
                 .overlay { RoundedRectangle(cornerRadius: 12).stroke(t.border) }
 
-            Text("En esta instalación el acceso es el del ERP, así que tu usuario para entrar al sistema de tu empresa no se toca: se van tu perfil y tus datos de la app.")
-                .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+            // Sólo donde es cierto. En la instalación pública la cuenta es
+            // nuestra y se borra entera; decirle a esa persona que "el acceso
+            // es el del ERP" sería mentirle sobre lo que está por pasar.
+            if conErp {
+                Text("En esta instalación el acceso es el del ERP, así que tu usuario para entrar al sistema de tu empresa no se toca: se van tu perfil y tus datos de la app.")
+                    .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+            }
 
-            Button {
-                // Pendiente: `zentra.eliminar_mi_cuenta()` es del Supabase propio;
-                // contra un ERP hace falta el endpoint del lado de ellos.
-            } label: {
-                Text("Eliminar definitivamente")
-                    .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).frame(height: 46)
-                    .background(textoBorrar == "ELIMINAR" ? Tint.errorInk : t.dim,
-                                in: .rect(cornerRadius: 12))
+            if let errorBorrar {
+                Text(errorBorrar)
+                    .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(Tint.errorInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(11).background(Tint.errorBg, in: .rect(cornerRadius: 10))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button { Task { await borrarCuenta() } } label: {
+                ZStack {
+                    if borrando { ProgressView().tint(.white) }
+                    else { Text("Eliminar definitivamente").font(Tipo.barlow(.semibold, 15)) }
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity).frame(height: 46)
+                .background(puedeBorrar ? Tint.errorInk : t.dim, in: .rect(cornerRadius: 12))
             }
             .buttonStyle(.plain)
-            .disabled(textoBorrar != "ELIMINAR")
+            .disabled(!puedeBorrar)
 
             Spacer()
         }
+        .task { conErp = await RepoERP.usaErp() }
         .padding(20)
         .background(t.bg)
         .presentationDetents([.medium])
