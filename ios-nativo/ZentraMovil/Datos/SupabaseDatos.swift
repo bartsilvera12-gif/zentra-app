@@ -99,7 +99,14 @@ enum SupabaseDatos {
         catch { throw ApiError.sinRed }
 
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        let json = try? JSONSerialization.jsonObject(with: datos)
+        // `.fragmentsAllowed` porque una función que devuelve texto contesta un
+        // valor suelto —`"VTA-0001"`—, no un objeto ni un arreglo, y sin esto
+        // `JSONSerialization` lo rechaza.
+        //
+        // Costaba caro: el número de factura salía `[]`, se guardaba así en la
+        // venta, y como la tabla tiene `unique (empresa_id, numero)` la segunda
+        // venta de la empresa chocaba contra la primera y no entraba más.
+        let json = try? JSONSerialization.jsonObject(with: datos, options: [.fragmentsAllowed])
         guard (200..<300).contains(code) else {
             let o = json as? [String: Any]
             // PostgREST explica bien lo suyo; su texto sirve más que un genérico.
@@ -574,7 +581,12 @@ enum SupabaseDatos {
     }
 
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
-        let crudo = try await pedir("POST", "/clientes", cuerpo: [campos],
+        // Sin `empresa_id` la política de seguridad rechaza la fila: la regla
+        // es "sólo podés insertar en tu empresa", y una fila sin empresa no
+        // cumple con ninguna. El alta de cliente nunca lo mandaba.
+        var fila = campos
+        fila["empresa_id"] = try await empresaActual()
+        let crudo = try await pedir("POST", "/clientes", cuerpo: [fila],
                                     preferencia: "return=representation")
         guard let c = filas(crudo).first else {
             throw ApiError.http(status: 200, mensaje: "La base no devolvió el cliente creado.",

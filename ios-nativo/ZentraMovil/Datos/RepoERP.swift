@@ -318,6 +318,20 @@ enum RepoERP {
         return aProveedor(o)
     }
 
+    /// Los nombres del ERP a las columnas de `zentra.clientes`.
+    private static func aColumnasCliente(_ c: [String: Any]) -> [String: Any] {
+        let equivale = [
+            "ruc": "doc", "documento": "doc",
+            "nombre_contacto": "contacto",
+            "telefono": "tel",
+            "ciudad": "zona",
+            "tipo_cliente": "lista_precios",
+        ]
+        var r: [String: Any] = [:]
+        for (k, v) in c { r[equivale[k] ?? k] = v }
+        return r
+    }
+
     /// Los nombres de la app a las columnas de `zentra.productos`.
     ///
     /// Casi todos coinciden; los que no, se traducen. `stock` no está a
@@ -450,14 +464,36 @@ enum RepoERP {
     /// Alta de cliente. Lleva clave de intento: si se reintenta sin señal, no
     /// se crea el mismo cliente dos veces.
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
-        if await !conErp() { return try await SupabaseDatos.crearCliente(campos) }
+        // El formulario habla en los nombres del ERP. Nuestras tablas usan
+        // otros: `ruc` es `doc`, `telefono` es `tel`, `ciudad` es `zona`.
+        // Mandarlos tal cual hacía que PostgREST rechazara la fila entera con
+        // "Could not find the 'ciudad' column", así que un cliente con RUC no
+        // se podía cargar en la instalación pública.
+        if await !conErp() {
+            return try await SupabaseDatos.crearCliente(aColumnasCliente(campos))
+        }
         let r = try await ApiERP.post("/clientes", cuerpo: campos,
                                       idempotencia: UUID().uuidString)
         return aCliente(desenvolver(r) ?? [:])
     }
 
     /// Consulta de RUC/CI en la SET. nil si no se encuentra.
+    ///
+    /// El servicio lo expone el ERP. Sin ERP no hay a quién preguntarle, y se
+    /// dice: antes salía igual al ERP y contestaba "El ERP respondió 404" a
+    /// alguien que no tiene ninguno.
+    ///
+    /// **Acá no se inventa un nombre.** La implementación de Android sin ERP
+    /// devuelve "COMERCIAL 80012345 S.A." como marcador, y ese nombre termina
+    /// guardado en el cliente y después impreso en una factura. Una razón
+    /// social inventada es peor que un campo vacío: el campo vacío se nota.
     static func consultarSet(_ doc: String) async throws -> (razonSocial: String, activo: Bool)? {
+        if await !conErp() {
+            throw ApiError.http(
+                status: 501,
+                mensaje: "La consulta a la SET la hace el ERP, y esta instalación no tiene uno. Escribí el nombre a mano.",
+                ruta: "/set")
+        }
         let crudo = try await ApiERP.get("/set/\(esc(doc))") { $0 }
         guard let o = desenvolver(crudo),
               let razon = primero(o["razonSocial"], o["razon_social"], o["nombre"])
