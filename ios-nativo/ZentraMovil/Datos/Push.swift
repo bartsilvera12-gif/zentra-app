@@ -23,8 +23,22 @@ import UIKit
 final class Push: NSObject, MessagingDelegate, UNUserNotificationCenterDelegate {
     static let shared = Push()
 
+    /// El último token que entregó Firebase.
+    ///
+    /// Se guarda porque Firebase lo entrega cuando quiere —en el arranque, a
+    /// veces antes de que la sesión haya enganchado nada— y una sola vez. Sin
+    /// guardarlo, el token llegaba, no había a quién avisarle, y se perdía
+    /// hasta el próximo arranque. Que es lo que pasaba.
+    private(set) var ultimoToken: String?
+
     /// A quién avisarle cuando llega un token nuevo.
-    var alLlegarToken: ((String) -> Void)?
+    ///
+    /// Al engancharse, si ya hay un token guardado se lo entrega enseguida.
+    var alLlegarToken: ((String) -> Void)? {
+        didSet {
+            if let t = ultimoToken { alLlegarToken?(t) }
+        }
+    }
 
     private var arrancado = false
 
@@ -64,8 +78,18 @@ final class Push: NSObject, MessagingDelegate, UNUserNotificationCenterDelegate 
 
     nonisolated func messaging(_ messaging: Messaging,
                                didReceiveRegistrationToken fcmToken: String?) {
-        guard let fcmToken, !fcmToken.isEmpty else { return }
-        Task { @MainActor in self.alLlegarToken?(fcmToken) }
+        guard let fcmToken, !fcmToken.isEmpty else {
+            print("[push] Firebase no devolvió token")
+            return
+        }
+        // Sólo el principio y el largo. Alcanza para saber que llegó y para
+        // compararlo con el que tenga guardado el servidor; el token entero en
+        // un log es una credencial de este teléfono tirada en texto plano.
+        print("[push] token de Firebase: \(fcmToken.prefix(12))… (\(fcmToken.count) caracteres)")
+        Task { @MainActor in
+            self.ultimoToken = fcmToken
+            self.alLlegarToken?(fcmToken)
+        }
     }
 
     /// Con la app abierta, iOS no muestra el aviso salvo que se lo pidan.
