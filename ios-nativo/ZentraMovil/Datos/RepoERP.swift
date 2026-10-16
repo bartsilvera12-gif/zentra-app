@@ -174,6 +174,29 @@ struct Chat: Identifiable, Equatable {
     var hora: String
     var noLeidos: Int
     var vistaPrevia: String
+
+    /// Quién atiende la conversación: el agente asignado o, si no hay, la cola.
+    ///
+    /// Tres estados, no dos. `nil` es "este ERP no informa de quién es", y
+    /// entonces la etiqueta no se dibuja: poner "Sin asignar" en todas sería
+    /// afirmar algo que no sabemos. `.some(nil)` —acá, cadena vacía— sí es "no
+    /// la tomó nadie", y eso sólo se puede decir si el ERP mandó el campo.
+    var responsable: String?
+    /// Si el ERP informó el campo del responsable, aunque viniera vacío.
+    var informaResponsable: Bool = false
+
+    /// La cola de atención del ERP ("Ventas", "Soporte"). Vacío es "este ERP no
+    /// informa la cola", y entonces el listado no se divide en pestañas.
+    ///
+    /// Va aparte del responsable: el responsable es una etiqueta y la cola
+    /// divide el listado, así que no pueden compartir campo.
+    var cola: String = ""
+
+    /// Cerrada en el ERP: alguien la finalizó y la tipificó.
+    ///
+    /// No se mezclan con las abiertas: compiten por los mismos lugares de cada
+    /// tanda y taparían lo que hay que atender. Tienen su propio filtro.
+    var cerrada: Bool = false
 }
 
 // MARK: - Repo
@@ -796,13 +819,63 @@ enum RepoERP {
     }
 
     private static func aChat(_ c: [String: Any]) -> Chat {
-        Chat(
+        let informaResp = c["agente_nombre"] != nil || c["cola_nombre"] != nil
+        return Chat(
             id: texto(c["id"]),
             nombre: primero(c["contact_nombre"], c["contact_telefono"]) ?? "Sin nombre",
             hora: String((noVacio(c["last_message_at"]) ?? "").suffix(14).prefix(5)),
-            noLeidos: entero(c["unread_count"]),
-            vistaPrevia: noVacio(c["last_message_preview"]) ?? ""
+            noLeidos: cuantosSinLeer(c),
+            vistaPrevia: vistaPrevia(noVacio(c["last_message_preview"]) ?? ""),
+            responsable: primero(c["agente_nombre"], c["cola_nombre"]),
+            informaResponsable: informaResp,
+            cola: primero(c["cola_nombre"], c["queue_nombre"], c["cola"]) ?? "",
+            // El ERP usa "closed"; se mira por prefijo para no atarse a esa
+            // palabra exacta si otro ERP dice "cerrada".
+            cerrada: ["clos", "cerr"].contains {
+                texto(c["status"]).lowercased().hasPrefix($0)
+            }
         )
+    }
+
+    /// Cuántos sin leer, mire donde mire el ERP.
+    ///
+    /// Cinco nombres distintos para el mismo número, y puede venir como texto:
+    /// declararlo entero no impide que llegue `"3"`.
+    private static func cuantosSinLeer(_ c: [String: Any]) -> Int {
+        for k in ["unread_count", "unread", "unreadCount", "no_leidos", "mensajes_sin_leer"] {
+            guard let v = c[k], !(v is NSNull) else { continue }
+            if let n = v as? Int, n >= 0 { return n }
+            if let d = v as? Double, d >= 0 { return Int(d) }
+            if let t = v as? String, let n = Int(t.trimmingCharacters(in: .whitespaces)), n >= 0 {
+                return n
+            }
+        }
+        return 0
+    }
+
+    /// La vista previa de la lista, legible.
+    ///
+    /// Lo que el ERP guarda para un adjunto es un marcador: `[audio]`,
+    /// `[documento] lista.pdf`. Sin traducirlo, el listado se lee como una
+    /// columna de corchetes.
+    ///
+    /// Android le pone un emoji delante a cada uno. Acá no, por la regla de la
+    /// app: los emojis son del contenido, no de la interfaz.
+    static func vistaPrevia(_ crudo: String) -> String {
+        guard let m = crudo.wholeMatch(of: /\s*\[(\w+)\]\s*(.*)/.dotMatchesNewlines())
+        else { return crudo }
+        let resto = String(m.2).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !resto.isEmpty { return resto }
+        let nombres = [
+            "imagen": "Foto", "image": "Foto",
+            "video": "Video",
+            "audio": "Audio", "voice": "Audio",
+            "documento": "Documento", "document": "Documento",
+            "sticker": "Sticker",
+            "reaction": "Reaccionó",
+            "revoke": "Mensaje eliminado",
+        ]
+        return nombres[String(m.1).lowercased()] ?? crudo
     }
 
     private static func aCliente(_ c: [String: Any]) -> Cliente {

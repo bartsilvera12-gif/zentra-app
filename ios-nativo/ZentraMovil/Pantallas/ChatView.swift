@@ -31,6 +31,11 @@ struct ChatView: View {
     @State private var mandarFotos = false
     @State private var mandarDoc = false
     @State private var ubicacion = Ubicacion()
+    @State private var grabador = Grabador()
+    /// El panel de emojis y stickers, abierto o cerrado.
+    @State private var panel = false
+    @State private var solapaPanel = "Emojis"
+    @State private var favoritos: [String] = Ajustes.favoritosChat()
 
     private let emojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -74,7 +79,7 @@ struct ChatView: View {
                         Label("Ficha del contacto", systemImage: "person.text.rectangle")
                     }
                     Button { transferir = true } label: {
-                        Label("Transferir", systemImage: "arrow.right.arrow.left")
+                        Label("Transferir conversación", systemImage: "arrow.right.arrow.left")
                     }
                     Button {
                         // Toda la conversación al portapapeles, por si hay que
@@ -276,12 +281,59 @@ struct ChatView: View {
                 Image(systemName: "xmark").font(.system(size: 12, weight: .bold))
                     .foregroundStyle(t.ink3)
             }
+            .accessibilityLabel("No responder a ese mensaje")
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
         .background(t.card)
     }
 
     private var barra: some View {
+        VStack(spacing: 0) {
+            if panel { panelEmojis }
+            if grabador.grabando { barraGrabando } else { barraEscritura }
+        }
+        .background(t.card)
+    }
+
+    /// Mientras se graba, la barra es otra: cancelar, el tiempo, y enviar.
+    ///
+    /// Reemplaza a la de escribir en vez de convivir con ella. Grabando no hay
+    /// nada más que hacer, y dejar el campo de texto al lado invita a escribir
+    /// encima de una nota de voz que se está grabando.
+    private var barraGrabando: some View {
+        HStack(spacing: 12) {
+            Button { grabador.cancelar() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Tint.errorInk)
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancelar grabación")
+
+            HStack(spacing: 8) {
+                Circle().fill(Tint.errorInk).frame(width: 9, height: 9)
+                Text(Grabador.reloj(grabador.segundos))
+                    .font(Tipo.barlow(.semibold, 15)).foregroundStyle(t.ink)
+                    .monospacedDigit()
+                Text("Grabando…")
+                    .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button { Task { await enviarAudio() } } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(C.azulMedio, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Enviar nota de voz")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    private var barraEscritura: some View {
         HStack(spacing: 10) {
             Menu {
                 Button { mandarFotos = true } label: {
@@ -302,27 +354,174 @@ struct ChatView: View {
             .disabled(enviando)
 
             // Crece con el mensaje, hasta cinco líneas.
-            TextField("Escribí un mensaje", text: $texto, axis: .vertical)
+            TextField("Escribí un mensaje…", text: $texto, axis: .vertical)
                 .font(.system(size: 16))
                 .lineLimit(1...5)
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(t.card, in: .rect(cornerRadius: 20))
                 .overlay { RoundedRectangle(cornerRadius: 20).stroke(t.border) }
 
-            Button { Task { await enviar() } } label: {
-                ZStack {
-                    if enviando { ProgressView().tint(.white) }
-                    else { Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold)) }
-                }
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(puedeEnviar ? C.azulMedio : t.dim, in: .circle)
+            Button { withAnimation(.easeOut(duration: 0.18)) { panel.toggle() } } label: {
+                Image(systemName: panel ? "keyboard" : "face.smiling")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(C.azulMedio)
+                    .frame(width: 34, height: 40)
             }
             .buttonStyle(.plain)
-            .disabled(!puedeEnviar)
+            .accessibilityLabel("Emojis y stickers")
+
+            // Con texto escrito el botón manda; vacío, graba. Es el gesto de
+            // WhatsApp, y evita un botón más en una barra que ya está llena.
+            if puedeEnviar || enviando {
+                Button { Task { await enviar() } } label: {
+                    ZStack {
+                        if enviando { ProgressView().tint(.white) }
+                        else { Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold)) }
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(puedeEnviar ? C.azulMedio : t.dim, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .disabled(!puedeEnviar)
+            } else {
+                Button { Task { await arrancarAudio() } } label: {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(C.azulMedio, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Grabar nota de voz")
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(t.card)
+    }
+
+    /// Los emojis y los stickers del panel, los mismos de `src/lib/data.ts`.
+    ///
+    /// Estos sí son emojis y no interfaz: son contenido que se manda, elegido
+    /// por quien escribe. La regla de no usar emojis es para lo que dibuja la
+    /// app, no para lo que la app le deja decir a la gente.
+    private static let emojisPanel = ["😀", "😅", "😂", "🙂", "😉", "😍", "🤝", "👍",
+                                      "👌", "🙏", "💪", "🔥", "✅", "❌", "⏰", "📦",
+                                      "🚚", "🧾", "💰", "📈", "🍺", "🥤", "💧", "🧊"]
+    private static let stickersPanel = ["🧾", "📦", "🚚", "🫡", "🤙", "🎉", "😎",
+                                        "🙌", "💵", "⏳"]
+
+    /// Los favoritos primero: es para lo que sirve marcarlos.
+    private func ordenados(_ lista: [String]) -> [String] {
+        lista.filter { favoritos.contains($0) } + lista.filter { !favoritos.contains($0) }
+    }
+
+    private var panelEmojis: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                ForEach(["Emojis", "Stickers"], id: \.self) { k in
+                    let on = solapaPanel == k
+                    Button { solapaPanel = k } label: {
+                        Text(k)
+                            .font(Tipo.barlow(.semibold, 11.5))
+                            .foregroundStyle(on ? C.azul : t.ink2)
+                            .padding(.horizontal, 12).frame(height: 28)
+                            .background(on ? Tint.avisoBg : t.card, in: .capsule)
+                            .overlay { Capsule().stroke(on ? C.azulMedio : t.border) }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            ScrollView {
+                let esEmoji = solapaPanel == "Emojis"
+                let lado: CGFloat = esEmoji ? 40 : 58
+                FlujoHorizontal(spacing: 8) {
+                    ForEach(ordenados(esEmoji ? Self.emojisPanel : Self.stickersPanel), id: \.self) { g in
+                        let fav = favoritos.contains(g)
+                        Text(g)
+                            .font(.system(size: esEmoji ? 22 : 30))
+                            .frame(width: lado, height: lado)
+                            .background(fav ? Tint.avisoBg : (esEmoji ? .clear : t.bg),
+                                        in: .rect(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(fav ? C.azulMedio : (esEmoji ? .clear : t.border))
+                            }
+                            .overlay(alignment: .topTrailing) {
+                                if fav {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(C.azulMedio)
+                                        .padding(.top, 2).padding(.trailing, 3)
+                                }
+                            }
+                            .contentShape(.rect)
+                            .onTapGesture { usar(g, esEmoji: esEmoji) }
+                            // Mantener apretado lo marca como favorito. Es el
+                            // gesto que ya se usa para esto en cualquier
+                            // teclado, y no roba el toque corto, que es mandar.
+                            .onLongPressGesture { marcarFavorito(g) }
+                            .accessibilityHint(fav
+                                ? "Mantené apretado para quitar de favoritos"
+                                : "Mantené apretado para marcar como favorito")
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .frame(maxHeight: 148)
+        }
+        .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 4)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    /// Un emoji se escribe en el mensaje; un sticker se manda solo.
+    ///
+    /// Nuestros "stickers" son emojis, no archivos .webp: van como texto, que
+    /// es lo que de verdad son y lo que llega bien a WhatsApp. El endpoint de
+    /// stickers del ERP espera una URL, y para eso haría falta un catálogo de
+    /// stickers que la app no tiene.
+    private func usar(_ g: String, esEmoji: Bool) {
+        if esEmoji { texto += g; return }
+        panel = false
+        Task {
+            let antes = texto
+            texto = g
+            await enviar()
+            // Si el envío falló, `enviar()` deja el texto puesto; ahí no se
+            // pisa lo que la persona venía escribiendo.
+            if texto == g { texto = antes }
+        }
+    }
+
+    private func marcarFavorito(_ g: String) {
+        if let i = favoritos.firstIndex(of: g) { favoritos.remove(at: i) }
+        else { favoritos.append(g) }
+        Ajustes.guardarFavoritosChat(favoritos)
+    }
+
+    private func arrancarAudio() async {
+        do { try await grabador.arrancar() }
+        catch {
+            // Negar el permiso es una respuesta válida, no un error que esconder.
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "Necesitamos permiso para usar el micrófono."
+        }
+    }
+
+    private func enviarAudio() async {
+        // Un toque sin querer no manda un audio vacío.
+        guard let g = grabador.detener() else { return }
+        enviando = true; error = nil
+        defer { enviando = false }
+        do {
+            let datos = try Data(contentsOf: g.url)
+            try await RepoERP.enviarArchivo(chat.id, datos: datos, nombre: g.nombre,
+                                            tipo: "audio/mp4", pie: "")
+            msgs = (try? await RepoERP.mensajes(chat.id)) ?? msgs
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "No se pudo enviar el mensaje."
+        }
+        try? FileManager.default.removeItem(at: g.url)
     }
 
     private var puedeEnviar: Bool {
@@ -357,7 +556,7 @@ struct ChatView: View {
             // son los que puso el servidor y no los que yo supongo.
             msgs = (try? await RepoERP.mensajes(chat.id)) ?? msgs
         } catch {
-            self.error = (error as? LocalizedError)?.errorDescription ?? "No se pudo enviar."
+            self.error = (error as? LocalizedError)?.errorDescription ?? "No se pudo enviar el mensaje."
         }
         enviando = false
     }
@@ -419,7 +618,16 @@ struct ChatView: View {
             error = "Ese mensaje no se puede reaccionar: el ERP no mandó su id de WhatsApp."
             return
         }
-        try? await RepoERP.reaccionar(chat.id, wamid: m.wamid, emoji: emoji)
+        // Sin `try?`: una reacción que no sale se tiene que ver. Con el error
+        // tragado, el emoji no aparecía y no había forma de saber si era que
+        // tardaba o que había fallado.
+        do {
+            try await RepoERP.reaccionar(chat.id, wamid: m.wamid, emoji: emoji)
+            error = nil
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "No se pudo reaccionar."
+        }
         msgs = (try? await RepoERP.mensajes(chat.id)) ?? msgs
     }
 }
