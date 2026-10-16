@@ -7,7 +7,7 @@
  * toda factura emitida desde cualquier otra empresa salía con el RUC ajeno. Lo
  * que estas pruebas aseguran es que lo que no está configurado no se invente.
  */
-import { datosEmisor, lineaEmisor } from "../src/lib/emisor.ts";
+import { datosEmisor, lineaEmisor, tituloComprobante } from "../src/lib/emisor.ts";
 
 const casos = [];
 const t = (nombre, fn) => casos.push([nombre, fn]);
@@ -56,6 +56,20 @@ t("la línea del encabezado dice la verdad cuando no hay RUC", () => {
   if (con !== "RUC 80012345-6 · Asunción") throw new Error("mal armada: " + con);
   const sinCiudad = lineaEmisor(datosEmisor(tenant({ nombre: "X", ruc: "80012345-6" })));
   if (sinCiudad !== "RUC 80012345-6") throw new Error("separador colgado: " + sinCiudad);
+});
+
+t("sin RUC el papel no se llama factura", () => {
+  // El aviso ya decía "esto es un comprobante interno, no una factura legal"
+  // mientras el encabezado decía FACTURA en letras grandes. De las dos, la que
+  // se lee es la grande.
+  const titulo = tituloComprobante(datosEmisor(tenant({ nombre: "Comercial Sur" })));
+  if (/factura/i.test(titulo)) throw new Error("se sigue llamando factura: " + titulo);
+  if (!/comprobante/i.test(titulo)) throw new Error("tiene que decir qué es: " + titulo);
+});
+
+t("con RUC cargado sí es una factura", () => {
+  const e = datosEmisor(tenant({ nombre: "Comercial Sur", ruc: "80012345-6" }));
+  if (tituloComprobante(e) !== "Factura") throw new Error("debería ser una factura: " + tituloComprobante(e));
 });
 
 let malas = 0;

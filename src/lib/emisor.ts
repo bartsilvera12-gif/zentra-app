@@ -45,6 +45,19 @@ export function datosEmisor(tenant: TenantConfig | null, nombreSesion?: string):
   };
 }
 
+/**
+ * Cómo se llama el papel que se está mirando.
+ *
+ * Sin RUC no hay factura: hay un comprobante interno, y eso es justo lo que
+ * dice `falta`. Pero el encabezado seguía diciendo FACTURA en letras grandes,
+ * así que la pantalla se contradecía sola —el aviso amarillo decía "no es una
+ * factura legal" y el papel decía "FACTURA"— y de las dos, la que se lee es la
+ * grande.
+ */
+export function tituloComprobante(e: Emisor): string {
+  return e.falta ? "Comprobante interno" : "Factura";
+}
+
 /** La segunda línea del encabezado, con lo que haya. */
 export function lineaEmisor(e: Emisor): string {
   const partes = [e.ruc ? "RUC " + e.ruc : "Sin RUC cargado", e.ciudad].filter(Boolean);

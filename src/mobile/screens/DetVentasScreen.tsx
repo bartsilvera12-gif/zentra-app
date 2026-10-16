@@ -8,7 +8,8 @@ import { Cargando, Falla } from "../ui/Estado";
 import { detalleVenta, ivaVenta, totalVenta } from "@/lib/calc";
 import { fmtIso, gs, norm, plural } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
-import { datosEmisor, lineaEmisor } from "@/lib/emisor";
+import { motivoBloqueo } from "@/lib/planes";
+import { datosEmisor, lineaEmisor, tituloComprobante } from "@/lib/emisor";
 import { tenantEnUso } from "@/lib/supabase/client";
 import { StatusBar } from "../layout/StatusBar";
 import {
@@ -26,10 +27,52 @@ import {
 const AZUL = MARCA.header;
 const VIOLETA = MARCA.headerSuave;
 
+/**
+ * ¿Estamos adentro del APK?
+ *
+ * Hace falta para la impresión y no se puede averiguar preguntando por
+ * `window.print`: el WebView de Android la define y no imprime nada, así que
+ * la función existe y el papel no sale. Lo único que distingue los dos mundos
+ * es este global que inyecta Capacitor.
+ */
+function esNativo(): boolean {
+  const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return typeof cap?.isNativePlatform === "function" && cap.isNativePlatform();
+}
+
+/**
+ * Qué pasó de verdad, para decirlo tal cual.
+ *
+ * Acá decía "La factura se envió a la impresora térmica vinculada", y no hay
+ * impresora, ni plugin de impresión, ni Bluetooth, ni ESC/POS en el proyecto:
+ * el botón sólo guardaba una palabra en el estado. Es la mentira más cara que
+ * podía decir esta pantalla, porque quien atiende el mostrador entrega la
+ * mercadería convencido de que el ticket salió, y nunca salió nada.
+ *
+ * Lo que sí existe es el diálogo de impresión del sistema, en el navegador, y
+ * compartir texto. Esto es lo que hay, y es lo que se dice. Cuando haya
+ * impresión de verdad, el aviso cambia acá y en ningún otro lado.
+ */
+const AVISOS: Record<string, string> = {
+  imprimir:
+    "Se abrió el diálogo de impresión del sistema: imprime lo que estás viendo en pantalla. Zentra no le manda nada a ninguna impresora por su cuenta.",
+  "sin-impresora":
+    "Desde la app todavía no se puede imprimir: no hay impresora conectada. Abrí Zentra en el navegador de la computadora para usar la impresión del sistema, o pasale el comprobante por WhatsApp.",
+  compartido: "Se abrió el menú de compartir con el comprobante en texto. No se generó ningún PDF: eso todavía no existe.",
+  copiado: "El comprobante se copió en texto, listo para pegar donde quieras. No se generó ningún PDF: eso todavía no existe.",
+  "sin-compartir": "Este teléfono no deja compartir desde la app, así que no se compartió nada. Podés pasarlo por WhatsApp.",
+  whatsapp:
+    "Este cliente no tiene conversación abierta, así que no se envió nada. Abrí su chat en Conversaciones y pegá ahí el comprobante.",
+};
+
 export function DetVentasScreen() {
-  const { s, t, set, pushMsg, abrirChat } = useApp();
+  const { s, t, set, pushMsg, abrirChat, plan } = useApp();
   // Quién factura: del tenant y la sesión, no escrito a mano acá.
   const emisor = datosEmisor(tenantEnUso(), s.sesion?.empresa);
+  // Imprimir el comprobante es lo que el plan vende como "facturación con
+  // auto-impresor". Se pregunta primero que nada para que, cuando el plan no lo
+  // incluya, el motivo hable del plan y no de la impresora que falta.
+  const sinImpresion = motivoBloqueo("facturacion.autoImpresor", plan());
 
   const dvq = norm(s.dvQuery.trim());
   // El historial sale del ERP, ya filtrado por el rango que se eligió.
@@ -59,8 +102,85 @@ export function DetVentasScreen() {
   });
 
   /**
-   * Sharing the invoice over WhatsApp: when the client has an open conversation we
-   * drop the PDF into it and jump there; otherwise we just report it was saved.
+   * El comprobante en texto.
+   *
+   * Es lo único que hoy se puede compartir de verdad. Antes se armaba un
+   * adjunto —`det.numero + ".pdf"`, `"PDF · 96 KB"`— que no correspondía a
+   * ningún archivo: no hay generador de PDF en el proyecto, así que la tarjeta
+   * del chat mostraba un peso inventado y no se podía abrir nada.
+   *
+   * Si falta el RUC va el aviso adentro del texto: el que lo recibe tiene que
+   * poder leer que no es una factura legal, igual que el que lo mira en la app.
+   */
+  const textoComprobante = (): string => {
+    if (!det) return "";
+    return [
+      emisor.nombre + " · " + lineaEmisor(emisor),
+      `${tituloComprobante(emisor)} ${det.numero} · ${det.fecha}`,
+      `Cliente: ${det.cliente} · ${det.doc}`,
+      ...det.lineas.map((l) => `${l.qty} × ${l.nombre} · ${gs(l.qty * l.precio)}`),
+      `IVA incluido: ${gs(ivaVenta(det))}`,
+      `Total: ${gs(totalVenta(det))}`,
+      `${det.pago} · ${det.estado}`,
+      emisor.falta ?? "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  /** La lista del rango en texto, para el botón de compartir de abajo. */
+  const textoLista = (): string =>
+    [
+      `${emisor.nombre} · ventas del ${fmtIso(s.rDesde)} al ${fmtIso(s.rHasta)}`,
+      ...filtradas.map((v) => `${v.numero} · ${v.fecha} · ${v.cliente} · ${gs(totalVenta(v))} · ${v.estado}`),
+      `Total: ${gs(filtradas.reduce((a, v) => a + totalVenta(v), 0))}`,
+    ].join("\n");
+
+  /**
+   * Imprimir.
+   *
+   * El plan primero, el sistema después: adentro del APK no hay por dónde
+   * imprimir, y decirlo es más útil que abrir un diálogo que no existe.
+   */
+  const imprimir = () => {
+    if (sinImpresion) return set({ avisoPlan: sinImpresion });
+    if (esNativo()) return set({ dvAccion: "sin-impresora" });
+    set({ dvAccion: "imprimir" });
+    window.print();
+  };
+
+  /**
+   * Compartir en texto: el menú del sistema si está, y si no el portapapeles.
+   *
+   * Cada camino deja su propio aviso porque no son lo mismo para quien está
+   * atendiendo: "se abrió el menú" y "quedó copiado" piden cosas distintas
+   * después. Cancelar el menú no deja aviso: no pasó nada que contar.
+   */
+  const compartir = async (texto: string) => {
+    const nav = navigator as Navigator & { share?: (d: { title?: string; text: string }) => Promise<void> };
+    if (typeof nav.share === "function") {
+      try {
+        await nav.share({ text: texto });
+        return set({ dvAccion: "compartido" });
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(texto);
+      set({ dvAccion: "copiado" });
+    } catch {
+      set({ dvAccion: "sin-compartir" });
+    }
+  };
+
+  /**
+   * Pasar el comprobante por WhatsApp.
+   *
+   * Cuando el cliente tiene conversación abierta, el texto queda en el hilo y
+   * se salta ahí. Cuando no, antes decía que "se guardó el PDF": no se guardaba
+   * nada en ninguna parte, y la persona se iba a buscar un archivo que no
+   * existía. Ahora dice que no se envió.
    */
   const enviarWhatsapp = () => {
     if (!det) return;
@@ -70,10 +190,11 @@ export function DetVentasScreen() {
     if (chat) {
       pushMsg(chat.id, {
         de: "yo",
-        hora: "11:42",
+        // La hora del reloj, no una fija: un mensaje que sale a las 19:30 y
+        // dice 11:42 es un dato falso más.
+        hora: new Date().toTimeString().slice(0, 5),
         tick: "✓",
-        texto: "Te paso la factura de tu última compra.",
-        archivo: { tag: "PDF", nombre: det.numero + ".pdf", peso: "PDF · 96 KB" },
+        texto: textoComprobante(),
       });
       abrirChat(chat.id);
       return;
@@ -81,12 +202,7 @@ export function DetVentasScreen() {
     set({ dvAccion: "whatsapp" });
   };
 
-  const avisoTexto =
-    s.dvAccion === "imprimir"
-      ? "La factura se envió a la impresora térmica vinculada."
-      : s.dvAccion === "compartir"
-        ? "PDF generado: ya podés compartirlo por el medio que quieras."
-        : "Este cliente no tiene conversación abierta: se guardó el PDF para compartir.";
+  const avisoTexto = AVISOS[s.dvAccion] ?? "";
 
   return (
     <div
@@ -272,21 +388,23 @@ export function DetVentasScreen() {
             style={{
               padding: "11px 14px 13px",
               display: "flex",
+              flexDirection: "column",
               gap: 10,
               background: t.card,
               borderTop: `1px solid ${t.border}`,
             }}
           >
-            <GhostButton
-              label={s.dvPdf ? "✓ PDF generado" : "Exportar PDF"}
-              flex={1}
-              onClick={() => set({ dvPdf: !s.dvPdf })}
-            />
-            <GhostButton
-              label={s.dvShare ? "✓ Listo para enviar" : "Compartir lista"}
-              flex={1}
-              onClick={() => set({ dvShare: !s.dvShare })}
-            />
+            {/* El aviso va junto a los botones: es el que dice qué pasó, y sin
+                él los botones vuelven a afirmar por su cuenta. */}
+            {avisoTexto && (
+              <Notice bg="#E6F1F5" ink="#0A4A5C" border="#A9CEDB">
+                {avisoTexto}
+              </Notice>
+            )}
+            <div style={{ display: "flex", gap: 10 }}>
+              <GhostButton label="Imprimir la lista" flex={1} onClick={imprimir} />
+              <GhostButton label="Compartir en texto" flex={1} onClick={() => compartir(textoLista())} />
+            </div>
           </div>
         </>
       )}
@@ -362,7 +480,9 @@ export function DetVentasScreen() {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                   <span style={{ font: "600 10px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".14em", color: "#5b6676" }}>
-                    FACTURA
+                    {/* "FACTURA" en letras grandes sobre un comprobante sin
+                        RUC contradecía al aviso de arriba. */}
+                    {tituloComprobante(emisor).toUpperCase()}
                   </span>
                   <span style={{ font: "700 13px/1.2 var(--font-barlow),Barlow,sans-serif", color: AZUL }}>{det.numero}</span>
                   <span style={{ font: "400 10.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#5b6676" }}>{det.fecha}</span>
@@ -421,20 +541,17 @@ export function DetVentasScreen() {
               <KeyValue k="Documento" v={det.doc} />
             </Card>
 
-            {s.dvAccion && (
+            {avisoTexto && (
               <Notice bg="#E6F1F5" ink="#0A4A5C" border="#A9CEDB">
                 {avisoTexto}
               </Notice>
             )}
 
-            <GhostButton
-              label={s.dvAccion === "imprimir" ? "✓ Enviado a imprimir" : "Reimprimir"}
-              onClick={() => set({ dvAccion: "imprimir" })}
-            />
-            <GhostButton
-              label={s.dvAccion === "compartir" ? "✓ PDF listo" : "Compartir PDF"}
-              onClick={() => set({ dvAccion: "compartir" })}
-            />
+            {/* Los botones ya no dicen "✓ Enviado a imprimir" ni "✓ PDF listo":
+                ninguna de las dos cosas pasaba. Lo que pasó lo cuenta el aviso,
+                que es el único que sabe cómo salió. */}
+            <GhostButton label="Imprimir" onClick={imprimir} />
+            <GhostButton label="Compartir en texto" onClick={() => compartir(textoComprobante())} />
             <button
               onClick={enviarWhatsapp}
               style={{
@@ -448,7 +565,10 @@ export function DetVentasScreen() {
                 flex: "0 0 auto",
               }}
             >
-              {s.dvAccion === "whatsapp" ? "✓ Abierto en conversación" : "Enviar por WhatsApp"}
+              {/* Decía "✓ Abierto en conversación" justo cuando NO había
+                  conversación que abrir: `dvAccion` queda en "whatsapp"
+                  únicamente en el caso en que no se pudo mandar nada. */}
+              Pasar por WhatsApp
             </button>
           </ScrollBody>
         </>
