@@ -57,7 +57,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...publico...
 # el segundo proyecto, detrás del código JM
 NEXT_PUBLIC_DIRECTORIO_JSON={"JM":{"nombre":"Distribuidora JM","supabaseUrl":"https://JM.supabase.co","anonKey":"eyJ...jm..."}}
 
-NEXT_PUBLIC_SOPORTE_WHATSAPP=595981000450
+NEXT_PUBLIC_SOPORTE_WHATSAPP=595973989068
 ```
 
 Todo en una sola línea el JSON, sin saltos. Si queda mal escrito, la app no

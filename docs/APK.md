@@ -117,7 +117,7 @@ Copiá `.env.example` a `.env.local` y completá:
 NEXT_PUBLIC_BACKEND=supabase
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-NEXT_PUBLIC_SOPORTE_WHATSAPP=595981000450
+NEXT_PUBLIC_SOPORTE_WHATSAPP=595973989068
 ```
 
 > **Éste es el error que se comete siempre.** Next mete estas variables **adentro**

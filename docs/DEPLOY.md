@@ -30,7 +30,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 Opcionales:
 
 ```
-NEXT_PUBLIC_SOPORTE_WHATSAPP=595981000450  # enlace de soporte en el login
+NEXT_PUBLIC_SOPORTE_WHATSAPP=595973989068  # enlace de soporte en el login
 
 # API del ERP. Se escribe el host nomas: la app le agrega el /api donde el ERP
 # monta sus rutas. Escrito con /api al final tampoco se rompe, no se duplica.
