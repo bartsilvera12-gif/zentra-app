@@ -73,9 +73,36 @@ struct RaizView: View {
         }
         // La barra se encoge al bajar y vuelve al subir: da la pantalla entera
         // a la lista sin que el usuario tenga que esconder nada a mano.
-        .tabBarMinimizeBehavior(.onScrollDown)
+        //
+        // Es de iOS 26. Abajo de eso la barra queda fija, que es como se
+        // comportó iOS siempre y como se ve el APK de Android: se pierde el
+        // gesto, no la navegación.
+        //
+        // Preferir esto antes que pedir iOS 26 para toda la app: el menú que
+        // se encoge es lindo, pero no vale dejar afuera a un vendedor con un
+        // teléfono de hace cuatro años.
+        .modifier(BarraQueSeEncoge())
         // El activo de la web es `#209EBB`, el mismo de `BottomNav.tsx`.
         .tint(C.cian)
+    }
+}
+
+/// La barra de abajo que se encoge al bajar, donde el sistema la tenga.
+///
+/// `tabBarMinimizeBehavior` llegó en iOS 26. Se aplica sólo ahí; en iOS 18 a
+/// 25 la barra queda fija y todo lo demás funciona igual.
+///
+/// Va en un modificador aparte y no en un `if` adentro de la vista porque un
+/// `if` cambiaría el tipo de la vista según la versión, y SwiftUI recrearía el
+/// `TabView` entero —perdiendo la pestaña elegida y el scroll— cada vez que
+/// reevalúe.
+private struct BarraQueSeEncoge: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
     }
 }
 
