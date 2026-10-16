@@ -200,3 +200,18 @@ export async function entrarConClave(email, password) {
   const u = data?.user;
   return u?.id ? { id: u.id, email: u.email || email } : null;
 }
+
+/**
+ * El ultimo cobro que ya tiene hash de PagoPar.
+ *
+ * Lo usa `consulta.js` para preguntar por un pedido sin tener que copiar el
+ * hash a mano: el que interesa consultar es casi siempre el ultimo.
+ */
+export async function ultimoCobroConHash() {
+  return uno(
+    await rest(
+      "/cobros?hash_pedido=not.is.null&select=id,plan,monto,estado,hash_pedido,creado_en" +
+        "&order=creado_en.desc&limit=1",
+    ),
+  );
+}
