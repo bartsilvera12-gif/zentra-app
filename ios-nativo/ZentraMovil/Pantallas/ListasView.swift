@@ -267,7 +267,12 @@ struct InventarioView: View {
                 } label: { Image(systemName: "plus") }
             }
         }
-        .sheet(isPresented: $nuevoProd) { NuevoProductoView() }
+        .sheet(isPresented: $nuevoProd) {
+            // Con el callback: sin esto el producto se guardaba —el servidor
+            // contestaba 201— y la lista seguía diciendo "Todavía no hay
+            // productos cargados.". Desde afuera se veía como que no guardó.
+            NuevoProductoView { p in filas.insert(p, at: 0) }
+        }
         .sheet(isPresented: $ajuste) { ElegirProductoAjusteView(productos: filas) }
         .avisoPlan($aviso)
         .task { await cargar() }

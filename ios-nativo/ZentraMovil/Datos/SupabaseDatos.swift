@@ -211,22 +211,25 @@ enum SupabaseDatos {
         let crudo = try await pedir("GET", "/productos", query: [
             "select": "*", "activo": "is.true", "order": "nombre.asc",
         ])
-        return filas(crudo).map { p in
-            InvProducto(
-                id: texto(p["id"]),
-                nombre: (p["nombre"] as? String) ?? "(sin nombre)",
-                sku: (p["sku"] as? String) ?? "",
-                barras: (p["barras"] as? String) ?? "",
-                unidad: (p["unidad"] as? String) ?? "UNIDAD",
-                costo: entero(p["costo"]),
-                precio: entero(p["precio"]),
-                precioMayorista: nil,
-                iva: Iva.desde(p["iva"]),
-                // El stock no se redondea: hay productos por kilo.
-                stock: numero(p["stock"]),
-                minimo: numero(p["minimo"])
-            )
-        }
+        return filas(crudo).map(aProductoLocal)
+    }
+
+    /// Una fila de `zentra.productos` como la usa la app.
+    private static func aProductoLocal(_ p: [String: Any]) -> InvProducto {
+        InvProducto(
+            id: texto(p["id"]),
+            nombre: (p["nombre"] as? String) ?? "(sin nombre)",
+            sku: (p["sku"] as? String) ?? "",
+            barras: (p["barras"] as? String) ?? "",
+            unidad: (p["unidad"] as? String) ?? "UNIDAD",
+            costo: entero(p["costo"]),
+            precio: entero(p["precio"]),
+            precioMayorista: nil,
+            iva: Iva.desde(p["iva"]),
+            // El stock no se redondea: hay productos por kilo.
+            stock: numero(p["stock"]),
+            minimo: numero(p["minimo"])
+        )
     }
 
     static func proveedores() async throws -> [Proveedor] {
@@ -305,6 +308,105 @@ enum SupabaseDatos {
     }
 
     // MARK: - Escrituras
+
+    /// Alta de producto en nuestras tablas.
+    ///
+    /// Faltaba: `RepoERP.crearProducto` iba siempre al ERP, incluso en la
+    /// instalación pública, que no tiene ninguno. El alta contestaba 401 y el
+    /// producto no se guardaba en ningún lado.
+    ///
+    /// El stock inicial **no va acá**: lo mantiene el trigger de movimientos,
+    /// no la app. Escribirlo a mano dejaría la fila diciendo una cosa y el
+    /// historial de movimientos otra, y el que manda es el historial.
+    static func crearProducto(
+        nombre: String, sku: String, barras: String, unidad: String,
+        costo: Int, precio: Int, stockInicial: Double, minimo: Double,
+        categoria: String, deposito: String
+    ) async throws -> InvProducto {
+        let empresa = try await empresaActual()
+        var fila: [String: Any] = [
+            "empresa_id": empresa, "nombre": nombre,
+            // El SKU es obligatorio y único por empresa. Sin uno escrito se
+            // arma del nombre: mejor un código feo que un alta rechazada.
+            "sku": sku.isEmpty ? skuDesde(nombre) : sku,
+            "unidad": unidad.isEmpty ? "UNIDAD" : unidad,
+            "costo": costo, "precio": precio, "minimo": minimo,
+        ]
+        if !barras.isEmpty { fila["barras"] = barras }
+        if !categoria.isEmpty { fila["categoria"] = categoria }
+        if !deposito.isEmpty { fila["deposito"] = deposito }
+
+        let crudo = try await pedir("POST", "/productos", cuerpo: [fila],
+                                    preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el producto creado.",
+                                ruta: "/productos")
+        }
+        let creado = aProductoLocal(o)
+
+        // El inventario inicial entra como movimiento, que es lo que mueve el
+        // stock. Si falla, el producto ya existe: se avisa y se puede ajustar.
+        if stockInicial > 0 {
+            _ = try? await pedir("POST", "/movimientos", cuerpo: [[
+                "empresa_id": empresa, "producto_id": creado.id,
+                "tipo": "ENTRADA", "cantidad": stockInicial,
+                "motivo": "Inventario inicial",
+            ]])
+            return try await producto(creado.id) ?? creado
+        }
+        return creado
+    }
+
+    /// Alta de proveedor en nuestras tablas.
+    ///
+    /// Acá `entrega_dias` sí se guarda: la tabla tiene la columna. En el ERP no
+    /// existe, y por eso en Android el campo se escribe y se tira.
+    static func crearProveedor(
+        nombre: String, doc: String, rubro: String, ciudad: String,
+        contacto: String, tel: String, email: String,
+        entregaDias: Int, creditoPlazoDias: Int?
+    ) async throws -> Proveedor {
+        let empresa = try await empresaActual()
+        var fila: [String: Any] = [
+            "empresa_id": empresa, "nombre": nombre,
+            "entrega_dias": max(0, entregaDias),
+        ]
+        for (k, v) in ["doc": doc, "rubro": rubro, "ciudad": ciudad,
+                       "contacto": contacto, "tel": tel, "email": email]
+        where !v.isEmpty { fila[k] = v }
+        if let d = creditoPlazoDias, d > 0 { fila["credito_plazo_dias"] = d }
+
+        let crudo = try await pedir("POST", "/proveedores", cuerpo: [fila],
+                                    preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el proveedor creado.",
+                                ruta: "/proveedores")
+        }
+        let plazo = o["credito_plazo_dias"] as? Int
+        return Proveedor(
+            id: texto(o["id"]), nombre: (o["nombre"] as? String) ?? "",
+            doc: (o["doc"] as? String) ?? "",
+            condicion: plazo.map { "Crédito \($0) días" } ?? "Contado",
+            rubro: (o["rubro"] as? String) ?? "", ciudad: (o["ciudad"] as? String) ?? "",
+            contacto: (o["contacto"] as? String) ?? "", tel: (o["tel"] as? String) ?? "",
+            email: (o["email"] as? String) ?? "",
+            activo: ((o["estado"] as? String) ?? "Activo") != "Inactivo"
+        )
+    }
+
+    /// Un producto por id, para releerlo después de moverle el stock.
+    static func producto(_ id: String) async throws -> InvProducto? {
+        let crudo = try await pedir("GET", "/productos",
+                                    query: ["id": "eq.\(id)", "limit": "1"])
+        return filas(crudo).first.map(aProductoLocal)
+    }
+
+    /// Un SKU a partir del nombre, para cuando no lo escribieron.
+    private static func skuDesde(_ nombre: String) -> String {
+        let letras = nombre.uppercased().filter { $0.isLetter || $0.isNumber }
+        let raiz = String(letras.prefix(6))
+        return (raiz.isEmpty ? "PROD" : raiz) + "-" + String(Int(Date().timeIntervalSince1970) % 100000)
+    }
 
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
         let crudo = try await pedir("POST", "/clientes", cuerpo: [campos],

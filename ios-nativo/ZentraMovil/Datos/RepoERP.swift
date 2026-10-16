@@ -545,6 +545,15 @@ enum RepoERP {
         costo: Int, precio: Int, stockInicial: Double, minimo: Double,
         categoriaId: String?, ubicacionId: String?
     ) async throws -> InvProducto {
+        // Sin ERP el alta va a nuestras tablas, igual que la lectura. Faltaba
+        // esta línea: el alta salía siempre al ERP, en la instalación pública
+        // contestaba 401 y el producto no se guardaba en ninguna parte.
+        if await !conErp() {
+            return try await SupabaseDatos.crearProducto(
+                nombre: nombre, sku: sku, barras: barras, unidad: unidad,
+                costo: costo, precio: precio, stockInicial: stockInicial,
+                minimo: minimo, categoria: categoriaId ?? "", deposito: ubicacionId ?? "")
+        }
         var cuerpo: [String: Any] = [
             "nombre": nombre, "sku": sku,
             "codigo_barras": onull(barras),
@@ -567,8 +576,14 @@ enum RepoERP {
     static func crearProveedor(
         nombre: String, ruc: String, tel: String, email: String,
         direccion: String, contacto: String, credito: Bool, plazoDias: Int,
-        categoriaIds: [String]
+        categoriaIds: [String], entregaDias: Int = 1
     ) async throws -> Proveedor {
+        if await !conErp() {
+            return try await SupabaseDatos.crearProveedor(
+                nombre: nombre, doc: ruc, rubro: categoriaIds.joined(separator: ", "),
+                ciudad: direccion, contacto: contacto, tel: tel, email: email,
+                entregaDias: entregaDias, creditoPlazoDias: credito ? plazoDias : nil)
+        }
         let cuerpo: [String: Any] = [
             "nombre": nombre,
             "ruc": onull(ruc),
