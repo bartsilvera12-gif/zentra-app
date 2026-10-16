@@ -117,8 +117,15 @@ export async function cobroPendiente(empresaId, plan, monto, desdeIso) {
   );
 }
 
-/** Crea el cobro ANTES de hablar con PagoPar. Devuelve el id. */
-export async function crearCobro({ empresaId, plan, monto, referencia }) {
+/**
+ * Crea el cobro ANTES de hablar con la pasarela. Devuelve el id.
+ *
+ * `hash` llega vacío en el camino de PagoPar —el hash lo inventa PagoPar y se
+ * guarda después, con `guardarHash`— y llega puesto en el de Play, donde el
+ * identificador de la compra lo trae la app: el `purchaseToken` es a la vez
+ * nuestra referencia y el hash por el que después pregunta `registrarPago`.
+ */
+export async function crearCobro({ empresaId, plan, monto, referencia, pasarela = "pagopar", hash = null }) {
   const fila = uno(
     await rest("/cobros", {
       method: "POST",
@@ -127,13 +134,33 @@ export async function crearCobro({ empresaId, plan, monto, referencia }) {
         empresa_id: empresaId,
         plan,
         monto,
-        pasarela: "pagopar",
+        pasarela,
         referencia,
+        ...(hash ? { hash_pedido: hash } : {}),
       }),
     }),
   );
   if (!fila?.id) throw new Error("no se obtuvo el id del cobro");
   return fila.id;
+}
+
+/**
+ * El cobro de una referencia, si ya existe.
+ *
+ * Es lo que hace idempotente la verificación de Play: la app reintenta con el
+ * mismo `purchaseToken` —después de un corte de red, al reinstalar, al
+ * restaurar compras— y lo que no puede pasar es que se arme un cobro nuevo por
+ * cada intento. La clave única `(pasarela, referencia)` de la base lo impide
+ * igual; esto es para no provocar el choque a propósito en el caso normal.
+ */
+export async function cobroPorReferencia(pasarela, referencia) {
+  return uno(
+    await rest(
+      `/cobros?pasarela=eq.${encodeURIComponent(pasarela)}` +
+        `&referencia=eq.${encodeURIComponent(referencia)}` +
+        `&select=id,empresa_id,plan,monto,estado,hash_pedido&limit=1`,
+    ),
+  );
 }
 
 /** Guarda el hash que devolvió PagoPar: es por el que después pregunta el aviso. */
@@ -151,11 +178,16 @@ export async function guardarHash(cobroId, hash) {
  * Todo adentro de la función de Postgres, en una transacción y con el cobro
  * bloqueado: dos avisos simultáneos del mismo pago no pueden empujar el
  * vencimiento dos veces. Devuelve `pagado`, `repetido` o `desconocido`.
+ *
+ * La misma función sirve para las dos pasarelas: lo único que cambia es el
+ * nombre. Que Play y PagoPar activen por el mismo camino es a propósito —dos
+ * funciones que empujan la misma fecha se desencuentran el día que una se
+ * arregla y la otra no—.
  */
-export async function registrarPago(hash, monto) {
+export async function registrarPago(hash, monto, pasarela = "pagopar") {
   const r = await rest("/rpc/registrar_pago_pasarela", {
     method: "POST",
-    body: JSON.stringify({ p_pasarela: "pagopar", p_hash: hash, p_monto: monto }),
+    body: JSON.stringify({ p_pasarela: pasarela, p_hash: hash, p_monto: monto }),
   });
   return uno(r);
 }

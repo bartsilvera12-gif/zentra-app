@@ -22,14 +22,21 @@ desincroniza de nada.
 | `zentra.cobros` | La intención: qué empresa va a pagar qué plan |
 | `zentra.pagos` | El libro de lo que entró de verdad |
 | `zentra.registrar_pago_pasarela()` | Registra el pago y empuja la fecha, todo junto |
-| `server/` | El server de la VPS: crea el pedido y recibe el aviso |
+| `server/` | El server de la VPS: crea el pedido, recibe el aviso y verifica las compras de Play |
+
+Hay **dos cajas y una sola fecha**: en la web cobra Pagopar y en Android cobra
+Google. Las dos terminan en `registrar_pago_pasarela`, que es lo único que
+mueve `empresas.vence`, y se distinguen por la columna `pasarela`
+(`'pagopar'` / `'play'`). Que activen por el mismo camino es a propósito: dos
+funciones que empujan la misma fecha se desencuentran el día que se arregla una
+y no la otra, y ahí el acceso de un cliente pasa a depender de por dónde pagó.
 
 `cobros` existe por una razón concreta: el aviso de pago trae el `hash_pedido`
 de Pagopar y nada más. **La relación entre ese hash y la empresa hay que
 guardarla antes de mandar a la persona a pagar**, o cuando entre la plata no se
 va a saber de quién es.
 
-## El recorrido de un pago
+## El recorrido de un pago por la web (Pagopar)
 
 1. Se crea el cobro en `zentra.cobros` con la empresa, el plan y el monto.
 2. Se crea el pedido en Pagopar (`iniciar-transaccion`), que devuelve un hash.
@@ -202,6 +209,228 @@ Lo que hay que tener claro:
 
 Para apagarlo: borrar la línea del `.env` y reiniciar.
 
+## Cobrar en Android con Google Play
+
+Adentro de la app Android no se puede cobrar por otro lado: la política de
+pagos de Google Play obliga a usar su facturación para vender una suscripción
+digital, y la apertura a cobros externos de 2026 llega a Estados Unidos, el
+Reino Unido y el EEE — Paraguay no está. Así que en Android cobra Google y en
+la web sigue cobrando Pagopar, con el mismo precio y el mismo plan.
+
+Google se queda con su comisión y nos avisa de la compra. Lo que llega a la app
+es un `purchaseToken`, y con eso el server le pregunta a Google si la compra es
+de verdad.
+
+### El recorrido de una compra
+
+1. La persona aprieta "Suscribirme" en la app y paga en la caja de Google.
+2. Play le devuelve a la app un `productId` y un `purchaseToken`.
+3. La app llama a `POST /play/verificar` con su sesión de Supabase.
+4. El server le pregunta a Google por ese token
+   (`purchases.subscriptionsv2.get`).
+5. Si está activa, **la reconoce** (`acknowledge`).
+6. Crea el cobro en `zentra.cobros` con `pasarela = 'play'` y registra el pago
+   con `registrar_pago_pasarela`, que empuja `vence`.
+7. La app, al entrar, lee el `vence` nuevo. Igual que con Pagopar.
+
+```
+POST /play/verificar
+Authorization: Bearer <access_token de Supabase>
+{ "productId": "zentra_max_mensual", "purchaseToken": "<lo que devolvió Play>" }
+
+→ { "ok": true, "plan": "max", "vence": "2026-11-15" }
+```
+
+| Producto en Play Console | Plan |
+|---|---|
+| `zentra_emprendedor_mensual` | `emprendedor` |
+| `zentra_max_mensual` | `max` |
+
+Un `productId` que no esté en esa tabla se rechaza. **No hay plan por
+defecto**: caer a uno sería activar Max porque alguien escribió mal un
+identificador.
+
+### Las reglas, que son las mismas de siempre
+
+- **Nunca se le cree al cliente que la compra existe.** El `purchaseToken` sale
+  de un APK, y un APK se descompila y se parchea: es exactamente igual de
+  falsificable que un monto que manda el navegador. Lo que vale no es el token
+  sino lo que Google contesta cuando le preguntamos por él.
+- **El monto sale de `zentra.planes`.** Google cobra lo suyo en el teléfono y
+  nosotros no vemos ese número; lo que se anota en el libro es lo que vale el
+  plan. Mandar un monto en el cuerpo del pedido no cambia nada.
+- **La empresa sale de la sesión, no del cuerpo.** Si no, con una compra propia
+  se le activaría el plan a cualquiera.
+- **El comprobante tiene que ser del plan que se pide.** El `productId` de la
+  compra tiene que coincidir con el pedido: sin eso, un mes de Emprendedor
+  pagado alcanza para pedir que se active Max.
+- **Reconocer la compra no es opcional.** Una compra que no se reconoce dentro
+  de los **tres días** Google se la reembolsa sola al cliente, y la plata se
+  pierde sin que nadie se entere, porque del lado nuestro todo salió bien. Por
+  eso el `acknowledge` va **antes** de registrar el pago: si después falla la
+  base, la app reintenta y la segunda vez Google ya la da por reconocida. Al
+  revés —activar primero y que falle el reconocimiento— la plata se va y el
+  plan queda activo.
+- **Mandar dos veces el mismo token no cobra ni activa dos veces.** El
+  `purchaseToken` es la referencia y el hash a la vez, y la clave única
+  `(pasarela, referencia)` de `zentra.pagos` es la que lo impide — a nivel de
+  base y no de código. La segunda vez contesta `{ ok: true, repetido: true }`
+  con la misma fecha. Importa porque la app reintenta de verdad: después de un
+  corte de red, al reinstalar, al restaurar compras.
+
+Qué estados de Google activan el plan, y por qué:
+
+| Estado | ¿Activa? | Por qué |
+|---|---|---|
+| `ACTIVE` | Sí | Pagó y está corriendo |
+| `CANCELED` | Sí | Apagó la renovación automática; el mes que pagó lo tiene |
+| `IN_GRACE_PERIOD` | Sí | Falló el cobro de la renovación y Google sigue intentando: pide que conserve el acceso |
+| `PENDING` | No | Todavía no pagó (así llega un pago en efectivo sin acreditar) |
+| `ON_HOLD`, `PAUSED`, `EXPIRED` | No | No hay período pago corriendo |
+
+Una compra de un probador autorizado (`testPurchase`) se activa igual —probar
+tiene que recorrer lo mismo que recorre un cliente— pero queda gritada en el
+log como `[play] compra de prueba`, igual que el cobro de prueba de Pagopar:
+para que al revisar la facturación no haya que adivinar por qué entró un Max
+gratis.
+
+### Crear la cuenta de servicio
+
+Es la parte que más pasos tiene y la que no se puede adivinar. Son dos consolas
+distintas y hay que pasar por las dos.
+
+**1. En Google Cloud Console**, en el proyecto de la app (el mismo del
+`google-services.json` sirve):
+
+1. **APIs y servicios → Biblioteca**: habilitar **Google Play Android Developer
+   API**. Sin esto, todo lo demás contesta 403 y el mensaje no dice que falta
+   habilitarla.
+2. **IAM y administración → Cuentas de servicio → Crear**. Un nombre que se
+   entienda dentro de un año: `zentra-play-cobros`. **No** hace falta darle
+   ningún rol de Cloud: los permisos que importan se dan en Play Console.
+3. En esa cuenta, **Claves → Agregar clave → Crear nueva → JSON**. Se descarga
+   una sola vez y no se puede volver a bajar.
+
+**El JSON no va al repositorio, ni a la app, ni a un chat.** De adentro se usan
+dos campos: `client_email` y `private_key`.
+
+**2. En Google Play Console**, con la cuenta de desarrollador:
+
+1. **Usuarios y permisos → Invitar nuevo usuario**, con el `client_email` de la
+   cuenta de servicio (termina en `.iam.gserviceaccount.com`).
+2. Darle acceso **a la app `py.com.zentra.movil`** y nada más. Los permisos que
+   necesita son dos:
+   - **Ver información financiera, pedidos y respuestas de encuestas**
+   - **Administrar pedidos y suscripciones**
+
+   Alcanza y sobra para `subscriptionsv2.get` y `acknowledge`. No hace falta
+   permiso de publicar ni de administrar la cuenta: una credencial que vive en
+   una VPS no tiene por qué poder publicar una versión.
+3. El permiso puede tardar **hasta 24 horas** en empezar a andar. Mientras no
+   anda, la API contesta 401 como si la clave estuviera mal, y es el error que
+   más tiempo hace perder de todo esto.
+
+**3. En el `.env` del server:**
+
+```
+PLAY_SERVICE_ACCOUNT_EMAIL=zentra-play-cobros@proyecto.iam.gserviceaccount.com
+PLAY_SERVICE_ACCOUNT_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
+PLAY_PACKAGE_NAME=py.com.zentra.movil
+```
+
+El PEM tiene saltos de línea y un `.env` no, así que se pega con los saltos
+escritos como `\n` (entre comillas) o el PEM entero en base64: las dos formas
+se aceptan, porque las dos aparecen y la alternativa es un despliegue que falla
+con "no es una clave" sin que nadie sospeche que el problema es un `\n`.
+
+Para ver que quedó:
+
+```bash
+curl https://cobros.neura.com.py/play/health
+```
+
+Devuelve el paquete, la cuenta, el largo de la clave y los productos que
+acepta, sin mostrar la clave. Si `ok` es `false`, dice qué falta.
+
+**Si falta algo de esa configuración, `/play/verificar` contesta error y no
+activa nada.** Un camino de pago que "funciona" sin poder verificar es peor que
+uno apagado: activaría planes contra tokens que nadie miró.
+
+### Los productos en Play Console
+
+Los dos productos de suscripción se crean en **Monetizar → Suscripciones**, con
+los ids de la tabla de arriba. El id **no se puede cambiar** después de
+publicado, así que conviene escribirlo dos veces antes de guardar.
+
+El precio en Play se carga aparte del de `zentra.planes` y **los dos hay que
+mantenerlos a mano**. Es la única duplicación del circuito y no se puede evitar:
+el precio que cobra Google lo decide Google Play, y el que se anota en el libro
+sale de la base. Si se cambia uno, cambiar el otro el mismo día.
+
+### Probarlo
+
+Sin pagar no hay forma de probar una compra de verdad: hace falta Play Console,
+un probador autorizado (**Configuración → Pruebas de licencia**) y un APK
+firmado subido a un canal de prueba. Por eso el circuito entero está cubierto
+con un Google de mentira:
+
+```bash
+cd server && npm run test:play
+```
+
+Levanta un Google y un Supabase locales —con una clave RSA generada en el
+momento, nunca una de verdad— y prueba lo que, cuando está mal, se nota meses
+después y en la plata: un token falsificado que activa un plan, una compra que
+nunca se reconoce, un comprobante de Emprendedor que se lleva un Max, el mismo
+token mandado dos veces.
+
+## Lo que todavía NO está hecho: las notificaciones de Google
+
+**El plan se activa al comprar y nada más.** Hoy el server se entera de una
+compra porque la app se lo cuenta, y de nada más. Eso deja afuera todo lo que
+pasa después, que en una suscripción es casi todo:
+
+- **La renovación mensual.** Google cobra el mes 2 sin que nadie abra la app. Si
+  la persona no entra, el server no se entera y `vence` no se empuja: cae a Free
+  habiendo pagado. Hoy se tapa solo si la app verifica la compra cada vez que
+  arranca —la verificación es idempotente, así que puede—, pero eso es un
+  parche: depende de que alguien abra la app.
+- **La cancelación y el no pago.** Si deja de pagar, nadie avisa. En este caso
+  el modelo juega a favor: `vence` llega y la empresa cae a Free sola, sin
+  necesidad de que nos avisen. Es la razón por la que el circuito se puede
+  publicar así.
+- **El reembolso.** Si Google le devuelve la plata, el mes queda activo igual.
+  Lo mismo que pasa con una reversión de Pagopar, y por ahora con la misma
+  respuesta: se resuelve a mano.
+
+Lo que falta es **Real-time developer notifications**: Google publica en un
+tópico de Pub/Sub cada cambio de estado de cada suscripción —renovó, canceló,
+entró en gracia, se reembolsó— y el server se suscribe con un webhook. Es el
+equivalente del `POST /pagopar/webhook` que ya existe, del otro lado.
+
+Lo que hay que decidir antes de escribirlo, y es la razón de que no esté:
+
+1. **Cómo llega.** Pub/Sub puede empujar a un HTTPS (un endpoint más en este
+   mismo server, lo más parecido a lo que ya hay) o quedarse esperando que
+   alguien lo lea. Push es más simple y obliga a verificar el JWT con el que
+   Google firma cada entrega, igual que hoy se verifica la firma de Pagopar.
+2. **De quién es cada notificación.** El aviso trae el `purchaseToken` y nada
+   más, igual que el aviso de Pagopar trae el `hash_pedido`. Por eso el cobro se
+   guarda con el token como referencia **antes** de activar: cuando llegue el
+   aviso de la renovación, ese es el único hilo que lleva a la empresa. Esa
+   parte ya está lista.
+3. **Qué hace una renovación.** Registrar un pago nuevo con la referencia de la
+   renovación —no con la de la compra original, o la clave única lo toma como
+   repetido y no empuja nada— y empujar `vence` un mes.
+4. **Qué hace una cancelación.** Probablemente nada, por la misma razón que hoy
+   una reversión de Pagopar no quita el mes: sacarle el acceso a alguien de
+   golpe, desde un webhook, es una decisión demasiado grande para
+   automatizarla. Que la fecha llegue sola.
+
+Hasta que eso exista, la recomendación para el frente de la app es **verificar
+la compra en cada arranque**: es idempotente y es lo que mantiene la fecha al
+día entre renovaciones.
+
 ## Lo que no hace sola
 
 **Una reversión no quita el mes.** Llega como `pagado: false` sobre un pedido
@@ -209,7 +438,11 @@ que ya estaba pago. Sacarle el acceso a alguien de golpe, desde un webhook, es
 una decisión demasiado grande para automatizarla: queda en el log y se resuelve
 a mano.
 
-**No cobra sola.** Quien cobra es Pagopar. Esto sólo escucha.
+**No cobra sola.** Quien cobra es Pagopar en la web y Google en Android. Esto
+sólo escucha y pregunta.
+
+**Nada de esto quita un plan.** Lo único que baja a alguien a Free es que llegue
+la fecha. Es a propósito: ver arriba, en "la idea en una línea".
 
 ## Preguntas abiertas con Pagopar
 
@@ -223,11 +456,30 @@ Antes de automatizar el alta hace falta confirmar dos cosas:
    suscripción?** Si no se puede, hace falta un link por empresa, que con pocos
    clientes se banca y con muchos no.
 
-## Por qué el cobro no está adentro de la app
+## Por qué hay dos cajas y no una
 
-Vender una suscripción dentro de una app Android, cobrando a usuarios de
-Paraguay, choca con la política de pagos de Google Play. La apertura a cobros
-externos de 2026 llega a Estados Unidos, Reino Unido y el EEE; Paraguay no está.
+Durante un tiempo la app sólo **informaba** —"tu plan vence el 13/11"— y no
+llevaba botón de pagar: el cobro vivía nada más que en la página web. La razón
+era que vender una suscripción adentro de una app Android, cobrando a gente de
+Paraguay, choca con la política de pagos de Google Play, y la apertura a cobros
+externos de 2026 llega a Estados Unidos, el Reino Unido y el EEE — Paraguay no
+está.
 
-Por eso la app **informa** —"tu plan vence el 13/11"— y no lleva botón de pagar.
-El cobro vive en una página web, fuera de la app.
+Eso no cambió. Lo que cambió es la respuesta: en vez de no cobrar en Android, se
+cobra **con la caja de Google**, que es lo que la política pide. Así que ahora
+hay dos:
+
+| Dónde compra | Quién cobra | Cómo se entera el server |
+|---|---|---|
+| App Android | Google Play | La app llama a `POST /play/verificar` y el server le pregunta a Google |
+| Navegador | Pagopar | Pagopar le pega a `POST /pagopar/webhook` |
+
+Pagopar no se va a ningún lado, y no es por nostalgia: es el único camino que
+toma pago por QR y transferencia, que es cómo paga mucha gente acá, y el único
+que sirve para quien usa Zentra desde la computadora. Google cobra su comisión y
+sólo funciona en Android.
+
+Lo que **no** hay que hacer nunca es ofrecer el link de la página web adentro de
+la app Android: eso es exactamente lo que la política prohíbe, y se paga con la
+baja de la app. El link de `/pagar` se comparte por fuera —WhatsApp, el correo,
+la web— y adentro de la app el botón es el de Google.

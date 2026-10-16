@@ -4,14 +4,22 @@
  * Mismo molde que el de `tienda-aguara-vulka`: Express chico en la VPS, bajo
  * `/pagopar`, con las claves en el `.env` de la VPS y Supabase como base.
  *
- * Dos endpoints hacen el trabajo:
+ * Los endpoints que hacen el trabajo:
  *
  *   POST /pagopar/crear-cobro   la persona quiere pagar → devuelve a dónde ir
  *   POST /pagopar/webhook       PagoPar avisa que pagó  → empuja el vencimiento
+ *   POST /play/verificar        la app compró en Android → empuja el vencimiento
  *
  * La diferencia con la tienda es qué se vende: allá un pedido de ropa, acá un
  * mes de suscripción. Por eso lo que hace el webhook no es marcar un pedido
  * como pagado sino empujar una fecha.
+ *
+ * Son dos cajas y una sola fecha. En la web cobra PagoPar y en Android cobra
+ * Google, porque adentro de la app Google no deja cobrar por otro lado; pero
+ * las dos terminan en `registrar_pago_pasarela`, que es lo único que mueve
+ * `empresas.vence`. Si cada caja activara a su manera, el día que se arregle
+ * una la otra va a quedar vieja y la fecha va a depender de por dónde pagó
+ * cada cliente.
  */
 import "dotenv/config";
 import express from "express";
@@ -28,8 +36,18 @@ import {
   verifyWebhookToken,
 } from "./pagopar.js";
 import {
+  configPlayALaVista,
+  faltaConfigPlay,
+  PLANES_POR_PRODUCTO,
+  planDeProducto,
+  reconocerCompra,
+  revisarSuscripcion,
+  traerSuscripcion,
+} from "./play.js";
+import {
   cobroPendiente,
   cobroPorHash,
+  cobroPorReferencia,
   configurada,
   crearCobro,
   entrarConClave,
@@ -528,6 +546,169 @@ app.post("/pagopar/webhook", async (req, res) => {
   }
 });
 
+/* ───────────────── la compra hecha adentro de la app Android ───────────────── */
+
+/**
+ * Qué falta para poder verificar una compra de Play.
+ *
+ * Aparte de `falta()` porque son dos caminos independientes: que no estén las
+ * claves de PagoPar no tiene por qué apagar los cobros de Android, ni al
+ * revés. Lo que sí comparten es la base, que no es opcional en ninguno de los
+ * dos.
+ */
+function faltaPlay() {
+  const problema = faltaConfigPlay();
+  if (problema) return problema;
+  if (!configurada()) return "falta la configuración de Supabase";
+  return null;
+}
+
+/** Para ver de un vistazo si Play está configurado, sin exponer la clave. */
+app.get("/play/health", (_req, res) => {
+  const problema = faltaPlay();
+  res.json({
+    ok: !problema,
+    servicio: "zentra-cobros",
+    play: configPlayALaVista(),
+    // Los productos que la app puede mandar. Cuando Play Console y el código
+    // no coinciden, esto se ve de un vistazo en vez de deducirse de un 400.
+    productos: PLANES_POR_PRODUCTO,
+    base: configurada() ? "configurada" : "FALTA SUPABASE_URL / SERVICE_ROLE_KEY",
+    ...(problema ? { problema } : {}),
+  });
+});
+
+/** Un choque con la clave única `(pasarela, referencia)`, y no otra cosa. */
+const esDuplicado = (e) => /\b409\b|duplicate key|23505/i.test(String(e?.message || ""));
+
+/**
+ * Verifica la compra con Google y activa el plan.
+ *
+ * El orden de los pasos no es casual:
+ *
+ *   1. Google dice si la compra existe y está activa. Hasta acá no se toca la
+ *      base: un token inventado no deja ni rastro.
+ *   2. Se reconoce la compra. Esto va ANTES de registrar el pago porque es lo
+ *      que no se puede perder: una compra sin reconocer en tres días se
+ *      reembolsa sola. Si después falla la base, la app reintenta y la segunda
+ *      vez Google ya la va a dar por reconocida; al revés —activar primero y
+ *      que falle el acknowledge— la plata se iría y el plan quedaría activo.
+ *   3. El cobro y el pago, con el monto de `zentra.planes`.
+ */
+async function activarPorPlay({ usuarioId, productId, purchaseToken }) {
+  if (!productId || !purchaseToken) throw new ErrorDeCobro(400, "Falta el producto o el comprobante.");
+
+  const plan = planDeProducto(productId);
+  // Un id que no conocemos se rechaza y no se cae a ningún plan: inventar uno
+  // por defecto es activar Max porque alguien escribió mal un identificador.
+  if (!plan) {
+    console.warn("[play] producto desconocido: %s", productId);
+    throw new ErrorDeCobro(400, "Ese producto no existe.");
+  }
+
+  const perfil = await perfilDe(usuarioId);
+  if (!perfil?.empresa?.id) throw new ErrorDeCobro(400, "Tu usuario no tiene empresa asignada.");
+
+  // El precio sale de la base, igual que en la web. Google cobra lo suyo en el
+  // teléfono y nosotros no vemos ese monto; lo que se anota en el libro es lo
+  // que vale el plan, nunca un número que venga en el cuerpo del pedido.
+  const def = await planVendible(plan);
+  if (!def) throw new ErrorDeCobro(400, "Ese plan no está a la venta.");
+
+  // Nunca le creemos al cliente que la compra existe: el `purchaseToken` sale
+  // de un APK, que se descompila y se parchea.
+  const sub = await traerSuscripcion(purchaseToken);
+  const revision = revisarSuscripcion(sub, { productId });
+  if (!revision.ok) {
+    console.warn("[play] rechazada · empresa %s · %s · %s", perfil.empresa.id, productId, revision.motivo);
+    throw new ErrorDeCobro(402, revision.motivo);
+  }
+  if (revision.prueba) {
+    console.warn(
+      "[play] compra de prueba · plan=%s empresa=%s usuario=%s",
+      plan,
+      perfil.empresa.id,
+      usuarioId,
+    );
+  }
+
+  if (revision.hayQueReconocer) await reconocerCompra(purchaseToken, { productId });
+
+  // El `purchaseToken` es la referencia y el hash a la vez: es el único
+  // identificador que hay, y es el que `registrar_pago_pasarela` busca.
+  const previo = await cobroPorReferencia("play", purchaseToken);
+  if (!previo) {
+    try {
+      await crearCobro({
+        empresaId: perfil.empresa.id,
+        plan,
+        monto: def.precio_mensual,
+        referencia: purchaseToken,
+        pasarela: "play",
+        hash: purchaseToken,
+      });
+    } catch (e) {
+      // Dos pedidos del mismo token al mismo tiempo: uno de los dos choca con
+      // la clave única y está bien que choque. El cobro ya existe, así que se
+      // sigue como si lo hubiéramos encontrado.
+      if (!esDuplicado(e)) throw e;
+      console.info("[play] el cobro ya existía (dos pedidos a la vez)");
+    }
+  } else if (!previo.hash_pedido) {
+    await guardarHash(previo.id, purchaseToken);
+  }
+
+  // La idempotencia de verdad vive acá: la clave única `(pasarela, referencia)`
+  // de `zentra.pagos`. Mandar dos veces el mismo token devuelve `repetido` y no
+  // empuja la fecha otra vez.
+  const r = await registrarPago(purchaseToken, def.precio_mensual, "play");
+  if (!r || r.resultado === "desconocido") {
+    console.error("[play] registrar_pago_pasarela dijo desconocido para %s", purchaseToken.slice(0, 12));
+    throw new ErrorDeCobro(500, "No pudimos registrar la compra. Ya estamos viendo.");
+  }
+
+  console.info(
+    "[play] %s · empresa %s · %s · %s · vence %s",
+    r.resultado,
+    perfil.empresa.id,
+    plan,
+    def.precio_mensual,
+    r.vence,
+  );
+  return { ok: true, plan, vence: r.vence, repetido: r.resultado === "repetido" };
+}
+
+app.post("/play/verificar", async (req, res) => {
+  const problema = faltaPlay();
+  if (problema) {
+    // No se activa nada. Un camino de pago que "funciona" sin poder verificar
+    // es peor que uno apagado: activa planes contra tokens que nadie miró.
+    console.error("[play/verificar]", problema);
+    return res.status(500).json({ error: "Los cobros por Google Play no están configurados todavía." });
+  }
+
+  try {
+    // Quién es sale del token, igual que en `/pagopar/crear-cobro`. Si saliera
+    // del cuerpo, con una compra propia se le activaría el plan a cualquiera.
+    const auth = String(req.headers.authorization || "");
+    const usuario = auth.startsWith("Bearer ") ? await usuarioDelToken(auth.slice(7)) : null;
+    if (!usuario) return res.status(401).json({ error: "Iniciá sesión." });
+
+    const r = await activarPorPlay({
+      usuarioId: usuario.id,
+      productId: String(req.body?.productId || "").trim(),
+      purchaseToken: String(req.body?.purchaseToken || "").trim(),
+    });
+    return res.json(r);
+  } catch (e) {
+    if (e instanceof ErrorDeCobro) return res.status(e.status).json({ error: e.message });
+    // Error nuestro o de Google: 502 y que la app reintente. La compra ya se
+    // hizo y la plata ya salió; lo que no puede pasar es que se pierda.
+    console.error("[play/verificar] error:", e?.message || e);
+    return res.status(502).json({ error: "No pudimos confirmar la compra. Probá de nuevo en un rato." });
+  }
+});
+
 app.listen(PORT, HOST, () => {
   console.info(`[zentra-cobros] escuchando en ${HOST}:${PORT}`);
   if (HOST === "0.0.0.0") {
@@ -535,6 +716,12 @@ app.listen(PORT, HOST, () => {
   }
   const problema = falta();
   if (problema) console.warn(`[zentra-cobros] OJO: ${problema}`);
+  // Se avisa aparte: los cobros de Android pueden estar apagados mientras los
+  // de la web andan, y al revés. Enterarse al arrancar y no cuando alguien
+  // compra desde el teléfono.
+  const problemaPlay = faltaPlay();
+  if (problemaPlay) console.warn(`[zentra-cobros] Google Play apagado: ${problemaPlay}`);
+  else console.info("[zentra-cobros] Google Play listo · paquete %s", configPlayALaVista().paquete);
   try {
     const ep = getPagoparEndpoints();
     console.info("[zentra-cobros] pagopar env=%s api=%s", ep.env, ep.apiBase);
