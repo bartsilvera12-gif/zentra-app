@@ -183,6 +183,18 @@ actor Auth {
         if m.contains("email not confirmed") {
             return "Tu cuenta todavía no está confirmada. Revisá tu correo."
         }
+        // Supabase tiene la confirmación por correo prendida y no puede mandarlo
+        // —sin SMTP, o con uno que falla—. No es culpa de quien se registra, y
+        // el texto crudo de GoTrue no le dice a nadie qué hacer.
+        if m.contains("error sending confirmation") || m.contains("error sending email") {
+            return "No pudimos mandarte el correo de confirmación. Es un problema de configuración nuestro, no tuyo: escribinos y lo resolvemos."
+        }
+        if m.contains("already registered") || m.contains("already exists") {
+            return "Ya hay una cuenta con ese correo. Probá entrar, o recuperá tu contraseña."
+        }
+        if m.contains("password") && m.contains("short") {
+            return "La contraseña es muy corta. Poné al menos 6 caracteres."
+        }
         if code == 429 { return "Demasiados intentos. Esperá un momento." }
         return msg?.isEmpty == false ? msg! : "No pudimos validar tus datos."
     }

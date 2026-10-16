@@ -1,0 +1,9 @@
+sincronizado hasta: 122924a4cdab1dc57c0da8cf65dec06f4e2fb418
+
+Hasta qué commit de Android llegó el port de iOS.
+
+Sirve para no volver a leer commits al azar: lo que falta es
+`git log $(cat ios-nativo/PORTADO-HASTA.txt | head -1 | cut -d' ' -f3)..origin/main`.
+
+Y para los textos, que es donde más se escapa:
+    python3 ios-nativo/comparar-textos.py

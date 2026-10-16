@@ -172,6 +172,10 @@ enum ApiERP {
     /// Tampoco devuelve el nombre de la empresa, sólo su `data_schema` — el
     /// nombre sale del directorio, que ya lo sabe.
     static func perfil() async throws -> Perfil {
+        // Sin ERP, quién sos sale de `zentra.usuarios`, no de una API ajena.
+        if ((await Auth.shared.tenantActivo()?.apiUrl) ?? "").isEmpty {
+            return try await SupabaseDatos.perfil()
+        }
         let crudo = try await pedir("/usuarios/me", metodo: "GET", query: [:], cuerpo: nil)
         let o = (crudo as? [String: Any])?["usuario"] as? [String: Any]
             ?? (crudo as? [String: Any]) ?? [:]
@@ -204,6 +208,8 @@ enum ApiError: LocalizedError {
     case sinRed
     /// El usuario existe pero no está en ninguna cola de atención.
     case sinCola
+    /// La instalación no tiene ERP, así que no hay WhatsApp que leer.
+    case sinChat
     case http(status: Int, mensaje: String, ruta: String)
 
     var errorDescription: String? {
@@ -212,6 +218,8 @@ enum ApiError: LocalizedError {
             "No hay API configurada para esta empresa. Revisá API_URL en Secretos.plist, o el campo apiUrl de esa empresa en el directorio."
         case .sinRed:
             "No pudimos conectar. Revisá tu conexión e intentá de nuevo."
+        case .sinChat:
+            "Las conversaciones salen del WhatsApp de tu ERP. Esta instalación no tiene uno conectado."
         case .sinCola:
             "Tu usuario no está en ninguna cola de atención, así que no tiene conversaciones asignadas. Pedile a un administrador que te sume."
         case .http(_, let m, _): m

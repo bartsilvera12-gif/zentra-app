@@ -98,11 +98,11 @@ final class Panel {
         }
     }
 
-    /// "Gs. 1.250.000"
+    /// "₲ 1.250.000", igual que `gs()` en `src/lib/format.ts`.
     static func gs(_ n: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.locale = Locale(identifier: "es_PY")
-        return "Gs. " + (f.string(from: NSNumber(value: n)) ?? "\(n)")
+        return "₲ " + (f.string(from: NSNumber(value: n)) ?? "\(n)")
     }
 }

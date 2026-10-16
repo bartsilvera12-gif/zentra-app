@@ -33,7 +33,7 @@ export function gs(n) {
   return "Gs. " + Math.round(Number(n) || 0).toLocaleString("es-PY");
 }
 
-function marco(titulo, cuerpo) {
+function marco(titulo, cuerpo, ancha = false) {
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -54,6 +54,7 @@ function marco(titulo, cuerpo) {
     justify-content: center;
   }
   .caja { width: 100%; max-width: 420px; }
+  .caja.ancha { max-width: 1040px; }
   .tarjeta {
     background: #fff;
     border-radius: 14px;
@@ -111,10 +112,81 @@ function marco(titulo, cuerpo) {
   .dato span:first-child { color: #5B7383; }
   .dato span:last-child { font-weight: 600; text-align: right; }
   .pie { margin-top: 18px; text-align: center; font-size: 13px; color: #5B7383; }
+
+  /* ---------- la grilla de planes ----------
+   *
+   * El diseno viene de un componente de React con framer-motion, confetti y
+   * digitos animados. Nada de eso entra acá, y no es por falta de ganas: esta
+   * es la pantalla donde la gente paga, y tiene que abrir en un telefono viejo
+   * con datos moviles y media barra de senal. Lo que se puede hacer con CSS
+   * —las tarjetas, el realce de la recomendada, los tildes, la entrada— esta
+   * todo; lo que exigia JavaScript quedo afuera a proposito.
+   */
+  .planes {
+    display: grid; gap: 16px; margin: 26px 0 8px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 760px) {
+    .planes { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: center; }
+    /* Las de los costados un poco mas chicas, como en el diseno. */
+    .pl:not(.destacado) { transform: scale(.955); }
+  }
+  .pl {
+    position: relative; display: flex; flex-direction: column;
+    background: #fff; border: 1px solid #E2EAEF; border-radius: 18px;
+    padding: 24px 22px; text-align: center;
+    animation: subir .5s cubic-bezier(.22,1,.36,1) both;
+  }
+  .pl:nth-child(2) { animation-delay: .07s; }
+  .pl:nth-child(3) { animation-delay: .14s; }
+  @keyframes subir { from { opacity: 0; transform: translateY(26px) scale(.96); } }
+  /* Quien pidio menos movimiento no lo recibe. */
+  @media (prefers-reduced-motion: reduce) { .pl { animation: none; } }
+
+  .pl.destacado { border: 2px solid ${MARCA}; z-index: 2; }
+  .pl .cinta {
+    position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 5px;
+    background: ${MARCA}; color: #fff; font-size: 12px; font-weight: 700;
+    padding: 5px 11px; border-radius: 0 16px 0 14px;
+  }
+  .pl .nombre {
+    font-size: 13px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: #5B7383;
+  }
+  .pl .monto {
+    margin-top: 16px; font-size: 40px; font-weight: 800; letter-spacing: -.02em;
+    color: ${TINTA}; line-height: 1;
+  }
+  .pl .porMes { font-size: 13px; font-weight: 600; color: #5B7383; margin-top: 6px; }
+  .pl ul { list-style: none; padding: 0; margin: 18px 0 0; text-align: left; }
+  .pl li {
+    display: flex; gap: 9px; align-items: flex-start;
+    font-size: 14px; line-height: 1.45; padding: 4px 0; color: ${TINTA};
+  }
+  .pl li svg { flex: 0 0 auto; margin-top: 3px; }
+  .pl .separa { border: 0; border-top: 1px solid #E6EDF1; margin: 18px 0 0; }
+  .pl .elegir {
+    margin-top: 18px; width: 100%; border: 1px solid #CFDBE3; border-radius: 12px;
+    background: #fff; color: ${TINTA}; font-size: 16px; font-weight: 700;
+    padding: 13px 16px; cursor: pointer; transition: background .18s, color .18s, border-color .18s;
+  }
+  .pl.destacado .elegir { background: ${MARCA}; border-color: ${MARCA}; color: #fff; }
+  .pl .elegir:hover { background: ${MARCA}; border-color: ${MARCA}; color: #fff; }
+  .pl.elegido { box-shadow: 0 0 0 3px rgba(28,140,132,.18); }
+  /* Oculto a la vista, no para un lector de pantalla. */
+  .oculto {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .pl .nota { margin-top: 12px; font-size: 12px; line-height: 1.45; color: #5B7383; }
+  .datos { max-width: 420px; margin: 0 auto; }
+  h1.centro { text-align: center; font-size: 30px; }
+  p.sub.centro { text-align: center; max-width: 560px; margin-left: auto; margin-right: auto; }
+
   .marca { text-align: center; font-weight: 700; letter-spacing: .14em; color: ${MARCA}; margin-bottom: 14px; font-size: 13px; }
 </style>
 </head>
-<body><div class="caja"><div class="marca">ZENTRA</div>${cuerpo}</div></body>
+<body><div class="caja${ancha ? " ancha" : ""}"><div class="marca">ZENTRA</div>${cuerpo}</div></body>
 </html>`;
 }
 
@@ -125,49 +197,123 @@ function marco(titulo, cuerpo) {
  * plan" son dos pantallas y dos esperas para algo que se hace una vez por mes,
  * y cada paso de más es gente que lo deja por la mitad.
  */
+/**
+ * Qué incluye cada plan, para mostrarlo en su tarjeta.
+ *
+ * La fuente de verdad de lo que cada plan **permite** es `src/lib/planes.ts`
+ * en la app. Esto es su traducción a algo que se lea sin saber nada del
+ * sistema: "inventario.mayorista" no le dice nada a nadie, "precio mayorista
+ * por cliente" sí.
+ *
+ * Si allá se agrega una acción, acá hay que agregar la línea. No se genera
+ * solo a propósito: el texto que ve quien va a pagar merece estar escrito, no
+ * derivado de un identificador.
+ */
+const INCLUYE = {
+  free: [
+    "Hasta 20 productos",
+    "Ventas y clientes sin límite",
+    "Ajuste de stock 1 vez al mes",
+    "Reportes de ventas",
+  ],
+  emprendedor: [
+    "Hasta 50 productos",
+    "Módulo de compras y proveedores",
+    "Alta de proveedores",
+    "Categorías de inventario",
+    "Panel de compras",
+    "Factura con auto-impresor",
+  ],
+  max: [
+    "Productos sin límite",
+    "Ajuste de stock sin espera",
+    "Editar productos y proveedores",
+    "Código de barras, mínimos y vencimientos",
+    "Precio mayorista por cliente",
+    "Ventas a crédito",
+    "Compras en dólares",
+    "Conversaciones de WhatsApp",
+    "Factura electrónica (SIFEN)",
+  ],
+};
+
+/** El tilde de cada característica. En línea, para no pedir otro archivo. */
+const TILDE =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="' +
+  MARCA +
+  '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+const ESTRELLA =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>';
+
 export function paginaPagar({ planes, email = "", plan = "", error = "" }) {
-  const opciones = planes
-    .map(
-      (p) => `
-      <label class="plan">
-        <input type="radio" name="plan" value="${esc(p.codigo)}"${
-          plan === p.codigo || (!plan && planes.length === 1) ? " checked" : ""
-        } required>
-        <span class="nom">${esc(p.nombre)}</span>
-        <span class="precio">${esc(gs(p.precio_mensual))} / mes</span>
-      </label>`,
-    )
+  // El más caro se marca como recomendado. No es un invento de marketing: es
+  // el único que trae conversaciones y factura electrónica, que es por lo que
+  // la gente pregunta.
+  const tope = planes.length ? planes[planes.length - 1].codigo : "";
+
+  const tarjetas = planes
+    .map((p) => {
+      const destacado = p.codigo === tope && planes.length > 1;
+      const items = (INCLUYE[p.codigo] || [])
+        .map((f) => `<li>${TILDE}<span>${esc(f)}</span></li>`)
+        .join("");
+      const elegido = plan === p.codigo;
+      return `
+      <label class="pl${destacado ? " destacado" : ""}${elegido ? " elegido" : ""}">
+        ${destacado ? `<div class="cinta">${ESTRELLA} Recomendado</div>` : ""}
+        <!--
+          El radio y el botón dicen lo mismo, y los dos hacen falta.
+
+          El botón es lo que se toca y lo que manda el plan al enviar. El radio
+          es lo que **recuerda** cuál se había elegido: si la contraseña sale
+          mal, la página se vuelve a dibujar y sin él la persona no sabría
+          dónde estaba parada. Va oculto a la vista pero no para quien usa
+          lector de pantalla.
+        -->
+        <input class="oculto" type="radio" name="plan" value="${esc(p.codigo)}"${elegido ? " checked" : ""}>
+        <p class="nombre">${esc(p.nombre)}</p>
+        <div class="monto">${esc(gs(p.precio_mensual))}</div>
+        <p class="porMes">por mes</p>
+        <ul>${items}</ul>
+        <hr class="separa">
+        <button class="elegir" type="submit" name="plan" value="${esc(p.codigo)}">
+          Pagar ${esc(p.nombre)}
+        </button>
+        <p class="nota">Un mes de servicio. No se debita solo.</p>
+      </label>`;
+    })
     .join("");
 
   const sinPlanes = `<div class="error">Todavía no hay planes a la venta. Escribinos y lo resolvemos.</div>`;
 
   return marco(
     "Pagar",
-    `<div class="tarjeta">
-      <h1>Pagar tu plan</h1>
-      <p class="sub">Entrá con los datos de tu cuenta de Zentra. El pago lo cobra PagoPar.</p>
-      ${error ? `<div class="error">${esc(error)}</div>` : ""}
-      ${
-        planes.length === 0
-          ? sinPlanes
-          : `<form method="post" action="/pagar">
+    `<h1 class="centro">Elegí tu plan</h1>
+    <p class="sub centro">Entrá con los datos de tu cuenta de Zentra. El pago lo cobra PagoPar.</p>
+    ${error ? `<div class="error datos">${esc(error)}</div>` : ""}
+    ${
+      planes.length === 0
+        ? sinPlanes
+        : `<form method="post" action="/pagar">
+      <div class="tarjeta datos">
         <label for="email">Correo</label>
         <input id="email" type="email" name="email" value="${esc(email)}" required autocomplete="email" autocapitalize="off" spellcheck="false">
 
         <label for="clave">Contraseña</label>
         <input id="clave" type="password" name="password" required autocomplete="current-password">
 
-        <label>Plan</label>
-        ${opciones}
-
         <label for="doc">Cédula o RUC</label>
         <input id="doc" type="text" name="documento" inputmode="numeric" autocomplete="off" placeholder="Para la factura de PagoPar">
+      </div>
 
-        <button type="submit">Ir a pagar</button>
-      </form>`
-      }
-      <div class="pie">Un mes de servicio. Se renueva pagando de nuevo, no se debita solo.</div>
-    </div>`,
+      <!-- Cada tarjeta manda su propio plan con el botón: así no hace falta
+           JavaScript para saber cuál se eligió, y el que no tenga el campo
+           marcado no puede quedar a medias. -->
+      <div class="planes">${tarjetas}</div>
+    </form>`
+    }`,
+    true,
   );
 }
 

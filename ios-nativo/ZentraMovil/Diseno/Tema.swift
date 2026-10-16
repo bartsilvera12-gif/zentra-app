@@ -159,6 +159,18 @@ enum Modulo: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Qué acción del plan habilita este módulo. `nil` es "siempre entra":
+    /// vender, cobrar y ver clientes no dependen del plan — si no se pudiera
+    /// vender, la app no sería nada.
+    var accion: Accion? {
+        switch self {
+        case .compras: .comprasModulo
+        case .proveedores: .proveedoresModulo
+        case .conversaciones: .chatModulo
+        case .venta, .clientes, .inventario, .reportes: nil
+        }
+    }
+
     /// SF Symbol que reemplaza al SVG de `ui/Icons.tsx`.
     var simbolo: String {
         switch self {
@@ -177,11 +189,38 @@ enum Modulo: String, CaseIterable, Identifiable {
 
 /// La web usa Barlow en todos lados con el shorthand `600 14px/1`.
 ///
-/// Barlow todavía no está embebida acá: hasta que se agreguen los `.ttf` al bundle,
-/// esto cae en la fuente del sistema con el mismo peso y tamaño. La métrica no es
-/// idéntica, así que los anchos de texto van a diferir un poco de Android.
+/// Acá va la misma Barlow, embebida en el bundle. Se registra en caliente con
+/// CoreText en vez de declararla en el Info.plist: el proyecto genera su plist
+/// desde los ajustes de compilación, y `UIAppFonts` es un arreglo que ese
+/// mecanismo no sabe escribir.
+///
+/// Un detalle que vale saber: **Barlow no trae el símbolo ₲** (U+20B2). iOS lo
+/// sustituye por otra tipografía sólo para ese glifo. Pasa igual en Android,
+/// donde el navegador hace lo mismo, así que las dos se ven parejas.
 enum Tipo {
+    private static let registrada: Bool = {
+        guard let urls = Bundle.main.urls(forResourcesWithExtension: "ttf",
+                                          subdirectory: nil) else { return false }
+        for u in urls {
+            CTFontManagerRegisterFontsForURL(u as CFURL, .process, nil)
+        }
+        return true
+    }()
+
+    /// El nombre PostScript de cada corte, que es como CoreText los encuentra.
+    private static func corte(_ peso: Font.Weight) -> String {
+        switch peso {
+        case .bold, .heavy, .black: "Barlow-Bold"
+        case .semibold: "Barlow-SemiBold"
+        case .medium: "Barlow-Medium"
+        default: "Barlow-Regular"
+        }
+    }
+
     static func barlow(_ peso: Font.Weight, _ tam: CGFloat) -> Font {
-        .system(size: tam, weight: peso)
+        _ = registrada
+        // Si por lo que sea la fuente no está, `.custom` cae sola en la del
+        // sistema: la app se ve distinta, no rota.
+        return .custom(corte(peso), size: tam)
     }
 }

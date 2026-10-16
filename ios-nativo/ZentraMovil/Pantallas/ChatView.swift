@@ -29,6 +29,8 @@ struct ChatView: View {
     @State private var verFicha = false
     @State private var transferir = false
     @State private var mandarFotos = false
+    @State private var mandarDoc = false
+    @State private var ubicacion = Ubicacion()
 
     private let emojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -91,6 +93,12 @@ struct ChatView: View {
         .sheet(item: $viendo) { VisorView(mensaje: $0) }
         .sheet(isPresented: $verFicha) { FichaContactoView(chatId: chat.id, nombre: chat.nombre) }
         .sheet(isPresented: $transferir) { TransferirView(chatId: chat.id) }
+        .fileImporter(isPresented: $mandarDoc,
+                      allowedContentTypes: [.pdf, .plainText, .spreadsheet, .presentation,
+                                            .image, .zip, .data],
+                      allowsMultipleSelection: false) { r in
+            Task { await mandarDocumento(r) }
+        }
         .sheet(isPresented: $mandarFotos) {
             EnviarFotosView(chatId: chat.id) {
                 // Al volver se relee: así los globos nuevos salen con la hora y
@@ -190,7 +198,11 @@ struct ChatView: View {
                         .font(Tipo.barlow(.regular, 14))
                         .foregroundStyle(m.mio ? .white : t.ink)
                 } else if !m.sticker.isEmpty {
-                    Text(m.sticker).font(.system(size: 44))
+                    // Un sticker que llegó sin imagen: se dice que lo era, con
+                    // el símbolo del sistema en vez de una carita de relleno.
+                    Label("Sticker", systemImage: "face.smiling")
+                        .font(Tipo.barlow(.regular, 14))
+                        .foregroundStyle(m.mio ? .white : t.ink)
                 }
 
                 // Una foto con pie vuelve a tener globo; sin pie, va sola.
@@ -271,13 +283,23 @@ struct ChatView: View {
 
     private var barra: some View {
         HStack(spacing: 10) {
-            Button { mandarFotos = true } label: {
+            Menu {
+                Button { mandarFotos = true } label: {
+                    Label("Fotos", systemImage: "photo.on.rectangle")
+                }
+                Button { mandarDoc = true } label: {
+                    Label("Documento", systemImage: "doc")
+                }
+                Button { Task { await mandarUbicacion() } } label: {
+                    Label("Mi ubicación", systemImage: "location")
+                }
+            } label: {
                 Image(systemName: "paperclip")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(C.azulMedio)
                     .frame(width: 34, height: 40)
             }
-            .buttonStyle(.plain)
+            .disabled(enviando)
 
             // Crece con el mensaje, hasta cinco líneas.
             TextField("Escribí un mensaje", text: $texto, axis: .vertical)
@@ -338,6 +360,56 @@ struct ChatView: View {
             self.error = (error as? LocalizedError)?.errorDescription ?? "No se pudo enviar."
         }
         enviando = false
+    }
+
+    /// La ubicación va como enlace de mapa: el ERP no sabe mandar el tipo
+    /// "ubicación" de WhatsApp todavía. Del otro lado se toca y abre el mapa.
+    private func mandarUbicacion() async {
+        enviando = true; error = nil
+        do {
+            let p = try await ubicacion.actual()
+            try await RepoERP.enviarMensaje(chat.id, texto: Ubicacion.texto(p))
+            msgs = (try? await RepoERP.mensajes(chat.id)) ?? msgs
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos mandar tu ubicación."
+        }
+        enviando = false
+    }
+
+    private func mandarDocumento(_ r: Result<[URL], Error>) async {
+        guard case .success(let urls) = r, let url = urls.first else { return }
+        enviando = true; error = nil
+        // El archivo viene de fuera del sandbox: hay que pedir el permiso y
+        // soltarlo, o la lectura falla sin decir por qué.
+        let abierto = url.startAccessingSecurityScopedResource()
+        defer { if abierto { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let datos = try Data(contentsOf: url)
+            try await RepoERP.enviarArchivo(
+                chat.id, datos: datos, nombre: url.lastPathComponent,
+                tipo: tipoDe(url), pie: ""
+            )
+            msgs = (try? await RepoERP.mensajes(chat.id)) ?? msgs
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos mandar el archivo."
+        }
+        enviando = false
+    }
+
+    private func tipoDe(_ url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "pdf": "application/pdf"
+        case "png": "image/png"
+        case "jpg", "jpeg": "image/jpeg"
+        case "txt": "text/plain"
+        case "csv": "text/csv"
+        case "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        case "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case "zip": "application/zip"
+        default: "application/octet-stream"
+        }
     }
 
     private func reaccionar(_ emoji: String) async {

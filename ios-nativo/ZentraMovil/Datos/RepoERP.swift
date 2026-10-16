@@ -184,27 +184,44 @@ struct Chat: Identifiable, Equatable {
 /// `precio_venta`, `numero_control`. Van copiados textualmente de la
 /// implementación web, que está verificada contra dos ERPs distintos.
 enum RepoERP {
+    /// Cuál es la fuente de datos de la empresa activa.
+    ///
+    /// Tener `apiUrl` es lo que distingue a una empresa con ERP propio: ahí las
+    /// ventas las registra el ERP, con su numeración, su caja y su asiento
+    /// contable. Sin `apiUrl` la empresa usa nuestras tablas por PostgREST.
+    ///
+    /// Se resuelve en cada llamada y no al arrancar: cuando se carga este
+    /// archivo todavía no hubo login y no se sabe de qué empresa es quien entra.
+    private static func conErp() async -> Bool {
+        !((await Auth.shared.tenantActivo()?.apiUrl) ?? "").isEmpty
+    }
+
     static func inventario(q: String? = nil) async throws -> [InvProducto] {
+        if await !conErp() { return try await SupabaseDatos.inventario() }
         let crudo = try await ApiERP.get("/productos", query: ["q": q]) { $0 }
         return try ApiERP.comoLista(crudo, clave: "productos", ruta: "/productos").map(aProducto)
     }
 
     static func clientes(q: String? = nil) async throws -> [Cliente] {
+        if await !conErp() { return try await SupabaseDatos.clientes() }
         let crudo = try await ApiERP.get("/clientes", query: ["q": q]) { $0 }
         return try ApiERP.comoLista(crudo, clave: "clientes", ruta: "/clientes").map(aCliente)
     }
 
     static func ventas(desde: String, hasta: String) async throws -> [Venta] {
+        if await !conErp() { return try await SupabaseDatos.ventas(desde: desde, hasta: hasta) }
         let crudo = try await ApiERP.get("/ventas", query: ["desde": desde, "hasta": hasta]) { $0 }
         return try ApiERP.comoLista(crudo, clave: "ventas", ruta: "/ventas").map(aVenta)
     }
 
     static func proveedores(q: String? = nil) async throws -> [Proveedor] {
+        if await !conErp() { return try await SupabaseDatos.proveedores() }
         let crudo = try await ApiERP.get("/proveedores", query: ["q": q]) { $0 }
         return try ApiERP.comoLista(crudo, clave: "proveedores", ruta: "/proveedores").map(aProveedor)
     }
 
     static func compras(q: String? = nil) async throws -> [Compra] {
+        if await !conErp() { return try await SupabaseDatos.compras() }
         let crudo = try await ApiERP.get("/compras", query: ["q": q]) { $0 }
         return try ApiERP.comoLista(crudo, clave: "compras", ruta: "/compras").map(aCompra)
     }
@@ -220,6 +237,9 @@ enum RepoERP {
     /// (401/403/404). Un error de forma no se tapa: si contestó pero con otra
     /// estructura, el problema es ese y hay que verlo.
     static func conversaciones() async throws -> [Chat] {
+        // El chat es de WhatsApp y vive en el ERP. Sin ERP no hay nada que leer,
+        // y decirlo es mejor que una lista vacía que parece "no tenés mensajes".
+        if await !conErp() { throw ApiError.sinChat }
         do {
             let crudo = try await ApiERP.get("/chat/mobile-inbox") { $0 }
             return try ApiERP.comoLista(crudo, clave: "conversations",
@@ -277,6 +297,7 @@ enum RepoERP {
     /// Alta de cliente. Lleva clave de intento: si se reintenta sin señal, no
     /// se crea el mismo cliente dos veces.
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
+        if await !conErp() { return try await SupabaseDatos.crearCliente(campos) }
         let r = try await ApiERP.post("/clientes", cuerpo: campos,
                                       idempotencia: UUID().uuidString)
         return aCliente(desenvolver(r) ?? [:])
@@ -595,8 +616,14 @@ enum RepoERP {
         lineas: [(producto: InvProducto, cantidad: Double)],
         credito: Bool,
         plazoDias: Int,
-        metodo: String
+        metodo: String,
+        cliente: Cliente? = nil
     ) async throws -> String {
+        if await !conErp() {
+            return try await SupabaseDatos.crearVenta(
+                clienteId: clienteId, cliente: cliente, lineas: lineas,
+                credito: credito, plazoDias: plazoDias, metodo: metodo)
+        }
         var items: [[String: Any]] = []
         var subtotal = 0, montoIva = 0, total = 0
 
@@ -720,18 +747,18 @@ enum RepoERP {
 
         if tipo.contains("sticker") {
             if let url { base.imagen = url; base.sticker = " " }
-            else { base.sticker = contenido.count <= 4 && !contenido.isEmpty ? contenido : "🙂" }
+            else { base.sticker = contenido.count <= 4 && !contenido.isEmpty ? contenido : "" }
         } else if tipo.contains("image") {
             if let url { base.imagen = url; base.epigrafe = epigrafe }
-            else { base.texto = epigrafe.isEmpty ? "📷 Foto" : epigrafe }
+            else { base.texto = epigrafe.isEmpty ? "Foto" : epigrafe }
         } else if tipo.contains("video") {
             if let url { base.video = url; base.epigrafe = epigrafe }
-            else { base.texto = epigrafe.isEmpty ? "🎬 Video" : epigrafe }
+            else { base.texto = epigrafe.isEmpty ? "Video" : epigrafe }
         } else if tipo.contains("audio") || tipo.contains("voice") {
-            if let url { base.audio = url } else { base.texto = "🎤 Audio" }
+            if let url { base.audio = url } else { base.texto = "Audio" }
         } else if tipo.contains("document") {
             if let url { base.documento = url; base.epigrafe = epigrafe }
-            else { base.texto = epigrafe.isEmpty ? "📎 Documento" : epigrafe }
+            else { base.texto = epigrafe.isEmpty ? "Documento" : epigrafe }
         } else {
             base.texto = contenido
         }

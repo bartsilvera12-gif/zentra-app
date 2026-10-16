@@ -24,6 +24,7 @@ struct InicioView: View {
     private static let margen: CGFloat = 14
 
     @State private var pagina = 0
+    @State private var aviso: String?
 
     /// El encabezado del menú: quién sos y dónde estás parado.
     private var cabeceraMenu: String {
@@ -57,6 +58,9 @@ struct InicioView: View {
         .background(t.bg)
             .safeAreaInset(edge: .top, spacing: 0) { encabezado }
         }
+        // Va sobre el NavigationStack y no adentro: adentro, el aviso se iría
+        // al navegar a otro módulo, que es justo cuando hay que seguir viéndolo.
+        .avisoPlan($aviso)
         .task { await panel.cargar() }
         .refreshable { await panel.cargar(forzar: true) }
     }
@@ -140,6 +144,29 @@ struct InicioView: View {
         .background(t.card)
         .overlay(alignment: .bottom) {
             Rectangle().fill(t.border).frame(height: 1)
+        }
+    }
+
+    /// El aviso de que el plan vence, en la pantalla.
+    ///
+    /// La notificación puede no haber llegado —permiso apagado, teléfono en
+    /// silencio— y quien abre la app el día 5 antes de vencer igual tiene que
+    /// verlo. Desde siete días antes y no antes: avisar con un mes es ruido.
+    @ViewBuilder
+    private var avisoVencimiento: some View {
+        if !estado.conErp,
+           let d = Vencimiento.dias(estado.tenant?.vence), d <= 7 {
+            let vencido = d < 0
+            let t0 = Vencimiento.texto(vencido ? -1 : d)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(t0.titulo).font(Tipo.barlow(.bold, 13.5))
+                Text(t0.cuerpo).font(Tipo.barlow(.regular, 12.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(vencido ? Color(hex: "#7A2220") : Tint.avisoInk)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .background(vencido ? Color(hex: "#FBE9E8") : Tint.avisoBg)
         }
     }
 
@@ -324,7 +351,12 @@ struct InicioView: View {
                 ForEach(Array(filas.enumerated()), id: \.offset) { _, fila in
                     HStack(spacing: 12) {
                         ForEach(fila) { m in
-                            Baldosa(modulo: m)
+                            Baldosa(
+                                modulo: m,
+                                bloqueo: m.accion.flatMap {
+                                    Planes.motivoBloqueo($0, estado.contextoPlan())
+                                },
+                                aviso: $aviso)
                         }
                     }
                     .frame(height: alto)
@@ -386,7 +418,17 @@ private struct AnchoTarjeta: ViewModifier {
 /// dispara al mantener presionado, que es el gesto equivalente.
 struct Baldosa: View {
     let modulo: Modulo
+    /// Por qué no se puede entrar, si el plan no lo incluye.
+    var bloqueo: String? = nil
+    @Binding var aviso: String?
     @State private var presionada = false
+
+    init(modulo: Modulo, bloqueo: String? = nil,
+         aviso: Binding<String?> = .constant(nil)) {
+        self.modulo = modulo
+        self.bloqueo = bloqueo
+        self._aviso = aviso
+    }
 
     /// Si el texto va en blanco, la baldosa es oscura: ahí el velo blanco se
     /// nota poco y hay que subirlo. Sobre las claras el velo es oscuro y con la
@@ -409,9 +451,46 @@ struct Baldosa: View {
         }
     }
 
+    @ViewBuilder
     var body: some View {
-        NavigationLink(value: modulo) {
-            ZStack {
+        if let b = bloqueo {
+            // No se apaga ni desaparece: se toca y dice por qué. Esconder el
+            // módulo haría creer que la app no lo tiene.
+            // Mismos valores que Android: la baldosa entera al 50% y el
+            // candado arriba a la derecha, 13pt al 85%.
+            Button { withAnimation(.spring(duration: 0.3)) { aviso = b } } label: {
+                cara
+                    .overlay(alignment: .topTrailing) {
+                        // Android usa un emoji; acá va el símbolo del sistema,
+                        // que se dibuja con el peso de la tipografía y toma el
+                        // color del módulo en vez de traer el suyo.
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(modulo.over)
+                            .opacity(0.85)
+                            .padding(.top, 9)
+                            .padding(.trailing, 10)
+                    }
+                    .opacity(0.5)
+            }
+            .buttonStyle(.plain)
+        } else {
+            navegable
+        }
+    }
+
+    private var navegable: some View {
+        NavigationLink(value: modulo) { cara }
+            .buttonStyle(.plain)
+            .animation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.36), value: presionada)
+            .onLongPressGesture(minimumDuration: 0.12, pressing: { presionada = $0 },
+                                perform: {})
+    }
+
+    /// Lo que se ve. Igual esté bloqueada o no — la diferencia es el candado y
+    /// qué pasa al tocarla, no cómo se dibuja.
+    private var cara: some View {
+        ZStack {
                 modulo.color
 
                 // El círculo que crece, igual que en la web.
@@ -466,12 +545,8 @@ struct Baldosa: View {
             }
             // El alto lo fija la fila, que lo reparte en tres iguales. Acá sólo
             // se ocupa todo lo que la fila dé, a lo ancho y a lo alto.
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(.rect(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
-        .animation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.36), value: presionada)
-        .onLongPressGesture(minimumDuration: 0.12, pressing: { presionada = $0 }, perform: {})
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(.rect(cornerRadius: 14))
     }
 }
 

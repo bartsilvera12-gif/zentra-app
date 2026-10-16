@@ -17,6 +17,9 @@ struct TenantConfig: Codable, Equatable {
     /// así que agregar planes no obliga a tocar el ERP de ningún cliente.
     /// Con `apiUrl` (ERP propio) el plan no se consulta: tiene todo.
     var plan: Plan = .free
+    /// Hasta cuándo está pagado. `nil` es "nunca pagó", que en el plan gratis
+    /// no es una deuda sino lo normal.
+    var vence: Date?
 
     static let schemaPropio = "zentra"
 }
@@ -51,7 +54,13 @@ enum Directorio {
         TenantConfig(
             codigo: "", nombre: "Zentra",
             supabaseUrl: Config.supabaseUrl, anonKey: Config.supabaseAnonKey,
-            schema: TenantConfig.schemaPropio, apiUrl: Config.apiUrl, publico: true,
+            schema: TenantConfig.schemaPropio,
+            // Sin `apiUrl` a propósito. La instalación pública lee de NUESTRAS
+            // tablas, no de ningún ERP. Heredar la URL global hacía dos daños:
+            // la app contaba a esa cuenta como "con ERP" —y le escondía el
+            // plan— y encima le pedía los datos al ERP de otra empresa con un
+            // token que ese ERP no reconoce.
+            apiUrl: "", publico: true,
             // Quien baja la app de la tienda y no pone código entra en el gratis.
             plan: .free
         )
@@ -131,6 +140,15 @@ enum Directorio {
         throw TenantError.noEncontrado(codigo)
     }
 
+    /// `2026-11-15` a fecha. Una fecha ilegible se trata como "sin fecha": ante
+    /// la duda, no inventar un vencimiento.
+    private static func fecha(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        return f.date(from: String(s.prefix(10)))
+    }
+
     private static func armar(_ codigo: String, _ crudo: Any) throws -> TenantConfig {
         guard let o = crudo as? [String: Any],
               let url = o["supabaseUrl"] as? String, !url.isEmpty,
@@ -148,7 +166,8 @@ enum Directorio {
             publico: false,
             // Un plan que no reconocemos se trata como `free`: ante la duda, el
             // que menos deja, no el que más.
-            plan: (o["plan"] as? String).flatMap(Plan.init(rawValue:)) ?? .free
+            plan: (o["plan"] as? String).flatMap(Plan.init(rawValue:)) ?? .free,
+            vence: (o["vence"] as? String).flatMap(fecha)
         )
     }
 }
