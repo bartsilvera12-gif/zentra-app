@@ -112,9 +112,21 @@ final class Estado {
         tenant = t
     }
 
+    /// Guarda el token de este teléfono para el usuario de la sesión.
+    ///
+    /// El error se anota en vez de tragarse. Sin esto, "no me llegan los
+    /// avisos" no tiene dónde mirarse: todo se ve bien —permiso dado, clave
+    /// subida, interruptor prendido— y no llega nada.
     private func registrarTelefono() async {
         guard let token = tokenPush, !token.isEmpty else { return }
-        esAgente = (try? await RepoERP.registrarDispositivo(token))?.esAgente
+        do {
+            esAgente = try await RepoERP.registrarDispositivo(token).esAgente
+            print("[push] teléfono registrado · agente: "
+                  + (esAgente.map(String.init) ?? "no aplica"))
+        } catch {
+            print("[push] no se pudo registrar el teléfono: "
+                  + ((error as? LocalizedError)?.errorDescription ?? "\(error)"))
+        }
     }
 
     /// Si este usuario está dado de alta como agente de conversaciones.

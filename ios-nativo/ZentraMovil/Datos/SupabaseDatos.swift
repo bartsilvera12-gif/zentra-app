@@ -580,6 +580,28 @@ enum SupabaseDatos {
         )
     }
 
+    /// Guarda el token de este teléfono en nuestras tablas.
+    ///
+    /// Faltaba enrutar esto: `registrarDispositivo` salía siempre al ERP, y en
+    /// la instalación pública no hay ninguno. Fallaba con `.sinApi`, y como va
+    /// con `try?` fallaba callado — el token no se guardaba en ninguna parte y
+    /// desde afuera parecía que el push estaba configurado.
+    ///
+    /// Lo hace una función del servidor porque antes de insertar borra
+    /// cualquier fila con el mismo token: el teléfono pudo haber sido de otro
+    /// empleado, y dos filas con el mismo token mandan el aviso dos veces, o a
+    /// quien ya no usa ese teléfono.
+    static func registrarDispositivo(_ token: String, plataforma: String = "ios") async throws {
+        _ = try await pedir("POST", "/rpc/registrar_dispositivo",
+                            cuerpo: ["p_token": token, "p_plataforma": plataforma])
+    }
+
+    /// Da de baja el token al cerrar sesión.
+    static func bajaDispositivo(_ token: String) async throws {
+        _ = try await pedir("DELETE", "/dispositivos",
+                            query: ["token": "eq.\(token)"])
+    }
+
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
         // Sin `empresa_id` la política de seguridad rechaza la fila: la regla
         // es "sólo podés insertar en tu empresa", y una fila sin empresa no

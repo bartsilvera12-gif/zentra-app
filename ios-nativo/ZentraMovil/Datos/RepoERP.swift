@@ -430,6 +430,13 @@ enum RepoERP {
     /// Se llama en cada entrada: el token cambia al reinstalar la app.
     @discardableResult
     static func registrarDispositivo(_ token: String) async throws -> DispositivoAlta {
+        if await !conErp() {
+            try await SupabaseDatos.registrarDispositivo(token)
+            // Sin ERP no hay colas de atención, así que no hay `is_agent` que
+            // informar. `nil` es "no lo sé", que es la verdad acá: no es que
+            // esta persona no sea agente, es que el concepto no aplica.
+            return DispositivoAlta(esAgente: nil)
+        }
         let r = try await ApiERP.post("/cc/agent/device-token", cuerpo: [
             "fcm_token": token, "platform": "ios",
             "app_version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0",
@@ -439,6 +446,9 @@ enum RepoERP {
     }
 
     static func bajaDispositivo(_ token: String) async throws {
+        if await !conErp() {
+            return try await SupabaseDatos.bajaDispositivo(token)
+        }
         _ = try await ApiERP.post("/cc/agent/device-token/deactivate",
                                   cuerpo: ["fcm_token": token])
     }
