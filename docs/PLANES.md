@@ -9,18 +9,22 @@ dónde salía. Cuando haya que cambiar un plan, se cambia acá primero.
 
 ## Los tres planes
 
-| | Básico | Emprendedor | Max |
+| | Gratis | Emprendedor | Max |
 |---|---|---|---|
 | **Precio** | Free | ₲ 49.000 | ₲ 89.000 |
 | | Punto de entrada | Negocio en crecimiento | Todo desbloqueado |
 
-**Básico no se paga.** Es el plan de entrada y es gratis; el nombre viene del
-documento. Una empresa que no paga —o a la que se le venció— queda ahí: sigue
+**Se llama "Gratis", no "Básico".** El documento del 6 de octubre lo llama
+Básico, y la base lo llamó `Gratis` desde el principio: el mismo plan con dos
+nombres. Queda "Gratis", que es lo que decidió Ivan y lo que ya muestra la
+página de pago. El código es `free`.
+
+No se paga. Una empresa que no paga —o a la que se le venció— queda ahí: sigue
 viendo todo lo que cargó y no puede escribir más de lo que este plan permite.
 
 ## Tabla
 
-| Funcionalidad | Básico | Emprendedor | Max |
+| Funcionalidad | Gratis | Emprendedor | Max |
 |---|---|---|---|
 | **Módulos** | | | |
 | Inventario | Sí | Sí | Sí |
