@@ -11,7 +11,7 @@ import { gs, norm } from "@/lib/format";
 import { useApp } from "@/store/AppContext";
 import { precioPara } from "@/lib/precios";
 import { motivoBloqueo } from "@/lib/planes";
-import { datosEmisor, lineaEmisor } from "@/lib/emisor";
+import { datosEmisor, lineaEmisor, tituloComprobante } from "@/lib/emisor";
 import { tenantEnUso } from "@/lib/supabase/client";
 import { StatusBar } from "../layout/StatusBar";
 import { WizardSteps } from "../ui/WizardSteps";
@@ -80,11 +80,15 @@ export function VentaScreen() {
   );
 
   const vClienteNombre = cli ? cli.nombre : s.vSinNombre ? "Sin nombre" : "—";
-  const vTitulo = s.vPaso === "listo" ? "Venta realizada" : s.vPaso === "factura" ? "Factura" : "Nueva venta";
   const vTotal = gs(total);
   // Quién factura. Sale del tenant y de la sesión; lo que falte, la factura lo
   // dice. Antes acá estaba escrito el nombre y el RUC de un cliente de ejemplo.
   const emisor = datosEmisor(tenantEnUso(), s.sesion?.empresa);
+  // El título también depende de si esto puede ser una factura: con el RUC sin
+  // cargar es un comprobante interno, y el encabezado no puede decir otra cosa
+  // que el aviso de abajo.
+  const vTitulo =
+    s.vPaso === "listo" ? "Venta realizada" : s.vPaso === "factura" ? tituloComprobante(emisor) : "Nueva venta";
 
   // El número y la fecha son los que devolvió el backend. Mientras no haya
   // venta no hay número: poner uno sería decirle al vendedor que ya facturó.
@@ -843,7 +847,10 @@ export function VentaScreen() {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                   <span style={{ font: "600 10px/1 var(--font-barlow),Barlow,sans-serif", letterSpacing: ".14em", color: "#5b6676" }}>
-                    FACTURA
+                    {/* Sin RUC esto no es una factura y el papel no lo puede
+                        decir en letras grandes mientras el aviso de arriba
+                        dice lo contrario. */}
+                    {tituloComprobante(emisor).toUpperCase()}
                   </span>
                   <span style={{ font: "700 13px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#023047" }}>{vNumero}</span>
                   <span style={{ font: "400 10.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: "#5b6676" }}>
@@ -994,7 +1001,7 @@ export function VentaScreen() {
                 cursor: "pointer",
               }}
             >
-              Ver factura
+              Ver {tituloComprobante(emisor).toLowerCase()}
             </button>
             <button
               onClick={() =>

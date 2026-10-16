@@ -39,7 +39,24 @@ export type Accion =
   | "chat.modulo"
   | "dashboard.inventario"
   | "dashboard.compras"
+  /**
+   * Sacar el comprobante por impresora. Es lo que la hoja de planes vende como
+   * "facturación con auto-impresor", y la consulta `DetVentasScreen` antes de
+   * abrir la impresión del sistema.
+   *
+   * Estuvo declarada un buen rato sin que nadie la mirara: la facturación no
+   * estaba gateada en ningún lado, así que el plan Gratis imprimía igual. Una
+   * acción que existe y nadie consulta es peor que no tenerla, porque parece
+   * que la regla está puesta.
+   */
   | "facturacion.autoImpresor"
+  /**
+   * Factura electrónica (la de la DNIT). No la consulta nadie, y está bien así
+   * hasta que haya qué gatear: la app no emite ningún documento electrónico ni
+   * habla con la DNIT. Colgarla de la impresión o de la vista de factura sería
+   * inventarle un lugar y hacer creer que la emisión existe y que es cuestión
+   * de pagar Max.
+   */
   | "facturacion.electronica";
 
 interface Limites {

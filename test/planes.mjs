@@ -215,6 +215,24 @@ t("faltando pocos dias se pone urgente, pero sin asustar", () => {
   if (!/3 días/.test(e.estado)) throw new Error("estado: " + e.estado);
 });
 
+t("imprimir el comprobante es de Emprendedor para arriba", () => {
+  // Es "facturación con auto-impresor" en la hoja de planes, y lo que hoy se
+  // gatea con eso es la impresión del comprobante en DetVentasScreen.
+  if (puedeEscribir("facturacion.autoImpresor", base({}))) throw new Error("Free no lo incluye");
+  if (!puedeEscribir("facturacion.autoImpresor", base({ plan: "emprendedor" }))) throw new Error("Emprendedor sí");
+  if (!puedeEscribir("facturacion.autoImpresor", base({ plan: "max" }))) throw new Error("Max también");
+});
+
+t("al Free le explica por que no puede imprimir, sin botón gris y mudo", () => {
+  const m = motivoBloqueo("facturacion.autoImpresor", base({}));
+  if (!m || !/Gratis/.test(m)) throw new Error("el motivo tiene que nombrar el plan: " + m);
+});
+
+t("la factura electronica es solo de Max", () => {
+  if (puedeEscribir("facturacion.electronica", base({ plan: "emprendedor" }))) throw new Error("no es de Emprendedor");
+  if (!puedeEscribir("facturacion.electronica", base({ plan: "max" }))) throw new Error("sí es de Max");
+});
+
 let malas = 0;
 for (const [nombre, fn] of casos) {
   try { await fn(); console.log("  OK · " + nombre); }
