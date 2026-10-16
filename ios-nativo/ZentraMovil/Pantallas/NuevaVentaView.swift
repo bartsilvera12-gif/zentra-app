@@ -10,13 +10,29 @@ import SwiftUI
 struct NuevaVentaView: View {
     @Environment(\.tema) private var t
     @Environment(\.dismiss) private var cerrar
+    @Environment(Estado.self) private var estado
+    @State private var aviso: String?
 
+    /// El crédito no está en todos los planes. Se suma a la regla del ERP —que
+    /// exige cliente identificado— y son dos cosas distintas: una es comercial
+    /// y la otra es contable.
+    private var sinCredito: String? {
+        Planes.motivoBloqueo(.ventasCredito, estado.contextoPlan())
+    }
+
+    /// El orden es el de `PASOS_VENTA` en Android: el resumen va **antes** del
+    /// pago, no después.
+    ///
+    /// Primero se cierra qué se vende y cuánto da, y recién después se decide
+    /// cómo se cobra: el plazo del crédito se elige mirando el total, no al
+    /// revés. Con el pago en el medio, el resumen quedaba de trámite —ya estaba
+    /// todo decidido— y nadie lo leía.
     enum Paso: Int, CaseIterable {
-        case cliente, productos, pago, resumen
+        case cliente, productos, resumen, pago
         var titulo: String {
             switch self {
             case .cliente: "Cliente"; case .productos: "Productos"
-            case .pago: "Pago"; case .resumen: "Resumen"
+            case .resumen: "Resumen"; case .pago: "Pago"
             }
         }
     }
@@ -28,6 +44,7 @@ struct NuevaVentaView: View {
 
     @State private var cliente: Cliente?
     @State private var sinNombre = false
+    @State private var nuevoCliente = false
     @State private var buscar = ""
     @State private var carrito: [String: Double] = [:]   // id de producto → cantidad
 
@@ -83,10 +100,20 @@ struct NuevaVentaView: View {
             barra
         }
         .background(t.bg)
+        .avisoPlan($aviso)
+        .sheet(isPresented: $nuevoCliente) {
+            // Al guardar queda elegido para esta venta: quien lo dio de alta
+            // acá lo hizo para facturarle ahora, no para tenerlo en la lista.
+            NuevoClienteView { c in
+                clientes.insert(c, at: 0)
+                cliente = c
+                sinNombre = false
+            }
+        }
         .navigationTitle("Nueva venta")
         .navigationBarTitleDisplayMode(.inline)
         .task { await cargar() }
-        .alert("Venta registrada", isPresented: .constant(resultado != nil)) {
+        .alert("Venta realizada", isPresented: .constant(resultado != nil)) {
             Button("Listo") { cerrar() }
         } message: {
             Text("Número \(resultado ?? "")")
@@ -135,9 +162,16 @@ struct NuevaVentaView: View {
         VStack(spacing: 10) {
             Button { sinNombre = true; cliente = nil } label: {
                 FilaCard {
-                    HStack {
-                        Text("Venta sin nombre")
-                            .font(Tipo.barlow(.semibold, 14.5)).foregroundStyle(t.ink)
+                    HStack(spacing: 12) {
+                        // "S/N" y no un ícono: es la sigla con la que se marca
+                        // una venta sin nombre en la factura, la misma que se
+                        // va a ver después en el listado.
+                        Text("S/N")
+                            .font(Tipo.barlow(.semibold, 12)).foregroundStyle(t.ink2)
+                            .frame(width: 38, height: 38)
+                            .background(t.bg, in: .rect(cornerRadius: 10))
+                        Text("Sin nombre")
+                            .font(Tipo.barlow(.semibold, 14)).foregroundStyle(t.ink)
                         Spacer()
                         if sinNombre { Image(systemName: "checkmark").foregroundStyle(C.cian) }
                     }
@@ -145,7 +179,42 @@ struct NuevaVentaView: View {
             }
             .buttonStyle(.plain)
 
-            ForEach(clientes.filter { buscar.isEmpty || $0.nombre.lowercased().contains(buscar.lowercased()) }) { c in
+            Text("CLIENTE IDENTIFICADO")
+                .font(Tipo.barlow(.semibold, 10)).tracking(1.4).foregroundStyle(t.ink2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+
+            Button { nuevoCliente = true } label: {
+                FilaCard {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(C.cian)
+                            .frame(width: 38, height: 38)
+                            .background(t.bg, in: .rect(cornerRadius: 10))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Registrar nuevo cliente")
+                                .font(Tipo.barlow(.semibold, 14)).foregroundStyle(t.ink)
+                            Text("RUC o cédula y nombre")
+                                .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink2)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(t.ink3)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            if clientes.isEmpty {
+                Aviso(texto: "Todavía no hay clientes cargados.", bg: t.card, ink: t.ink2)
+            }
+            // Por documento además de por nombre: al mostrador se pregunta el
+            // RUC, no la razón social exacta con la que quedó cargado.
+            ForEach(clientes.filter { c in
+                let n = buscar.trimmingCharacters(in: .whitespaces).lowercased()
+                return n.isEmpty || [c.nombre, c.doc].contains { $0.lowercased().contains(n) }
+            }) { c in
                 Button { cliente = c; sinNombre = false } label: {
                     FilaCard {
                         HStack(spacing: 12) {
@@ -165,11 +234,14 @@ struct NuevaVentaView: View {
                 .buttonStyle(.plain)
             }
         }
-        .searchable(text: $buscar, prompt: "Buscar cliente")
+        .searchable(text: $buscar, prompt: "Buscar por nombre, RUC o CI…")
     }
 
     private var pasoProductos: some View {
         VStack(spacing: 10) {
+            if catalogo.isEmpty {
+                Aviso(texto: "No hay stock disponible para vender.", bg: t.card, ink: t.ink2)
+            }
             ForEach(catalogo.filter {
                 buscar.isEmpty || $0.nombre.lowercased().contains(buscar.lowercased())
                     || $0.sku.lowercased().contains(buscar.lowercased())
@@ -196,7 +268,7 @@ struct NuevaVentaView: View {
                 }
             }
         }
-        .searchable(text: $buscar, prompt: "Buscar producto o código")
+        .searchable(text: $buscar, prompt: "Buscar producto…")
     }
 
     private var pasoPago: some View {
@@ -210,17 +282,25 @@ struct NuevaVentaView: View {
                         Text("Crédito").tag(true)
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: credito) { _, nuevo in
+                        if nuevo, let m = sinCredito {
+                            credito = false
+                            withAnimation(.spring(duration: 0.3)) { aviso = m }
+                        }
+                    }
 
                     if credito && !puedeCredito {
                         // La regla del ERP: a crédito hace falta saber a quién
                         // cobrarle. Una venta sin nombre no se puede fiar.
-                        Text("El crédito necesita un cliente identificado. Volvé al primer paso y elegí uno.")
+                        Text("El crédito es solo para clientes identificados.")
                             .font(Tipo.barlow(.regular, 12)).foregroundStyle(Tint.errorInk)
                             .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                             .background(Tint.errorBg, in: .rect(cornerRadius: 10))
                     } else if credito {
                         Stepper("Plazo: \(plazo) días", value: $plazo, in: 1...180, step: 15)
                             .font(Tipo.barlow(.regular, 14))
+                        Text("Se cobra después: no entra plata a la caja ahora.")
+                            .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink3)
                     } else {
                         Picker("Método", selection: $metodo) {
                             Text("Efectivo").tag("efectivo")
@@ -228,6 +308,8 @@ struct NuevaVentaView: View {
                             Text("Cheque").tag("cheque")
                         }
                         .pickerStyle(.segmented)
+                        Text("Se cobra ahora.")
+                            .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink3)
                     }
                 }
             }
@@ -239,7 +321,6 @@ struct NuevaVentaView: View {
             FilaCard {
                 VStack(alignment: .leading, spacing: 8) {
                     fila("Cliente", cliente?.nombre ?? "Sin nombre")
-                    fila("Condición", credito ? "Crédito · \(plazo) días" : "Contado · \(metodo)")
                     Divider()
                     ForEach(lineas, id: \.producto.id) { l in
                         fila("\(Int(l.cantidad)) × \(l.producto.nombre)",
@@ -272,12 +353,12 @@ struct NuevaVentaView: View {
                 .frame(maxWidth: .infinity).frame(height: 48)
             }
             Button {
-                if paso == .resumen { Task { await registrar() } }
-                else { paso = Paso(rawValue: paso.rawValue + 1) ?? .resumen; buscar = "" }
+                if paso == .pago { Task { await registrar() } }
+                else { paso = Paso(rawValue: paso.rawValue + 1) ?? .pago; buscar = "" }
             } label: {
                 ZStack {
                     if guardando { ProgressView().tint(.white) }
-                    else { Text(paso == .resumen ? "Registrar venta" : "Siguiente") }
+                    else { Text(paso == .pago ? "Confirmar venta" : "Continuar") }
                 }
                 .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity).frame(height: 48)
@@ -314,11 +395,12 @@ struct NuevaVentaView: View {
         do {
             resultado = try await RepoERP.crearVenta(
                 clienteId: cliente?.id, lineas: lineas,
-                credito: credito, plazoDias: plazo, metodo: metodo
+                credito: credito, plazoDias: plazo, metodo: metodo,
+                cliente: cliente
             )
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
-                ?? "No pudimos registrar la venta."
+                ?? "No se pudo registrar la venta. Probá de nuevo."
         }
         guardando = false
     }

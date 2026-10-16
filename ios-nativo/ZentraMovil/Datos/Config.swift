@@ -40,6 +40,18 @@ enum Config {
         texto("SOPORTE_WHATSAPP").filter(\.isNumber)
     }
 
+    /// Dónde se paga el plan. Vacío esconde el botón en vez de mandar a una
+    /// página que no existe.
+    ///
+    /// El cobro vive afuera de la app a propósito: vender una suscripción
+    /// adentro de una app Android cobrando en Paraguay choca con la política
+    /// de pagos de Google Play. La app informa, el pago va por el navegador.
+    static var cobrosUrl: String { sinBarra(texto("COBROS_URL")) }
+
+    static var linkDePago: URL? {
+        cobrosUrl.isEmpty ? nil : URL(string: cobrosUrl + "/pagar")
+    }
+
     static var timeout: TimeInterval { 15 }
 
     /// true cuando no hay nada configurado: la app no puede entrar a ningún lado.

@@ -9,6 +9,7 @@ struct ProveedoresView: View {
     @State private var cargando = true
     @State private var error: String?
     @State private var nuevo = false
+    @State private var aviso: String?
 
     private var vistas: [Proveedor] {
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
@@ -21,7 +22,7 @@ struct ProveedoresView: View {
 
     var body: some View {
         Lista(titulo: "Proveedores", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay proveedores cargados en el ERP.") {
+              vacioTexto: "Todavía no hay proveedores cargados.") {
             ForEach(vistas) { p in
                 NavigationLink { ProveedorDetalleView(p: p) } label: {
                 FilaCard {
@@ -48,11 +49,15 @@ struct ProveedoresView: View {
         .searchable(text: $q, prompt: "Buscar por nombre, RUC o rubro")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { nuevo = true } label: { Image(systemName: "plus") }
-                    .segunPlan(Planes.motivoBloqueo(.proveedoresAlta, estado.contextoPlan()))
+                Button {
+                    if let m = Planes.motivoBloqueo(.proveedoresAlta, estado.contextoPlan()) {
+                        withAnimation(.spring(duration: 0.3)) { aviso = m }
+                    } else { nuevo = true }
+                } label: { Image(systemName: "plus") }
             }
         }
         .sheet(isPresented: $nuevo) { NuevoProveedorView() }
+        .avisoPlan($aviso)
         .task { await cargar() }
         .refreshable { await cargar() }
     }
@@ -84,7 +89,7 @@ struct ComprasView: View {
 
     var body: some View {
         Lista(titulo: "Compras", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay compras cargadas en el ERP.") {
+              vacioTexto: "Todavía no hay compras cargadas.") {
             ForEach(vistas) { c in
                 NavigationLink { CompraDetalleView(c: c) } label: {
                 FilaCard {
@@ -149,7 +154,9 @@ struct ConversacionesView: View {
                   // permiso dado, token guardado— y no suena nada, porque el
                   // ERP manda los avisos de chat por `agent_id` y este usuario
                   // no tiene uno. Vale decirlo en vez de dejar que lo descubra.
-                  if estado.esAgente == false {
+                  if let b = Planes.motivoBloqueo(.chatModulo, estado.contextoPlan()) {
+                      Aviso(texto: b, bg: Tint.avisoBg, ink: Tint.avisoInk)
+                  } else if estado.esAgente == false {
                       Aviso(texto: "No estás dado de alta como agente de conversaciones, así que los avisos de chat no te van a llegar aunque los tengas prendidos. Pedile a un administrador que te sume.",
                             bg: Tint.avisoBg, ink: Tint.avisoInk)
                   }
@@ -204,20 +211,96 @@ struct DetalleVentasView: View {
     @Environment(\.tema) private var t
     @State private var filas: [Venta] = []
     @State private var q = ""
+    @State private var filtro = "Todas"
     @State private var cargando = true
     @State private var error: String?
 
+    private let filtros = ["Todas", "Cobradas", "Pendientes", "Crédito"]
+
     private var vistas: [Venta] {
+        var r = filas
+        switch filtro {
+        case "Cobradas": r = r.filter(\.cobrada)
+        case "Pendientes": r = r.filter { !$0.cobrada }
+        // Crédito se lee de la forma de pago y no del estado: una venta a
+        // crédito ya cobrada sigue siendo a crédito, y es la que hay que poder
+        // mirar aparte cuando se revisa la cuenta corriente.
+        case "Crédito": r = r.filter { $0.pago.localizedCaseInsensitiveContains("Crédito") }
+        default: break
+        }
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !n.isEmpty else { return filas }
-        return filas.filter {
-            $0.numero.lowercased().contains(n) || $0.cliente.lowercased().contains(n)
+        guard !n.isEmpty else { return r }
+        // Busca también dentro de las líneas: muchas veces lo único que se
+        // recuerda de una factura es qué producto llevaba.
+        return r.filter { v in
+            ([v.numero, v.cliente] + v.lineas.map(\.nombre))
+                .contains { $0.lowercased().contains(n) }
         }
     }
 
+    private var total: Int { vistas.reduce(0) { $0 + $1.total } }
+
+    /// El rango que se está mirando, con los mismos 30 días que trae `cargar()`.
+    private var textoRango: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_PY")
+        f.dateFormat = "d MMM"
+        let hasta = Date()
+        let desde = Calendar.current.date(byAdding: .day, value: -29, to: hasta) ?? hasta
+        return "\(f.string(from: desde)) — \(f.string(from: hasta))"
+    }
+
+    /// La lista como texto plano, que es lo que se comparte.
+    ///
+    /// Android tiene acá dos botones que sólo cambian su propia etiqueta y no
+    /// producen nada. Los textos son los mismos; lo que cambia es que estos sí
+    /// entregan el archivo, porque en iOS compartir ya viene hecho y un botón
+    /// que dice "Compartir lista" y no comparte nada es peor que no tenerlo.
+    private var listaTexto: String {
+        let encabezado = "Detalle de ventas · \(textoRango)\n"
+            + "\(vistas.count) factura\(vistas.count == 1 ? "" : "s") · \(Panel.gs(total))\n"
+        let cuerpo = vistas.map {
+            "\($0.iso)  \($0.numero)  \($0.cliente)  \($0.pago)  \(Panel.gs($0.total))"
+        }.joined(separator: "\n")
+        return encabezado + "\n" + cuerpo
+    }
+
     var body: some View {
-        Lista(titulo: "Ventas", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "No hay ventas en los últimos 30 días.") {
+        Lista(titulo: "Detalle de ventas", resumen: textoRango,
+              cargando: cargando, error: error, vacio: vistas.isEmpty,
+              vacioTexto: filas.isEmpty
+                ? "No hay ventas en los últimos 30 días."
+                : "No hay ventas en el rango con ese filtro.",
+              encabezado: {
+                  VStack(spacing: 10) {
+                      HStack(spacing: 10) {
+                          Kpi(rotulo: "FACTURAS",
+                              valor: "\(vistas.count) factura\(vistas.count == 1 ? "" : "s")")
+                          Kpi(rotulo: "TOTAL", valor: Panel.gs(total))
+                      }
+                      .padding(.horizontal, 14)
+
+                      ScrollView(.horizontal) {
+                          HStack(spacing: 8) {
+                              ForEach(filtros, id: \.self) { f in
+                                  Button { filtro = f } label: {
+                                      Text(f)
+                                          .font(Tipo.barlow(.semibold, 12.5))
+                                          .foregroundStyle(filtro == f ? .white : t.ink2)
+                                          .padding(.horizontal, 14).frame(height: 32)
+                                          .background(filtro == f ? C.cian : t.card, in: .capsule)
+                                          .overlay {
+                                              Capsule().stroke(filtro == f ? .clear : t.border)
+                                          }
+                                  }
+                                  .buttonStyle(.plain)
+                              }
+                          }
+                          .padding(.horizontal, 14)
+                      }
+                      .scrollIndicators(.hidden)
+                  }
+              }) {
             ForEach(vistas) { v in
                 NavigationLink { VentaDetalleView(venta: v) } label: {
                 FilaCard {
@@ -245,7 +328,25 @@ struct DetalleVentasView: View {
                 .buttonStyle(.plain)
             }
         }
-        .searchable(text: $q, prompt: "Buscar por número o cliente")
+        .safeAreaInset(edge: .bottom) {
+            if !vistas.isEmpty {
+                HStack(spacing: 10) {
+                    ShareLink(item: Pdf.deTexto(listaTexto, titulo: "Detalle de ventas"),
+                              preview: SharePreview("Detalle de ventas")) {
+                        Text("Exportar PDF").frame(maxWidth: .infinity)
+                    }
+                    ShareLink(item: listaTexto) {
+                        Text("Compartir lista").frame(maxWidth: .infinity)
+                    }
+                }
+                .font(Tipo.barlow(.semibold, 13.5))
+                .foregroundStyle(t.ink)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14).padding(.top, 11).padding(.bottom, 13)
+                .background(.bar)
+            }
+        }
+        .searchable(text: $q, prompt: "N.º de factura, cliente o producto")
         .task { await cargar() }
         .refreshable { await cargar() }
     }

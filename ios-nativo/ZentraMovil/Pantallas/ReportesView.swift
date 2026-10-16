@@ -8,24 +8,62 @@ import SwiftUI
 /// dice en vez de mostrar ceros.
 struct ReportesView: View {
     @Environment(\.tema) private var t
+    @Environment(\.colorScheme) private var esquema
+    @Environment(Estado.self) private var estado
+    @State private var aviso: String?
+
+    /// El color de la solapa activa. Cada reporte tiene el suyo: el color
+    /// identifica de qué estás mirando, no decora.
+    private var tono: Color { solapa.colorReporte.color(oscuro: esquema == .dark) }
 
     enum Solapa: String, CaseIterable { case ventas = "Ventas", inventario = "Inventario", compras = "Compras" }
+    /// Los atajos de rango.
+    ///
+    /// Eran Hoy / 7 días / 30 días / Este mes, igual que la primera versión de
+    /// Android, y "30 días" y "Este mes" se pisan: a mitad de mes son casi lo
+    /// mismo, y entre los dos ocupaban el lugar del que falta de verdad, que
+    /// es el año. Van de lo chico a lo grande sin repetirse.
     enum Rango: String, CaseIterable {
-        case hoy = "Hoy", siete = "7 días", treinta = "30 días", mes = "Este mes"
+        case hoy = "Hoy", siete = "7 días", mes = "Este mes", anio = "Este año"
 
-        /// Días hacia atrás, contando hoy.
-        var dias: Int {
+        /// Desde cuándo, contando siempre desde hoy.
+        func desde(_ hoy: Date = Date()) -> Date {
+            let c = Calendar.current
             switch self {
-            case .hoy: 1
-            case .siete: 7
-            case .treinta: 30
-            case .mes: Calendar.current.component(.day, from: Date())
+            case .hoy: return c.startOfDay(for: hoy)
+            case .siete: return c.date(byAdding: .day, value: -6, to: c.startOfDay(for: hoy)) ?? hoy
+            case .mes: return c.date(from: c.dateComponents([.year, .month], from: hoy)) ?? hoy
+            case .anio: return c.date(from: c.dateComponents([.year], from: hoy)) ?? hoy
             }
         }
     }
 
+    /// Qué acción del plan habilita cada reporte. Ventas no se bloquea nunca:
+    /// si no se pudiera ver lo que se vendió, la app no serviría para nada.
+    private func accion(_ s: Solapa) -> Accion? {
+        switch s {
+        case .ventas: nil
+        case .inventario: .dashboardInventario
+        case .compras: .dashboardCompras
+        }
+    }
+
+    private func bloqueo(_ s: Solapa) -> String? {
+        accion(s).flatMap { Planes.motivoBloqueo($0, estado.contextoPlan()) }
+    }
+
     @State private var solapa: Solapa = .ventas
-    @State private var rango: Rango = .siete
+    @State private var rango: Rango? = .siete
+    @State private var desde: Date = Rango.siete.desde()
+    @State private var hasta: Date = Date()
+
+    /// Cuántos días abarca el rango elegido, contando los dos extremos.
+    private var dias: Int {
+        let c = Calendar.current
+        let d = c.dateComponents([.day], from: c.startOfDay(for: desde),
+                                 to: c.startOfDay(for: hasta)).day ?? 0
+        return max(1, d + 1)
+    }
     @State private var ventas: [Venta] = []
     @State private var productos: [InvProducto] = []
     @State private var comprasFilas: [Compra] = []
@@ -46,6 +84,10 @@ struct ReportesView: View {
                     ProgressView().padding(.top, 40)
                 } else if let error {
                     Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk)
+                } else if let b = bloqueo(solapa) {
+                    Aviso(texto: b, bg: Tint.avisoBg, ink: Tint.avisoInk)
+                } else if !hayDatos {
+                    vacio
                 } else {
                     switch solapa {
                     case .ventas: cuerpoVentas
@@ -57,14 +99,83 @@ struct ReportesView: View {
             .padding(.vertical, 12)
         }
         .background(t.bg)
+        .avisoPlan($aviso)
         .navigationTitle("Reportes")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink { DetalleVentasView() } label: { Text("Detalle") }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                // En Android este botón sólo cambia su propia etiqueta a
+                // "✓ Exportado" y no produce ningún archivo. El texto es el
+                // mismo; acá entrega el PDF, porque compartir ya viene hecho
+                // en iOS y prometer un archivo que no llega se descubre justo
+                // cuando alguien lo necesita.
+                ShareLink(item: Pdf.deTexto(reporteTexto, titulo: "Reporte \(solapa.rawValue)"),
+                          preview: SharePreview("Reporte \(solapa.rawValue)")) {
+                    Text("Exportar")
+                }
+            }
         }
-        .task(id: rango) { await cargar() }
+        .task(id: [desde, hasta]) { await cargar() }
         .refreshable { await cargar() }
+    }
+
+    /// Si hay algo que graficar. Sin esto, un período sin ventas dibuja un
+    /// gráfico de ceros, que parece un dato y no lo es.
+    private var hayDatos: Bool {
+        switch solapa {
+        case .ventas: !ventas.isEmpty
+        case .inventario: !productos.isEmpty
+        case .compras: !comprasFilas.isEmpty
+        }
+    }
+
+    /// Qué decir cuando no hay nada, con los mismos textos que Android.
+    ///
+    /// El detalle repite el rango y nombra los atajos: "no hay datos" sin decir
+    /// de cuándo deja a alguien convencido de que la app no anda, cuando lo que
+    /// pasa es que eligió una semana en la que no vendió.
+    private var vacio: some View {
+        VStack(spacing: 6) {
+            Text(solapa == .inventario ? "Todavía no hay productos"
+                 : solapa == .ventas ? "No hubo ventas en este período"
+                 : "No hubo compras en este período")
+                .font(Tipo.barlow(.semibold, 14.5)).foregroundStyle(t.ink)
+            Text(solapa == .inventario
+                 ? "Cargá productos en Inventario y el reporte se arma solo."
+                 : "\(textoRango). Probá con un rango más amplio: tocá “Este mes” o “Este año”.")
+                .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink2)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 26).padding(.horizontal, 18)
+        .background(t.card, in: .rect(cornerRadius: 14))
+        .padding(.horizontal, 14)
+    }
+
+    /// El reporte como texto plano, que es lo que se exporta.
+    private var reporteTexto: String {
+        var l = ["Reporte de \(solapa.rawValue.lowercased()) · \(textoRango)", ""]
+        switch solapa {
+        case .ventas:
+            let total = ventas.reduce(0) { $0 + $1.total }
+            l.append("Facturado: \(Panel.gs(total)) · \(ventas.count) facturas")
+            l.append("")
+            l += ventas.map { "\($0.iso)  \($0.numero)  \($0.cliente)  \(Panel.gs($0.total))" }
+        case .inventario:
+            let v = productos.reduce(0) { $0 + Int(($1.stock * Double($1.costo)).rounded()) }
+            l.append("Valuación: \(Panel.gs(v)) · \(productos.count) productos")
+            l.append("")
+            l += productos.map {
+                "\($0.nombre)  \(Formato.miles($0.stock)) \($0.unidad)  \(Panel.gs($0.precio))"
+            }
+        case .compras:
+            l.append("\(comprasFilas.count) compras en el período")
+            l.append("")
+            l += comprasFilas.map { "\($0.numero)  \($0.producto)  \(Panel.gs(total($0)))" }
+        }
+        return l.joined(separator: "\n")
     }
 
     // MARK: selectores
@@ -72,10 +183,22 @@ struct ReportesView: View {
     private var selectorSolapa: some View {
         HStack(spacing: 0) {
             ForEach(Solapa.allCases, id: \.self) { s in
-                Button { solapa = s } label: {
-                    Text(s.rawValue)
+                let b = bloqueo(s)
+                Button {
+                    if let b { withAnimation(.spring(duration: 0.3)) { aviso = b } }
+                    else { solapa = s }
+                } label: {
+                    HStack(spacing: 4) {
+                        // Adelante del nombre, igual que Android: así se lee
+                        // "cerrado · Inventario" y no "Inventario, ah, cerrado".
+                        if b != nil {
+                            Image(systemName: "lock.fill").font(.system(size: 9, weight: .semibold))
+                        }
+                        Text(s.rawValue)
+                    }
                         .font(Tipo.barlow(.semibold, 13.5))
-                        .foregroundStyle(solapa == s ? C.azul : .white.opacity(0.85))
+                        .foregroundStyle(solapa == s ? C.azul
+                                         : .white.opacity(b == nil ? 0.85 : 0.45))
                         .frame(maxWidth: .infinity).frame(height: 40)
                         .background(solapa == s ? .white : .clear, in: .rect(cornerRadius: 10))
                 }
@@ -83,31 +206,70 @@ struct ReportesView: View {
             }
         }
         .padding(5)
-        .background(C.azulMedio, in: .rect(cornerRadius: 14))
+        .background(tono, in: .rect(cornerRadius: 14))
         .padding(.horizontal, 14)
     }
 
     private var selectorRango: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(Rango.allCases, id: \.self) { r in
-                    Button { rango = r } label: {
-                        Text(r.rawValue)
-                            .font(Tipo.barlow(.semibold, 12.5))
-                            .foregroundStyle(rango == r ? .white : t.ink2)
-                            .padding(.horizontal, 16).frame(height: 34)
-                            .background(rango == r ? C.cian : t.card, in: .capsule)
-                            .overlay { Capsule().stroke(rango == r ? .clear : t.border) }
+        VStack(spacing: 10) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(Rango.allCases, id: \.self) { r in
+                        Button {
+                            rango = r
+                            desde = r.desde()
+                            hasta = Date()
+                        } label: {
+                            Text(r.rawValue)
+                                .font(Tipo.barlow(.semibold, 12.5))
+                                .foregroundStyle(rango == r ? .white : t.ink2)
+                                .padding(.horizontal, 16).frame(height: 34)
+                                .background(rango == r ? tono : t.card, in: .capsule)
+                                .overlay { Capsule().stroke(rango == r ? .clear : t.border) }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 14)
+            }
+            .scrollIndicators(.hidden)
+
+            // Las fechas sueltas, para el rango que ningún atajo cubre: el mes
+            // pasado, una quincena, el día de una feria. `rango` se pone en
+            // `nil` al tocarlas porque ya no hay atajo que describa lo elegido,
+            // y dejar uno marcado diría algo falso.
+            HStack(spacing: 10) {
+                fecha("DESDE", $desde, hasta: hasta)
+                fecha("HASTA", $hasta, desde: desde)
             }
             .padding(.horizontal, 14)
         }
-        .scrollIndicators(.hidden)
     }
 
-    // MARK: ventas
+    /// Una de las dos fechas del rango, acotada para que no se crucen.
+    private func fecha(_ rotulo: String, _ valor: Binding<Date>,
+                       desde minimo: Date? = nil, hasta maximo: Date? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(rotulo).font(Tipo.barlow(.semibold, 10)).tracking(1.2)
+                .foregroundStyle(t.ink2)
+            DatePicker("", selection: Binding(
+                get: { valor.wrappedValue },
+                set: { valor.wrappedValue = $0; rango = nil }
+            ), in: rangoValido(minimo: minimo, maximo: maximo),
+                       displayedComponents: .date)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .tint(tono)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func rangoValido(minimo: Date?, maximo: Date?) -> ClosedRange<Date> {
+        // El tope de arriba es hoy: un reporte de la semana que viene no existe.
+        let techo = min(maximo ?? Date(), Date())
+        let piso = minimo ?? Date(timeIntervalSince1970: 0)
+        return piso <= techo ? piso...techo : techo...techo
+    }
 
     private var cuerpoVentas: some View {
         let cobradas = ventas.filter(\.cobrada)
@@ -136,7 +298,8 @@ struct ReportesView: View {
                     ZStack {
                         Circle().stroke(t.border, lineWidth: 14)
                         Circle().trim(from: 0, to: Double(pct) / 100)
-                            .stroke(C.teal, style: StrokeStyle(lineWidth: 14, lineCap: .butt))
+                            .stroke(ColorReporte.verde.color(oscuro: esquema == .dark),
+                                    style: StrokeStyle(lineWidth: 14, lineCap: .butt))
                             .rotationEffect(.degrees(-90))
                         VStack(spacing: 1) {
                             Text("\(pct)%").font(Tipo.barlow(.bold, 18)).foregroundStyle(t.ink)
@@ -147,8 +310,8 @@ struct ReportesView: View {
                     .frame(width: 96, height: 96)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        leyenda("Cobrado", Panel.gs(cobrado), C.teal)
-                        leyenda("Pendiente", Panel.gs(total - cobrado), C.ambar)
+                        leyenda("Cobrado", Panel.gs(cobrado), ColorReporte.verde.color(oscuro: esquema == .dark))
+                        leyenda("Pendiente", Panel.gs(total - cobrado), ColorReporte.ambar.color(oscuro: esquema == .dark))
                     }
                     Spacer(minLength: 0)
                 }
@@ -187,7 +350,12 @@ struct ReportesView: View {
             ForEach(Array(serie.enumerated()), id: \.offset) { i, v in
                 VStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(v > 0 ? C.cian : t.border)
+                        // Un solo tono de claro a oscuro: el color dice cuánto,
+                        // igual que la altura, y se lee sin pensar.
+                        .fill(v > 0
+                              ? solapa.colorReporte.barra(Double(v), max: Double(tope),
+                                                          oscuro: esquema == .dark)
+                              : t.border)
                         .frame(height: max(3, CGFloat(v) / CGFloat(tope) * 70))
                     Text(String(dias[i].suffix(5)).replacingOccurrences(of: "-", with: "/"))
                         .font(Tipo.barlow(.regular, 9)).foregroundStyle(t.ink3)
@@ -212,8 +380,8 @@ struct ReportesView: View {
             .padding(.horizontal, 14)
 
             tarjeta("ATENCIÓN") {
-                leyenda("Agotados", "\(agotados.count)", Tint.errorInk)
-                leyenda("Bajo mínimo", "\(bajo.count)", Tint.avisoInk)
+                leyenda("Agotados", "\(agotados.count)", ColorReporte.rojo.color(oscuro: esquema == .dark))
+                leyenda("Bajo mínimo", "\(bajo.count)", ColorReporte.ambar.color(oscuro: esquema == .dark))
             }
 
             if !bajo.isEmpty {
@@ -234,14 +402,17 @@ struct ReportesView: View {
 
     // MARK: compras
 
+    /// Lo que costó una compra, con IVA.
+    ///
+    /// En compras el IVA va POR ENCIMA del costo: el proveedor cotiza neto. Es
+    /// al revés que en ventas, y confundirlo cambia el total.
+    private func total(_ c: Compra) -> Int {
+        let neto = Double(c.costo) * c.cantidad
+        return Int((neto * (1 + RepoERP.tasa(c.iva))).rounded())
+    }
+
     private var cuerpoCompras: some View {
         let pagadas = comprasFilas.filter(\.pagada)
-        // En compras el IVA va POR ENCIMA del costo: el proveedor cotiza neto.
-        // Es al revés que en ventas, y confundirlo cambia el total.
-        func total(_ c: Compra) -> Int {
-            let neto = Double(c.costo) * c.cantidad
-            return Int((neto * (1 + RepoERP.tasa(c.iva))).rounded())
-        }
         let gastado = comprasFilas.reduce(0) { $0 + total($1) }
         let deuda = comprasFilas.filter { !$0.pagada }.reduce(0) { $0 + total($1) }
 
@@ -278,11 +449,11 @@ struct ReportesView: View {
 
     // MARK: piezas
 
+    /// El rango aplicado, en palabras. Dos fechas ISO no se leen de un vistazo.
     private var textoRango: String {
         let f = DateFormatter(); f.locale = Locale(identifier: "es_PY"); f.dateFormat = "d MMM"
-        let hasta = Date()
-        let desde = Calendar.current.date(byAdding: .day, value: -(rango.dias - 1), to: hasta) ?? hasta
-        return "\(f.string(from: desde)) — \(f.string(from: hasta)) · \(rango.dias) día\(rango.dias == 1 ? "" : "s")"
+        if Calendar.current.isDate(desde, inSameDayAs: hasta) { return f.string(from: desde) }
+        return "\(f.string(from: desde)) — \(f.string(from: hasta)) · \(dias) día\(dias == 1 ? "" : "s")"
     }
 
     private func kpi(_ etiqueta: String, _ valor: String, _ pie: String) -> some View {
@@ -320,8 +491,6 @@ struct ReportesView: View {
     private func cargar() async {
         cargando = ventas.isEmpty && productos.isEmpty
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        let hasta = Date()
-        let desde = Calendar.current.date(byAdding: .day, value: -(rango.dias - 1), to: hasta) ?? hasta
 
         async let v = try? RepoERP.ventas(desde: f.string(from: desde), hasta: f.string(from: hasta))
         async let p = try? RepoERP.inventario()

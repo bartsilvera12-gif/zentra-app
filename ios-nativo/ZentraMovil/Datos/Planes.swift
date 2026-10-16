@@ -7,7 +7,7 @@ import Foundation
 ///   1. Quien conecta su propio ERP **no tiene plan**: tiene todo. Los planes
 ///      son para quien usa Zentra sola, con los datos del lado nuestro.
 ///   2. Al vencer, lo cargado **se sigue viendo**. Lo que se bloquea es
-///      escribir. Alguien con 200 productos que cae a Básico sigue viendo los
+///      escribir. Alguien con 200 productos que cae a Gratis sigue viendo los
 ///      200: no puede editarlos ni cargar el 201. Son datos suyos.
 ///   3. Por eso "¿puede?" no es una sola pregunta. Leer siempre se puede; lo
 ///      que se consulta acá es si puede **escribir**.
@@ -20,19 +20,18 @@ enum Plan: String, CaseIterable, Codable, Equatable {
 
     var nombre: String {
         switch self {
-        case .free: "Básico"
+        case .free: "Gratis"
         case .emprendedor: "Emprendedor"
         case .max: "Max"
         }
     }
 
-    var precioMensual: Int {
-        switch self {
-        case .free: 0
-        case .emprendedor: 49_000
-        case .max: 89_000
-        }
-    }
+    // El precio NO está acá, igual que en `planes.ts`.
+    //
+    // Estaba —49.000 y 89.000, escritos a mano— y no lo usaba nadie. El que
+    // importa es el de `zentra.planes`, que es de donde lo lee el server que
+    // cobra. Un precio en dos lugares es un precio que algún día dice dos
+    // cosas distintas, y el que se cobra no es el que la app muestra.
 
     /// Máximo de productos cargados. `nil` es sin tope.
     var topeProductos: Int? {
@@ -145,6 +144,58 @@ enum Planes {
 
     static func puedeEscribir(_ accion: Accion, _ ctx: ContextoPlan) -> Bool {
         motivoBloqueo(accion, ctx) == nil
+    }
+
+    /// Qué decir de la suscripción, ya escrito para mostrar.
+    ///
+    /// `nil` cuando no corresponde mostrarla: con ERP propio no hay plan que
+    /// vencer. Devuelve el texto armado y no los datos crudos a propósito —
+    /// si cada pantalla tuviera que decidir qué decir según los días que
+    /// faltan, terminarían diciendo cosas distintas.
+    static func suscripcion(
+        conErp: Bool, plan: Plan, vence: Date?, ahora: Date = Date()
+    ) -> (plan: String, estado: String, detalle: String, urgente: Bool)? {
+        if conErp { return nil }
+
+        guard let vence else {
+            // Sin fecha: nunca pagó. No es un error ni una deuda, es el gratis.
+            return plan == .free
+                ? (plan.nombre, "Gratis, sin vencimiento",
+                   "Pagando un plan se habilitan compras, reportes y el resto de los módulos.",
+                   false)
+                : (plan.nombre, "Sin fecha de vencimiento",
+                   "Tu plan está activo. Si creés que esto no es correcto, escribinos.",
+                   false)
+        }
+
+        let cal = Calendar.current
+        let dias = cal.dateComponents([.day],
+                                      from: cal.startOfDay(for: ahora),
+                                      to: cal.startOfDay(for: vence)).day ?? 0
+
+        if dias < 0 {
+            let d = abs(dias)
+            return (plan.nombre,
+                    d == 1 ? "Venció ayer" : "Venció hace \(d) días",
+                    // Lo que importa no es que venció: es qué se puede seguir
+                    // haciendo. Nadie pierde lo cargado, y decirlo evita la
+                    // llamada asustada.
+                    "Podés seguir viendo todo lo que cargaste, pero no cargar más hasta renovar.",
+                    true)
+        }
+        if dias == 0 {
+            return (plan.nombre, "Vence hoy",
+                    "Renová para no quedarte sin cargar mañana.", true)
+        }
+
+        let f = DateFormatter()
+        f.dateFormat = "dd/MM/yyyy"
+        return (plan.nombre,
+                dias == 1 ? "Vence mañana" : "Vence en \(dias) días",
+                "Pagado hasta el \(f.string(from: vence)).",
+                // El rojo se guarda para lo que ya venció. Un "vence en 5 días"
+                // en rojo es la alarma gritando todos los días.
+                dias <= 7)
     }
 
     /// Cuántos productos más entran: para mostrar "12 de 20" y que el tope

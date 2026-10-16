@@ -21,6 +21,7 @@ struct ConfiguracionView: View {
             VStack(alignment: .leading, spacing: 16) {
                 apariencia($a)
                 notificaciones($a)
+                plan
                 soporte
                 cuenta
 
@@ -110,17 +111,73 @@ struct ConfiguracionView: View {
         }
     }
 
+    /// La suscripción: qué plan, cómo está y hasta cuándo.
+    ///
+    /// Con ERP propio no se muestra — esas empresas pagan su ERP, no un plan de
+    /// Zentra. Es la misma primera línea de `motivoBloqueo()`.
+    ///
+    /// El texto viene armado desde `Planes.suscripcion()`: acá no se decide qué
+    /// decir según los días que faltan. Si esta pantalla tuviera que saberlo,
+    /// el dato viviría en dos lugares y terminarían diciendo cosas distintas.
+    @ViewBuilder
+    private var plan: some View {
+        if let sus = Planes.suscripcion(conErp: estado.conErp,
+                                        plan: estado.tenant?.plan ?? .free,
+                                        vence: estado.tenant?.vence) {
+            tarjeta {
+                etiqueta("SUSCRIPCIÓN")
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text(sus.plan)
+                        .font(Tipo.barlow(.bold, 18)).foregroundStyle(t.ink)
+                    Spacer(minLength: 12)
+                    Text(sus.estado)
+                        .font(Tipo.barlow(.semibold, 12.5))
+                        // El rojo se guarda para lo que ya venció. Un "vence en
+                        // 5 días" en rojo es la alarma gritando todos los días.
+                        .foregroundStyle(sus.urgente ? Tint.errorInk : t.ink2)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(sus.urgente ? Tint.errorBg : t.bg, in: .capsule)
+                }
+
+                Text(sus.detalle)
+                    .font(Tipo.barlow(.regular, 13))
+                    .foregroundStyle(t.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Dónde se paga. La dirección va siempre como texto; el botón
+                // sólo si está configurado. Google Play no permite mandar a
+                // pagar afuera, y eso no depende del código.
+                if let url = Config.linkDePago {
+                    Link(destination: url) {
+                        Text("Ver planes y pagar")
+                            .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 46)
+                            .background(C.teal, in: .rect(cornerRadius: 12))
+                    }
+                }
+                Text("Se paga en \(Config.cobrosUrl.isEmpty ? "cobros.neura.com.py" : Config.cobrosUrl.replacingOccurrences(of: "https://", with: ""))/pagar, desde el navegador.")
+                    .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+            }
+        }
+    }
+
     // MARK: - Soporte
 
+    /// Dos puertas, no tres: escribir a soporte y sugerir una mejora.
+    ///
+    /// El mensaje ya va armado con quién sos, de qué empresa y qué versión
+    /// tenés. Esa vuelta —"¿qué versión usás?", "¿en qué pantalla?"— es la que
+    /// convierte diez minutos de soporte en dos días de ida y vuelta.
     private var soporte: some View {
-        tarjeta {
+        let d = Soporte.contacto(nombre: estado.perfil?.nombre,
+                                 empresa: estado.tenant?.nombre)
+        return tarjeta {
             etiqueta("SOPORTE")
-            filaSoporte("WA", "WhatsApp de soporte", "+595 981 000 450 · lun a sáb, 8 a 18 h",
-                        destino: Config.linkWhatsapp("Hola, necesito ayuda con la app de Zentra."))
-            filaSoporte("@", "Correo de soporte", "soporte@zentra.com.py · respuesta en 24 h",
-                        destino: URL(string: "mailto:soporte@zentra.com.py"))
-            filaSoporte("?", "Reportar un problema", "Adjunta captura y datos del dispositivo",
-                        destino: Config.linkWhatsapp("Hola, quiero reportar un problema en la app de Zentra."))
+            ForEach([Soporte.Motivo.ayuda, .mejora], id: \.titulo) { m in
+                filaSoporte(m.simbolo, m.titulo, m.detalle,
+                            destino: Soporte.link(Config.soporteWhatsapp, m, d))
+            }
         }
     }
 
@@ -221,13 +278,15 @@ struct ConfiguracionView: View {
         }
     }
 
-    private func filaSoporte(_ tag: String, _ titulo: String, _ detalle: String, destino: URL?) -> some View {
+    private func filaSoporte(_ simbolo: String, _ titulo: String, _ detalle: String,
+                             destino: URL?) -> some View {
         Button {
             if let destino { UIApplication.shared.open(destino) }
         } label: {
             HStack(spacing: 12) {
-                Text(tag)
-                    .font(Tipo.barlow(.semibold, 12)).foregroundStyle(t.ink2)
+                Image(systemName: simbolo)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(C.teal)
                     .frame(width: 38, height: 38)
                     .background(t.bg, in: .rect(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 2) {

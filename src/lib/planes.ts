@@ -102,7 +102,10 @@ const MAX: Accion[] = [
 
 export const PLANES: Record<Plan, DefinicionPlan> = {
   free: {
-    nombre: "Básico",
+    // "Gratis", que es como se llama en `zentra.planes` y como se lo ve en la
+    // página de pago. Decía "Básico" sólo acá, y el mismo plan terminaba con
+    // dos nombres según dónde lo leyeras.
+    nombre: "Gratis",
     limites: { productos: 20, esperaAjusteDias: 30 },
     permite: new Set(FREE),
   },

@@ -9,17 +9,62 @@ struct ClientesView: View {
     @State private var error: String?
     @State private var nuevo = false
 
+    @State private var filtro = "Todos"
+
+    private var activos: Int { filas.filter(\.activo).count }
+
+    /// Qué dice cada filtro y cuántos cae en él.
+    ///
+    /// El número va en la etiqueta a propósito: sin él hay que entrar en cada
+    /// filtro para descubrir que está vacío.
+    private var filtros: [(String, Int)] {
+        [("Todos", filas.count), ("Activos", activos), ("Inactivos", filas.count - activos)]
+    }
+
     private var vistas: [Cliente] {
+        var r = filas
+        switch filtro {
+        case "Activos": r = r.filter(\.activo)
+        case "Inactivos": r = r.filter { !$0.activo }
+        default: break
+        }
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !n.isEmpty else { return filas }
-        return filas.filter {
-            $0.nombre.lowercased().contains(n) || $0.doc.lowercased().contains(n)
+        guard !n.isEmpty else { return r }
+        // Busca también por contacto y correo, igual que Android: a un cliente
+        // se lo busca por la persona con la que se habla, no sólo por la razón
+        // social con la que se factura.
+        return r.filter {
+            [$0.nombre, $0.doc, $0.contacto, $0.email]
+                .contains { $0.lowercased().contains(n) }
         }
     }
 
     var body: some View {
-        Lista(titulo: "Clientes", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay clientes cargados en el ERP.") {
+        Lista(titulo: "Clientes",
+              resumen: "\(filas.count) en total · \(activos) activos",
+              cargando: cargando, error: error, vacio: vistas.isEmpty,
+              vacioTexto: filas.isEmpty
+                ? "Todavía no hay clientes cargados."
+                : "Probá con otro término o cambiá el filtro.",
+              encabezado: {
+                  ScrollView(.horizontal) {
+                      HStack(spacing: 8) {
+                          ForEach(filtros, id: \.0) { f, n in
+                              Button { filtro = f } label: {
+                                  Text("\(f) (\(n))")
+                                      .font(Tipo.barlow(.semibold, 12.5))
+                                      .foregroundStyle(filtro == f ? .white : t.ink2)
+                                      .padding(.horizontal, 14).frame(height: 32)
+                                      .background(filtro == f ? C.cian : t.card, in: .capsule)
+                                      .overlay { Capsule().stroke(filtro == f ? .clear : t.border) }
+                              }
+                              .buttonStyle(.plain)
+                          }
+                      }
+                      .padding(.horizontal, 14)
+                  }
+                  .scrollIndicators(.hidden)
+              }) {
             ForEach(vistas) { c in
                 NavigationLink { ClienteDetalleView(cliente: c) } label: {
                 FilaCard {
@@ -53,7 +98,7 @@ struct ClientesView: View {
             // devolvió completo y una recarga perdería el scroll.
             NuevoClienteView { c in filas.insert(c, at: 0) }
         }
-        .searchable(text: $q, prompt: "Buscar por nombre o RUC")
+        .searchable(text: $q, prompt: "Nombre, RUC, contacto o correo")
         .task { await cargar() }
         .refreshable { await cargar() }
     }
@@ -81,9 +126,31 @@ struct InventarioView: View {
     @State private var cargando = true
     @State private var error: String?
     @State private var nuevoProd = false
+    @State private var ajuste = false
+    @State private var aviso: String?
+
+    /// Cuánto vale lo que hay en el depósito, a costo.
+    private var valuacion: Int {
+        filas.reduce(0) { $0 + Int(($1.stock * Double($1.costo)).rounded()) }
+    }
+
+    /// Cuántos están por debajo de su mínimo **sin haberse agotado**: el
+    /// agotado ya no es un aviso de reponer, es un faltante.
+    private var bajoMinimo: Int {
+        filas.filter { $0.stock > 0 && $0.minimo > 0 && $0.stock <= $0.minimo }.count
+    }
 
     /// El tope de productos se consulta con cuántos hay cargados, así el aviso
     /// aparece antes de llegar y no de golpe cuando ya no se puede.
+    /// "12 de 20 productos". El tope avisa antes de llegar, no de golpe
+    /// cuando ya no se puede.
+    private var textoCupo: String {
+        let c = Planes.cupoProductos(estado.contextoPlan(productos: filas.count))
+        let u = Formato.miles(filas.reduce(0) { $0 + $1.stock })
+        guard let tope = c.tope else { return "\(filas.count) productos · \(u) unidades" }
+        return "\(c.usados) de \(tope) productos · \(u) unidades"
+    }
+
     private var bloqueoAlta: String? {
         Planes.motivoBloqueo(.inventarioAlta, estado.contextoPlan(productos: filas.count))
     }
@@ -111,11 +178,20 @@ struct InventarioView: View {
     }
 
     var body: some View {
-        Lista(titulo: "Inventario", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay productos cargados en el ERP.",
+        Lista(titulo: "Inventario", resumen: textoCupo,
+              cargando: cargando, error: error, vacio: vistas.isEmpty,
+              vacioTexto: filas.isEmpty
+                ? "Todavía no hay productos cargados."
+                : "Probá con otro término o cambiá el filtro.",
               encabezado: {
                   VStack(spacing: 10) {
-                  if let bloqueoAlta { AvisoPlan(motivo: bloqueoAlta) }
+                  HStack(spacing: 10) {
+                      Kpi(rotulo: "VALUACIÓN", valor: Panel.gs(valuacion))
+                      Kpi(rotulo: "BAJO MÍNIMO", valor: "\(bajoMinimo) prod.",
+                          tinte: bajoMinimo > 0 ? Tint.avisoInk : nil)
+                  }
+                  .padding(.horizontal, 14)
+
                   ScrollView(.horizontal) {
                       HStack(spacing: 8) {
                           ForEach(filtros, id: \.self) { f in
@@ -133,6 +209,24 @@ struct InventarioView: View {
                       .padding(.horizontal, 14)
                   }
                   .scrollIndicators(.hidden)
+
+                  // Las dos acciones que no son sobre un producto en
+                  // particular. En la barra de arriba no entran junto al "+",
+                  // y escondidas detrás de un ícono no las encuentra nadie.
+                  HStack(spacing: 8) {
+                      NavigationLink { MovimientosView() } label: {
+                          Text("Ver movimientos").frame(maxWidth: .infinity)
+                      }
+                      Button { ajuste = true } label: {
+                          Text("Ajustar stock").frame(maxWidth: .infinity)
+                      }
+                  }
+                  .font(Tipo.barlow(.semibold, 13))
+                  .foregroundStyle(t.ink)
+                  .buttonStyle(.plain)
+                  .padding(.horizontal, 14)
+                  .frame(height: 40)
+                  .padding(.horizontal, 14)
                   }
               }) {
             ForEach(vistas) { p in
@@ -161,19 +255,21 @@ struct InventarioView: View {
                 .buttonStyle(.plain)
             }
         }
-        .searchable(text: $q, prompt: "Buscar por nombre, código o barras")
+        .searchable(text: $q, prompt: "Producto, SKU o código de barras")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { MovimientosView() } label: {
-                    Image(systemName: "arrow.left.arrow.right")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { nuevoProd = true } label: { Image(systemName: "plus") }
-                    .segunPlan(bloqueoAlta)
+                // El botón no se apaga: se toca y dice por qué. Un botón gris
+                // sin explicación hace creer que la app se rompió.
+                Button {
+                    if let m = bloqueoAlta {
+                        withAnimation(.spring(duration: 0.3)) { aviso = m }
+                    } else { nuevoProd = true }
+                } label: { Image(systemName: "plus") }
             }
         }
         .sheet(isPresented: $nuevoProd) { NuevoProductoView() }
+        .sheet(isPresented: $ajuste) { ElegirProductoAjusteView(productos: filas) }
+        .avisoPlan($aviso)
         .task { await cargar() }
         .refreshable { await cargar() }
     }
@@ -216,6 +312,12 @@ struct InventarioView: View {
 struct Lista<Contenido: View, Encabezado: View>: View {
     @Environment(\.tema) private var t
     let titulo: String
+    /// La línea chica bajo el título: cuántos hay, cuántos entran, cuánto suman.
+    ///
+    /// Va acá y no en cada pantalla porque es la misma pregunta en todas —
+    /// "¿esto que estoy viendo es todo?"— y porque sin ella un listado vacío y
+    /// un listado filtrado a cero se ven idénticos.
+    var resumen: String? = nil
     let cargando: Bool
     let error: String?
     let vacio: Bool
@@ -223,10 +325,12 @@ struct Lista<Contenido: View, Encabezado: View>: View {
     @ViewBuilder var encabezado: Encabezado
     @ViewBuilder var contenido: Contenido
 
-    init(titulo: String, cargando: Bool, error: String?, vacio: Bool, vacioTexto: String,
+    init(titulo: String, resumen: String? = nil,
+         cargando: Bool, error: String?, vacio: Bool, vacioTexto: String,
          @ViewBuilder encabezado: () -> Encabezado = { EmptyView() },
          @ViewBuilder contenido: () -> Contenido) {
-        self.titulo = titulo; self.cargando = cargando; self.error = error
+        self.titulo = titulo; self.resumen = resumen
+        self.cargando = cargando; self.error = error
         self.vacio = vacio; self.vacioTexto = vacioTexto
         self.encabezado = encabezado(); self.contenido = contenido()
     }
@@ -234,6 +338,12 @@ struct Lista<Contenido: View, Encabezado: View>: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
+                if let resumen {
+                    Text(resumen)
+                        .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                }
                 encabezado
                 if cargando {
                     ProgressView().padding(.top, 40)
@@ -299,5 +409,35 @@ struct Aviso: View {
             .padding(14)
             .background(bg, in: .rect(cornerRadius: 14))
             .padding(.horizontal, 14)
+    }
+}
+
+/// Un número con su rótulo arriba, de los que van en fila sobre un listado.
+///
+/// Son los dos o tres datos que contestan la pregunta antes de que alguien se
+/// ponga a sumar de a una las filas: cuántas facturas, cuánto suman, cuánto
+/// está bajo mínimo. Por eso van **arriba** de la lista y no al final.
+struct Kpi: View {
+    @Environment(\.tema) private var t
+    let rotulo: String
+    let valor: String
+    /// El color del número. Por defecto el del texto normal: se tiñe sólo
+    /// cuando el dato en sí es un aviso, como "bajo mínimo".
+    var tinte: Color?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(rotulo)
+                .font(Tipo.barlow(.semibold, 9.5)).tracking(1.33)
+                .foregroundStyle(t.ink2)
+            Text(valor)
+                .font(Tipo.barlow(.bold, 16))
+                .foregroundStyle(tinte ?? t.ink)
+                .lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .background(t.card, in: .rect(cornerRadius: 13))
+        .overlay { RoundedRectangle(cornerRadius: 13).stroke(t.border) }
     }
 }

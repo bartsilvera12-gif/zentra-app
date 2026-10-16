@@ -90,6 +90,19 @@ enum Formato {
 
     /// "Lun 5 oct 2026". Sin comas, sin "de" y sin puntos: el encabezado es
     /// angosto y cada carácter de más empuja al nombre de la empresa.
+    /// Un número con punto de miles, como se escribe acá: 1.248.
+    ///
+    /// Port de `num()` en Android, que usa `toLocaleString("es-PY")`. Los
+    /// decimales se recortan porque donde se usa son unidades contadas; para
+    /// un producto por kilo el número viene redondeado desde el stock.
+    static func miles(_ n: Double) -> String {
+        let f = NumberFormatter()
+        f.locale = es
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = n == n.rounded() ? 0 : 3
+        return f.string(from: NSNumber(value: n)) ?? "\(Int(n))"
+    }
+
     static func fechaDeHoy(_ ahora: Date = Date()) -> String {
         let f = DateFormatter()
         f.locale = es

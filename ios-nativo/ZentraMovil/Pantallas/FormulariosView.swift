@@ -53,12 +53,29 @@ struct AjusteStockView: View {
     @Environment(\.tema) private var t
     @Environment(\.dismiss) private var cerrar
     @Environment(AjustesLocales.self) private var locales
+    @Environment(Estado.self) private var estado
+
+    /// La espera entre dos ajustes del mismo producto. El plan dice "1 vez al
+    /// mes"; se cuenta en días y no en mes calendario porque un ajuste el 31 y
+    /// otro el 1 serían dos meses con horas de diferencia, y eso no es lo que
+    /// se vendió.
+    private var bloqueo: String? {
+        let ultimo = locales.movs.first { $0.prodId == producto.id }?.cuando
+        return Planes.motivoBloqueo(.inventarioAjuste,
+                                    estado.contextoPlan(ultimoAjuste: ultimo))
+    }
 
     @State private var tipo = "ENTRADA"
     @State private var cantidad = ""
-    @State private var motivo = "Conteo físico"
+    @State private var motivo = "Merma"
 
-    private let motivos = ["Conteo físico", "Rotura", "Vencimiento", "Devolución", "Merma", "Otro"]
+    /// Los mismos de `MOTIVOS` en `src/lib/data.ts`, en el mismo orden.
+    ///
+    /// No son una lista de ideas: el motivo es lo que después explica un
+    /// faltante. Si acá dice "Vencimiento" y en Android "Inventario inicial",
+    /// los dos ajustes del mismo depósito no se pueden ni comparar.
+    private let motivos = ["Merma", "Rotura", "Inventario físico",
+                           "Devolución", "Inventario inicial"]
     private var n: Double { Double(cantidad.replacingOccurrences(of: ",", with: ".")) ?? 0 }
     private var puede: Bool { n > 0 }
 
@@ -66,6 +83,9 @@ struct AjusteStockView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
+                    if let bloqueo {
+                        Aviso(texto: bloqueo, bg: Tint.avisoBg, ink: Tint.avisoInk)
+                    }
                     AvisoLocal(que: "Este ajuste queda sólo en el teléfono")
 
                     Bloque(titulo: "PRODUCTO") {
@@ -97,17 +117,37 @@ struct AjusteStockView: View {
                                 .overlay { RoundedRectangle(cornerRadius: 10).stroke(t.border) }
                         }
 
-                        Picker("Motivo", selection: $motivo) {
-                            ForEach(motivos, id: \.self) { Text($0).tag($0) }
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("MOTIVO").font(Tipo.barlow(.semibold, 10)).tracking(1.2)
+                                .foregroundStyle(t.ink2)
+                            // A la vista y no detrás de un menú: el motivo se
+                            // elige siempre, y un menú lo deja en el que vino
+                            // por defecto sin que nadie lo mire.
+                            FlujoHorizontal(spacing: 7) {
+                                ForEach(motivos, id: \.self) { k in
+                                    let on = motivo == k
+                                    Button { motivo = k } label: {
+                                        Text(k)
+                                            .font(Tipo.barlow(.semibold, 12))
+                                            .foregroundStyle(on ? Color(hex: "#04617A") : t.ink2)
+                                            .padding(.horizontal, 13).padding(.vertical, 8)
+                                            .background(on ? Color(hex: "#E2F0F4") : t.card,
+                                                        in: .capsule)
+                                            .overlay {
+                                                Capsule()
+                                                    .stroke(on ? Color(hex: "#04617A") : t.border)
+                                            }
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
-                        .pickerStyle(.menu)
-                        .tint(C.azulMedio)
                     }
                 }
                 .padding(.vertical, 12)
             }
             .background(t.bg)
-            .navigationTitle("Ajustar stock")
+            .navigationTitle("Ajuste de stock")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
@@ -116,7 +156,7 @@ struct AjusteStockView: View {
                         locales.aplicar(producto, tipo: tipo, cantidad: n, motivo: motivo)
                         cerrar()
                     }
-                    .disabled(!puede)
+                    .disabled(!puede || bloqueo != nil)
                 }
             }
         }
@@ -143,7 +183,7 @@ struct MovimientosView: View {
                 if cargando {
                     ProgressView().padding(.top, 30)
                 } else if delErp.isEmpty && locales.movs.isEmpty {
-                    Aviso(texto: "No hay movimientos registrados.", bg: t.card, ink: t.ink2)
+                    Aviso(texto: "No hay movimientos de ese tipo en el período.", bg: t.card, ink: t.ink2)
                 }
 
                 // Los del ERP primero, que son los de verdad.
@@ -241,6 +281,46 @@ struct NuevoProductoView: View {
     }
     private var puede: Bool { nombre.trimmingCharacters(in: .whitespaces).count >= 2 && p > 0 }
 
+    /// Las mismas cinco de `UNIDADES` en `src/lib/data.ts`, en el mismo orden.
+    private let unidades = ["UNIDAD", "CAJA", "KG", "LT", "PAQUETE"]
+    /// Las que se venden por peso. Decide si la cantidad admite decimales, así
+    /// que no es una etiqueta: cambia lo que el formulario deja escribir.
+    private let pesables = ["KG", "LT", "GR", "ML"]
+
+    /// La unidad como botones y no como campo libre.
+    ///
+    /// Escrita a mano aparecen "kg", "Kg", "kilo" y "KG" para la misma cosa, y
+    /// después no hay forma de sumar stock ni de saber qué admite decimales.
+    private var selectorUnidad: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Envuelve solo: en un teléfono angosto las cinco no entran en una
+            // línea, y un scroll horizontal esconde las últimas.
+            FlujoHorizontal(spacing: 7) {
+                ForEach(unidades, id: \.self) { u in
+                    let on = unidad == u
+                    Button { unidad = u } label: {
+                        Text(u)
+                            .font(Tipo.barlow(.semibold, 12))
+                            .foregroundStyle(on ? Color(hex: "#04617A") : t.ink2)
+                            .padding(.horizontal, 13).padding(.vertical, 8)
+                            .background(on ? Color(hex: "#E2F0F4") : t.card, in: .capsule)
+                            .overlay {
+                                Capsule().stroke(on ? Color(hex: "#04617A") : t.border)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Text(pesables.contains(unidad)
+                 ? "Se vende por peso: admite decimales (1,350) y el precio es por \(unidad)."
+                 : "Se cuenta de a uno: la cantidad siempre es entera.")
+                .font(Tipo.barlow(.regular, 11.5))
+                .foregroundStyle(t.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -248,7 +328,6 @@ struct NuevoProductoView: View {
                     Bloque(titulo: "PRODUCTO") {
                         campo("Nombre", $nombre)
                         campo("Código / SKU", $sku)
-                        campo("Unidad", $unidad)
                         campo("Código de barras", $barras)
                         if !categorias.isEmpty {
                             Picker("Categoría", selection: $categoriaId) {
@@ -266,9 +345,13 @@ struct NuevoProductoView: View {
                         }
                     }
 
+                    Bloque(titulo: "UNIDAD DE MEDIDA") {
+                        selectorUnidad
+                    }
+
                     Bloque(titulo: "PRECIOS") {
-                        campo("Costo (neto)", $costo, teclado: .decimalPad)
-                        campo("Precio de venta (con IVA)", $precio, teclado: .decimalPad)
+                        campo("Costo unitario promedio", $costo, teclado: .decimalPad)
+                        campo("Precio de venta", $precio, teclado: .decimalPad)
                         Picker("IVA", selection: $iva) {
                             Text("10%").tag(Iva.diez)
                             Text("5%").tag(Iva.cinco)
@@ -281,7 +364,7 @@ struct NuevoProductoView: View {
                     }
 
                     Bloque(titulo: "STOCK") {
-                        campo("Stock inicial", $stockInicial, teclado: .decimalPad)
+                        campo("Inventario inicial", $stockInicial, teclado: .decimalPad)
                         campo("Mínimo", $minimo, teclado: .decimalPad)
                     }
 
@@ -325,7 +408,7 @@ struct NuevoProductoView: View {
             cerrar()
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
-                ?? "No pudimos guardar el producto."
+                ?? "No se pudo guardar el producto."
         }
         guardando = false
     }
@@ -448,7 +531,7 @@ struct NuevoProveedorView: View {
             cerrar()
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
-                ?? "No pudimos guardar el proveedor."
+                ?? "No se pudieron guardar los cambios."
         }
         guardando = false
     }
@@ -495,6 +578,8 @@ struct NuevaCompraView: View {
     @State private var nuevoProv = false
     @State private var guardando = false
     @State private var error: String?
+    @State private var aviso: String?
+    @Environment(Estado.self) private var estado
     var alGuardar: (Compra) -> Void = { _ in }
 
     private var n: Double { Double(cantidad.replacingOccurrences(of: ",", with: ".")) ?? 0 }
@@ -523,9 +608,14 @@ struct NuevaCompraView: View {
                             .pickerStyle(.menu).tint(C.azulMedio)
                             // Cargar un proveedor sin salir de la compra: si hay
                             // que volver atrás, se pierde lo ya cargado.
-                            Button("Cargar un proveedor nuevo") { nuevoProv = true }
-                                .font(Tipo.barlow(.semibold, 13))
-                                .foregroundStyle(C.azulMedio)
+                            Button("Cargar un proveedor nuevo") {
+                                if let m = Planes.motivoBloqueo(.comprasNuevoProveedor,
+                                                                estado.contextoPlan()) {
+                                    withAnimation(.spring(duration: 0.3)) { aviso = m }
+                                } else { nuevoProv = true }
+                            }
+                            .font(Tipo.barlow(.semibold, 13))
+                            .foregroundStyle(C.azulMedio)
                         }
                         Bloque(titulo: "PRODUCTO") {
                             Picker("Producto", selection: $prodId) {
@@ -548,7 +638,7 @@ struct NuevaCompraView: View {
                         }
                         Bloque(titulo: "COMPROBANTE") {
                             campo("Timbrado", $timbrado, teclado: .numberPad)
-                            campo("Número de factura", $comprobante)
+                            campo("N.° de factura", $comprobante)
                         }
                         Bloque(titulo: "CONDICIÓN") {
                             Picker("", selection: $credito) {
@@ -566,6 +656,8 @@ struct NuevaCompraView: View {
                         // Las dos cuentas no son decorativas: sin ellas el ERP
                         // no puede asentar el movimiento y rechaza la compra.
                         Bloque(titulo: "CONTABILIDAD") {
+                            Text("Elegí en qué cuenta contable se asienta la compra.")
+                                .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink3)
                             Picker("Cuenta contable", selection: $cuentaContableId) {
                                 Text("Elegir…").tag("")
                                 ForEach(cuentas) { Text($0.nombre).tag($0.id) }
@@ -577,7 +669,7 @@ struct NuevaCompraView: View {
                                     ForEach(cuentas) { Text($0.nombre).tag($0.id) }
                                 }
                                 .pickerStyle(.menu).tint(C.azulMedio)
-                                Text("Una compra al contado tiene que decir de dónde salió la plata.")
+                                Text("Elegí de qué cuenta sale el pago.")
                                     .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
                             }
                         }
@@ -608,6 +700,7 @@ struct NuevaCompraView: View {
                     Button("Guardar") { Task { await guardar() } }.disabled(!puede)
                 }
             }
+            .avisoPlan($aviso)
             .sheet(isPresented: $nuevoProv) {
                 NuevoProveedorView { p in
                     provs.insert(p, at: 0)
@@ -640,7 +733,7 @@ struct NuevaCompraView: View {
             cerrar()
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
-                ?? "No pudimos registrar la compra."
+                ?? "No se pudo registrar la compra."
         }
         guardando = false
     }
@@ -656,6 +749,74 @@ struct NuevaCompraView: View {
                 .padding(.horizontal, 12).frame(height: 44)
                 .background(t.bg, in: .rect(cornerRadius: 10))
                 .overlay { RoundedRectangle(cornerRadius: 10).stroke(t.border) }
+        }
+    }
+}
+
+/// Elegir sobre qué producto se ajusta el stock.
+///
+/// Es el paso que Android resuelve con un buscador dentro de la misma pantalla
+/// del ajuste. Acá va antes y aparte porque el ajuste ya decide cantidad,
+/// signo y motivo: meter además la búsqueda en la misma hoja deja cuatro
+/// decisiones encima, y la primera —sobre qué producto— es la que no se puede
+/// equivocar, porque el ajuste se aplica igual.
+struct ElegirProductoAjusteView: View {
+    @Environment(\.tema) private var t
+    @Environment(\.dismiss) private var cerrar
+    let productos: [InvProducto]
+    @State private var q = ""
+
+    private var vistas: [InvProducto] {
+        let n = q.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !n.isEmpty else { return productos }
+        return productos.filter {
+            $0.nombre.lowercased().contains(n) || $0.sku.lowercased().contains(n)
+                || $0.barras.contains(n)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if vistas.isEmpty {
+                        Aviso(texto: productos.isEmpty
+                              ? "Todavía no hay productos cargados."
+                              : "Probá con otro término.",
+                              bg: t.card, ink: t.ink2)
+                    }
+                    ForEach(vistas) { p in
+                        NavigationLink { AjusteStockView(producto: p) } label: {
+                            FilaCard {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(p.nombre)
+                                            .font(Tipo.barlow(.semibold, 14.5))
+                                            .foregroundStyle(t.ink).lineLimit(1)
+                                        Text([p.sku, p.unidad].filter { !$0.isEmpty }
+                                            .joined(separator: " · "))
+                                            .font(Tipo.barlow(.regular, 11.5))
+                                            .foregroundStyle(t.ink2).lineLimit(1)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(t.ink3)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 12)
+            }
+            .background(t.bg)
+            .searchable(text: $q, prompt: "Producto, SKU o código de barras")
+            .navigationTitle("Ajustar stock")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
+            }
         }
     }
 }
