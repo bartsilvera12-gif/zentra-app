@@ -170,10 +170,11 @@
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOL_FRAMEWORKS = SwiftUI;
 				INFOPLIST_KEY_UILaunchScreen_Background = MarcaFondo;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Zentra Móvil";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Para mandarle tu ubicación a un cliente por el chat.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Para grabar notas de voz y mandarlas por el chat.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -196,10 +197,11 @@
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOL_FRAMEWORKS = SwiftUI;
 				INFOPLIST_KEY_UILaunchScreen_Background = MarcaFondo;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Zentra Móvil";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Para mandarle tu ubicación a un cliente por el chat.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Para grabar notas de voz y mandarlas por el chat.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
