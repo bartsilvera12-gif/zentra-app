@@ -288,7 +288,9 @@ export function ConfigScreen() {
                     rel="noreferrer"
                     style={{
                       display: "block",
-                      width: "100%",
+                      // Sin `width: 100%`: con relleno de 13px, el 100% es el
+                      // ancho de adentro MÁS el relleno, y el botón se sale de
+                      // la tarjeta. Un `block` ya ocupa todo el ancho solo.
                       padding: "13px",
                       borderRadius: 10,
                       background: MARCA.acento,
