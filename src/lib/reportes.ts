@@ -14,6 +14,7 @@
  * de fechas no lo afecta — y la pantalla lo aclara, para que nadie lea esos
  * números como si fueran del período elegido.
  */
+import { COLOR_DE_TAB, color, RAMPAS, type NombreColor } from "./colores-reporte";
 import { REP } from "./data";
 import { neto, totalVenta } from "./calc";
 import { diaMes, gs, isoOf } from "./format";
@@ -51,6 +52,8 @@ export interface ReportModel {
   rank: { label: string; v: number; sub: string }[];
   rankMax: number;
   tabla: { k: string; sub: string; v: string }[];
+  /** Qué color identifica este reporte, para pintar barras y tarjetas. */
+  tono: NombreColor;
   acento: string;
   acentoSuave: string;
   conic: string;
@@ -104,18 +107,20 @@ export function buildReport(
   desde: string,
   hasta: string,
   datos: DatosReporte = { ventas: [], compras: [], productos: [] },
+  oscuro = false,
 ): ReportModel {
   const cfg = REP[tab];
   const { fechas, dias } = fechasDe(desde, hasta);
-  const acento = tab === "compras" ? "#96731A" : tab === "inventario" ? "#1C8C84" : "#023047";
-  const acentoSuave = tab === "compras" ? "#E5C77A" : tab === "inventario" ? "#8ED3C6" : "#8ECAE6";
+  const tono = COLOR_DE_TAB[tab];
+  const acento = color(tono, oscuro);
+  const acentoSuave = RAMPAS[tono][oscuro ? "oscuro" : "claro"][1];
 
   const armado =
     tab === "ventas"
-      ? deVentas(datos.ventas, desde, hasta, fechas)
+      ? deVentas(datos.ventas, desde, hasta, fechas, oscuro)
       : tab === "compras"
-        ? deCompras(datos.compras, desde, hasta, fechas)
-        : deInventario(datos.productos);
+        ? deCompras(datos.compras, desde, hasta, fechas, oscuro)
+        : deInventario(datos.productos, oscuro);
 
   const rankMax = Math.max(...armado.rank.map((r) => r.v), 1);
   const max = Math.max(...armado.buckets.map((b) => b.v), 1);
@@ -140,6 +145,7 @@ export function buildReport(
     dias,
     max,
     rankMax,
+    tono,
     acento,
     acentoSuave,
     conic,
@@ -149,7 +155,7 @@ export function buildReport(
 
 /* ---------- ventas ---------- */
 
-function deVentas(ventas: Venta[], desde: string, hasta: string, fechas: Date[]) {
+function deVentas(ventas: Venta[], desde: string, hasta: string, fechas: Date[], oscuro: boolean) {
   const enRango = ventas.filter((v) => v.iso >= desde && v.iso <= hasta);
   const porDia = new Map<string, number>();
   for (const v of enRango) porDia.set(v.iso, (porDia.get(v.iso) ?? 0) + totalVenta(v));
@@ -198,8 +204,10 @@ function deVentas(ventas: Venta[], desde: string, hasta: string, fechas: Date[])
     ],
     dona: total
       ? ([
-          { label: "Cobrado", pct: pct(cobradas, total), color: "#023047" },
-          { label: "Por cobrar", pct: pct(pendientes, total), color: "#FFB701" },
+          // Lo cobrado con el color del reporte; lo que falta cobrar en
+          // ámbar, que en toda la app quiere decir "mirá esto".
+          { label: "Cobrado", pct: pct(cobradas, total), color: color("azul", oscuro) },
+          { label: "Por cobrar", pct: pct(pendientes, total), color: color("ambar", oscuro) },
         ].filter((d) => d.pct > 0) as DonaItem[])
       : [],
     donaValor: total ? `${pct(cobradas, total)}%` : VACIO,
@@ -217,7 +225,7 @@ function deVentas(ventas: Venta[], desde: string, hasta: string, fechas: Date[])
 
 /* ---------- compras ---------- */
 
-function deCompras(compras: Compra[], desde: string, hasta: string, fechas: Date[]) {
+function deCompras(compras: Compra[], desde: string, hasta: string, fechas: Date[], oscuro: boolean) {
   const enRango = compras.filter((c) => c.fecha >= desde && c.fecha <= hasta);
   const porDia = new Map<string, number>();
   for (const c of enRango) porDia.set(c.fecha, (porDia.get(c.fecha) ?? 0) + totalCompra(c));
@@ -256,8 +264,11 @@ function deCompras(compras: Compra[], desde: string, hasta: string, fechas: Date
     ],
     dona: total
       ? ([
-          { label: "Contado", pct: pct(contado, total), color: "#96731A" },
-          { label: "Crédito", pct: pct(total - contado, total), color: "#E5C77A" },
+          // Eran dos ámbares, uno claro y uno oscuro: se distinguían por
+          // luminosidad y nada más, que es lo primero que se pierde en una
+          // pantalla al sol. Lo que se debe va en azul, separado de verdad.
+          { label: "Contado", pct: pct(contado, total), color: color("ambar", oscuro) },
+          { label: "Crédito", pct: pct(total - contado, total), color: color("azul", oscuro) },
         ].filter((d) => d.pct > 0) as DonaItem[])
       : [],
     donaValor: total ? `${pct(contado, total)}%` : VACIO,
@@ -274,7 +285,7 @@ function deCompras(compras: Compra[], desde: string, hasta: string, fechas: Date
 
 /* ---------- inventario ---------- */
 
-function deInventario(productos: InvProducto[]) {
+function deInventario(productos: InvProducto[], oscuro: boolean) {
   const valuacion = productos.reduce((a, p) => a + p.stock * p.costo, 0);
   const agotados = productos.filter((p) => p.stock <= 0);
   // "Bajo mínimo" es que le queda poco, no que no le queda: un agotado ya se
@@ -303,9 +314,13 @@ function deInventario(productos: InvProducto[]) {
     ],
     dona: productos.length
       ? ([
-          { label: "Normal", pct: pct(normales, productos.length), color: "#1C8C84" },
-          { label: "Bajo mínimo", pct: pct(bajos.length, productos.length), color: "#FFB701" },
-          { label: "Agotados", pct: pct(agotados.length, productos.length), color: "#FC8500" },
+          { label: "Normal", pct: pct(normales, productos.length), color: color("verde", oscuro) },
+          // Bajo mínimo y agotado eran dos ámbares a 11,6 de diferencia
+          // percibida, con el piso en 15: en la dona se leían como el mismo
+          // color, y son justo los dos estados que hay que distinguir de un
+          // vistazo. Agotado pasa a rojo, que además es lo que significa.
+          { label: "Bajo mínimo", pct: pct(bajos.length, productos.length), color: color("ambar", oscuro) },
+          { label: "Agotados", pct: pct(agotados.length, productos.length), color: color("rojo", oscuro) },
         ].filter((d) => d.pct > 0) as DonaItem[])
       : [],
     donaValor: productos.length ? `${pct(normales, productos.length)}%` : VACIO,

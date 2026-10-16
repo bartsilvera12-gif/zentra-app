@@ -2,6 +2,7 @@
 
 import { MARCA } from "@/lib/theme";
 import { fmtIso, gs, haceDias, hoyIso, inicioDeAnio, inicioDeMes } from "@/lib/format";
+import { colorDeBarra } from "@/lib/colores-reporte";
 import { buildReport } from "@/lib/reportes";
 import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
@@ -37,7 +38,8 @@ export function ReportesScreen() {
   const error = s.rTab === "ventas" ? eV : s.rTab === "compras" ? eC : eI;
   const recargar = s.rTab === "ventas" ? rV : s.rTab === "compras" ? rC : rI;
 
-  const m = buildReport(s.rTab, s.rDesde, s.rHasta, { ventas, compras, productos });
+  const oscuro = s.theme === "oscuro";
+  const m = buildReport(s.rTab, s.rDesde, s.rHasta, { ventas, compras, productos }, oscuro);
 
   /**
    * Si el rango elegido tiene algo que mostrar.
@@ -334,7 +336,20 @@ export function ReportesScreen() {
         {/* KPIs */}
         <div style={{ display: "flex", gap: 10 }}>
           {m.kpis.map((k) => (
-            <Card key={k.label} style={{ flex: 1, minWidth: 0, padding: 14 }} gap={4}>
+            <Card key={k.label} style={{ flex: 1, minWidth: 0, padding: 14, position: "relative", overflow: "hidden" }} gap={4}>
+              {/* Una barrita del color del reporte. El número se queda en el
+                  color del texto: pintar la cifra la vuelve menos legible y no
+                  agrega nada, porque no hay varias series que distinguir. */}
+              <span
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 3,
+                  background: m.acento,
+                }}
+              />
               <SectionLabel>{k.label}</SectionLabel>
               <span style={{ font: "700 18px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
                 {k.valor}
@@ -394,13 +409,19 @@ export function ReportesScreen() {
                 <span style={{ font: "600 9px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
                   {b.v === m.max ? "●" : ""}
                 </span>
+                {/* El color dice lo mismo que la altura: cuanto más alta, más
+                    intensa. Antes eran todas del mismo tono claro salvo la
+                    más alta, así que entre la segunda y la última no había
+                    ninguna diferencia visible. Un tono por barra NO: eso
+                    trataría los días como categorías y el color dejaría de
+                    significar algo. */}
                 <div
                   style={{
                     width: "100%",
                     borderRadius: "5px 5px 2px 2px",
-                    background: b.v === m.max ? m.acento : m.acentoSuave,
+                    background: colorDeBarra(m.tono, b.v, m.max, oscuro),
                     height: Math.max(3, Math.round((b.v / m.max) * 86)),
-                    transition: "height .5s cubic-bezier(.22,1,.36,1)",
+                    transition: "height .5s cubic-bezier(.22,1,.36,1), background .3s ease",
                   }}
                 />
                 <span
@@ -490,7 +511,7 @@ export function ReportesScreen() {
         {/* Ranking */}
         <Card gap={14}>
           <SectionLabel>{m.cfg.rankTitulo}</SectionLabel>
-          {m.rank.map((r, i) => (
+          {m.rank.map((r) => (
             <div key={r.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
                 <span
@@ -515,7 +536,9 @@ export function ReportesScreen() {
                   style={{
                     height: "100%",
                     width: `${Math.max(6, Math.round((r.v / m.rankMax) * 100))}%`,
-                    background: i === 0 ? m.acento : m.acentoSuave,
+                    // Misma rampa que las barras: el primero del ranking es el
+                    // más intenso y la intensidad baja con el monto.
+                    background: colorDeBarra(m.tono, r.v, m.rankMax, oscuro),
                     borderRadius: 4,
                     transition: "width .5s cubic-bezier(.22,1,.36,1)",
                   }}
