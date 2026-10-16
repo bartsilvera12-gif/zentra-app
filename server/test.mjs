@@ -11,6 +11,8 @@ import {
   sha1Hex, stripPagoparSecret, verifyWebhookToken,
 } from "./src/pagopar.js";
 
+import { claveCoincide, claveUsable, esCobroDePrueba, LARGO_MINIMO } from "./src/cobro-prueba.js";
+
 const casos = [];
 const t = (n, f) => casos.push([n, f]);
 const PRIV = "clave-privada";
@@ -49,6 +51,35 @@ t("PagoPar manda `respuesta` como texto a veces", () => {
   if (!isPagoparRespuestaOk("true")) throw new Error("texto 'true'");
   if (isPagoparRespuestaOk("false")) throw new Error("texto 'false' NO es ok");
   if (isPagoparRespuestaOk(false) || isPagoparRespuestaOk(undefined)) throw new Error("falso es falso");
+});
+
+t("sin clave configurada, el cobro de prueba no existe", () => {
+  if (claveUsable("", 1000)) throw new Error("se habilito sin clave");
+  if (claveUsable(undefined, 1000)) throw new Error("se habilito sin clave");
+  if (esCobroDePrueba("", 1000, "")) throw new Error("clave vacia contra clave vacia dio verdadero");
+});
+
+t("una clave corta no habilita nada", () => {
+  const corta = "a".repeat(LARGO_MINIMO - 1);
+  if (claveUsable(corta, 1000)) throw new Error("acepto una clave de " + corta.length);
+  // Y aunque la manden exacta: la configuracion esta mal, no se cobra barato.
+  if (esCobroDePrueba(corta, 1000, corta)) throw new Error("cobro barato con clave corta");
+});
+
+t("un monto de prueba invalido apaga el camino", () => {
+  const clave = "x".repeat(LARGO_MINIMO);
+  if (claveUsable(clave, 0)) throw new Error("monto cero");
+  if (claveUsable(clave, -1)) throw new Error("monto negativo");
+  if (claveUsable(clave, Number.NaN)) throw new Error("monto no numerico");
+});
+
+t("la clave se compara entera, no por pedazos", () => {
+  const clave = "clave-de-prueba-larga-0001";
+  if (!claveCoincide(clave, clave)) throw new Error("no reconocio la propia");
+  if (claveCoincide(clave, clave.slice(0, -1))) throw new Error("acepto un prefijo");
+  if (claveCoincide(clave, clave + "x")) throw new Error("acepto con cola");
+  if (claveCoincide(clave, clave.toUpperCase())) throw new Error("ignoro mayusculas");
+  if (claveCoincide(clave, " " + clave)) throw new Error("ignoro un espacio");
 });
 
 let malas = 0;

@@ -41,6 +41,7 @@ import {
   usuarioDelToken,
 } from "./db.js";
 import { paginaPagar, paginaResultado } from "./pagina.js";
+import { esCobroDePrueba } from "./cobro-prueba.js";
 
 const PORT = Number(process.env.PORT || 8790);
 /**
@@ -59,6 +60,15 @@ const ORIGENES = String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+/**
+ * El camino de prueba: mismo plan, monto chico. Las reglas viven en
+ * `cobro-prueba.js`; acá sólo se leen del entorno.
+ */
+const CLAVE_PRUEBA = String(process.env.COBRO_PRUEBA_CLAVE || "").trim();
+const MONTO_PRUEBA = Number(process.env.COBRO_PRUEBA_MONTO || 1000);
+
+const esPrueba = (clave) => esCobroDePrueba(CLAVE_PRUEBA, MONTO_PRUEBA, clave);
 
 /** Cuántas horas tiene la persona para pagar antes de que el pedido caduque. */
 const HORAS = Number(process.env.PAGOPAR_HORAS_PARA_PAGAR || 48);
@@ -157,7 +167,7 @@ class ErrorDeCobro extends Error {
  * que ser exactamente lo mismo. Partirlo en dos copias es la forma más
  * confiable de que dentro de tres meses una cobre bien y la otra no.
  */
-async function iniciarCobro({ usuarioId, email, plan, documento, telefono }) {
+async function iniciarCobro({ usuarioId, email, plan, documento, telefono, clave }) {
   if (!plan) throw new ErrorDeCobro(400, "Falta decir qué plan.");
 
   const perfil = await perfilDe(usuarioId);
@@ -167,7 +177,21 @@ async function iniciarCobro({ usuarioId, email, plan, documento, telefono }) {
   // compra un mes de Max por mil guaraníes.
   const def = await planVendible(plan);
   if (!def) throw new ErrorDeCobro(400, "Ese plan no está a la venta.");
-  const monto = def.precio_mensual;
+
+  // El camino de prueba cobra menos por el mismo plan. Lo unico que cambia es
+  // el monto: el plan, la empresa y lo que se activa al pagar son los de
+  // siempre, porque si no, probar no probaria nada.
+  const prueba = esPrueba(clave);
+  const monto = prueba ? MONTO_PRUEBA : def.precio_mensual;
+  if (prueba) {
+    console.warn(
+      "[cobro-prueba] plan=%s monto=%s empresa=%s usuario=%s",
+      plan,
+      monto,
+      perfil.empresa.id,
+      usuarioId,
+    );
+  }
 
   const nombre = String(perfil.nombre || "").trim() || perfil.empresa.nombre || "";
   const correo = email || perfil.email || "";
@@ -286,6 +310,7 @@ app.post("/pagopar/crear-cobro", async (req, res) => {
       plan: String(req.body?.plan || "").trim(),
       documento: req.body?.documento,
       telefono: req.body?.telefono,
+      clave: req.body?.clave,
     });
     return res.json(r);
   } catch (e) {
@@ -326,10 +351,14 @@ function anotarFallo(ip) {
   else x.n += 1;
 }
 
-app.get("/pagar", async (_req, res) => {
+app.get("/pagar", async (req, res) => {
+  // La clave de prueba viaja en la direccion y vuelve a salir en el
+  // formulario: sin eso se perderia al enviar y el pago saldria al precio
+  // real, que es el error mas caro que puede cometer esta pagina.
+  const clave = String(req.query?.clave || "");
   try {
     const planes = await planesVendibles();
-    res.type("html").send(paginaPagar({ planes }));
+    res.type("html").send(paginaPagar({ planes, clave, prueba: esPrueba(clave) ? MONTO_PRUEBA : 0 }));
   } catch (e) {
     console.error("[pagar] no se pudieron leer los planes:", e?.message || e);
     res.status(500).type("html").send(paginaPagar({ planes: [], error: "No pudimos cargar los planes. Probá en un rato." }));
@@ -340,11 +369,15 @@ app.post("/pagar", async (req, res) => {
   const email = String(req.body?.email || "").trim();
   const plan = String(req.body?.plan || "").trim();
   const documento = String(req.body?.documento || "").trim();
+  const clave = String(req.body?.clave || "");
   const ip = req.ip || "";
 
   const volver = async (error) => {
     const planes = await planesVendibles().catch(() => []);
-    res.status(400).type("html").send(paginaPagar({ planes, email, plan, error }));
+    res
+      .status(400)
+      .type("html")
+      .send(paginaPagar({ planes, email, plan, error, clave, prueba: esPrueba(clave) ? MONTO_PRUEBA : 0 }));
   };
 
   if (falta()) return volver("Los cobros no están configurados todavía.");
@@ -361,7 +394,7 @@ app.post("/pagar", async (req, res) => {
       return volver("Correo o contraseña incorrectos.");
     }
 
-    const r = await iniciarCobro({ usuarioId: usuario.id, email: usuario.email, plan, documento });
+    const r = await iniciarCobro({ usuarioId: usuario.id, email: usuario.email, plan, documento, clave });
     // 303 y no 302: después de un POST, el navegador tiene que ir con GET. Si
     // no, volver atrás reenvía el formulario y se crea otro pedido.
     return res.redirect(303, r.url);

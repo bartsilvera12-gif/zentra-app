@@ -165,6 +165,43 @@ que mandó.
 Esa última fila es la que importa: ante un error propio hay que fallar ruidoso
 y dejar que la pasarela insista.
 
+## Probar en producción sin pagar el precio entero
+
+Una vez en producción no hay ambiente de prueba: cada cobro es plata real. Para
+poder recorrer el circuito completo sin gastar Gs 89.000 por vez existe el
+**cobro de prueba**.
+
+```
+COBRO_PRUEBA_CLAVE=una-clave-larga-que-nadie-adivine
+COBRO_PRUEBA_MONTO=1000
+```
+
+Con eso puesto, `https://cobros.neura.com.py/pagar?clave=una-clave-larga-...`
+muestra la misma página con el monto de prueba y un aviso arriba. El resto es
+idéntico a una compra real: mismo plan, mismo PagoPar, mismo aviso firmado,
+misma función que activa la empresa.
+
+**No es un plan, y eso es a propósito.** Un "plan de mil guaraníes que da todo"
+habría significado un cuarto código en `zentra.planes`, en los dos `check` de
+la base y en `src/lib/planes.ts`, para siempre, a un descuido de aparecer en la
+lista de planes. Acá se cobra `max`: la empresa queda en `max` igual que con una
+compra real, y lo único distinto es el monto. Si probar activara otra cosa, no
+estaría probando nada.
+
+Lo que hay que tener claro:
+
+- **Quien tenga la clave se compra un mes de Max por mil guaraníes.** Va sólo en
+  el `.env` del server, nunca en un link que se comparta, nunca en la app.
+- Sin `COBRO_PRUEBA_CLAVE`, o con una de menos de 16 caracteres, el camino no
+  existe: no se puede pedir ni adivinando.
+- Cada cobro así sale en el log como `[cobro-prueba]`, con empresa y usuario.
+  Es para que al revisar la facturación no haya que adivinar por qué entró un
+  Max por mil.
+- La página no menciona que el camino existe a menos que se llegue con la
+  clave.
+
+Para apagarlo: borrar la línea del `.env` y reiniciar.
+
 ## Lo que no hace sola
 
 **Una reversión no quita el mes.** Llega como `pagado: false` sobre un pedido

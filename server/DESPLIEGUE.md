@@ -123,6 +123,8 @@ Lo que hay que completar:
 | `SUPABASE_URL` | La URL de tu Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → `service_role` |
 | `ALLOWED_ORIGINS` | El dominio de la página donde se paga |
+| `COBRO_PRUEBA_CLAVE` | Opcional. Habilita el cobro de prueba (ver abajo). Mínimo 16 caracteres |
+| `COBRO_PRUEBA_MONTO` | Opcional. Cuánto cobra ese camino. Por defecto 1000 |
 
 **Ese archivo tiene las dos llaves del negocio.** Con la privada de PagoPar se
 firman pedidos y se falsifican avisos de pago; con la `service_role` se pasa

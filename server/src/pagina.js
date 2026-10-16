@@ -246,7 +246,7 @@ const TILDE =
 const ESTRELLA =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>';
 
-export function paginaPagar({ planes, email = "", plan = "", error = "" }) {
+export function paginaPagar({ planes, email = "", plan = "", error = "", clave = "", prueba = 0 }) {
   // El más caro se marca como recomendado. No es un invento de marketing: es
   // el único que trae conversaciones y factura electrónica, que es por lo que
   // la gente pregunta.
@@ -273,8 +273,8 @@ export function paginaPagar({ planes, email = "", plan = "", error = "" }) {
         -->
         <input class="oculto" type="radio" name="plan" value="${esc(p.codigo)}"${elegido ? " checked" : ""}>
         <p class="nombre">${esc(p.nombre)}</p>
-        <div class="monto">${esc(gs(p.precio_mensual))}</div>
-        <p class="porMes">por mes</p>
+        <div class="monto">${esc(gs(prueba || p.precio_mensual))}</div>
+        <p class="porMes">${prueba ? `de prueba · normalmente ${esc(gs(p.precio_mensual))}` : "por mes"}</p>
         <ul>${items}</ul>
         <hr class="separa">
         <button class="elegir" type="submit" name="plan" value="${esc(p.codigo)}">
@@ -296,6 +296,22 @@ export function paginaPagar({ planes, email = "", plan = "", error = "" }) {
       planes.length === 0
         ? sinPlanes
         : `<form method="post" action="/pagar">
+      ${
+        prueba
+          ? `<div class="error datos">Cobro de prueba: se cobra ${esc(gs(prueba))} y queda el plan completo.
+             Es un pago real, con tarjeta real.</div>`
+          : ""
+      }
+      ${
+        // La clave de prueba vuelve a salir acá porque el formulario se
+        // reenvía a sí mismo: sin esto, equivocarse la contraseña una vez
+        // haría que el segundo intento salga al precio real.
+        //
+        // El comentario va en el código y no en el HTML: una página que le
+        // cuenta a cualquiera que existe un camino de prueba es media pista
+        // regalada.
+        clave ? `<input type="hidden" name="clave" value="${esc(clave)}">` : ""
+      }
       <div class="tarjeta datos">
         <label for="email">Correo</label>
         <input id="email" type="email" name="email" value="${esc(email)}" required autocomplete="email" autocapitalize="off" spellcheck="false">

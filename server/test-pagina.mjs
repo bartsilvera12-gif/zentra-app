@@ -23,6 +23,7 @@ const t = (n, f) => casos.push([n, f]);
 const PUERTO_FALSO = 8891;
 const PUERTO_SERVER = 8892;
 const CHECKOUT = "http://127.0.0.1:" + PUERTO_FALSO + "/pagos";
+const CLAVE_PRUEBA = "clave-de-prueba-larga-0001";
 
 /** Lo que pidió cada parte, para poder afirmar sobre eso. */
 const pedidos = [];
@@ -89,6 +90,8 @@ const hijo = spawn(process.execPath, ["src/index.js"], {
     PAGOPAR_CHECKOUT_BASE_URL: CHECKOUT,
     SUPABASE_URL: base,
     SUPABASE_SERVICE_ROLE_KEY: "service",
+    COBRO_PRUEBA_CLAVE: CLAVE_PRUEBA,
+    COBRO_PRUEBA_MONTO: "1000",
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -159,6 +162,37 @@ t("el precio sale de la base, no del formulario", async () => {
   if (d.monto_total !== 150000) throw new Error("cobró " + d.monto_total);
 });
 
+t("con la clave de prueba se cobra el monto chico, no el del plan", async () => {
+  const antes = pedidos.length;
+  await postPagar({
+    email: "karen@zentra.py",
+    password: "buena",
+    plan: "max",
+    documento: "463255",
+    clave: CLAVE_PRUEBA,
+  });
+  const pedido = pedidos.slice(antes).find((p) => p.ruta === "/api/comercios/2.0/iniciar-transaccion");
+  const d = JSON.parse(pedido.cuerpo);
+  if (d.monto_total !== 1000) throw new Error("cobró " + d.monto_total);
+  // El plan sigue siendo el de verdad: si probar diera otra cosa, no
+  // probaría nada.
+  if (!d.descripcion_resumen.includes("Max")) throw new Error("cambió el plan: " + d.descripcion_resumen);
+});
+
+t("una clave de prueba equivocada paga el precio real", async () => {
+  const antes = pedidos.length;
+  await postPagar({
+    email: "karen@zentra.py",
+    password: "buena",
+    plan: "max",
+    documento: "463255",
+    clave: "clave-de-prueba-larga-0002",
+  });
+  const pedido = pedidos.slice(antes).find((p) => p.ruta === "/api/comercios/2.0/iniciar-transaccion");
+  const d = JSON.parse(pedido.cuerpo);
+  if (d.monto_total !== 150000) throw new Error("cobró " + d.monto_total);
+});
+
 t("con la contraseña mal no se crea ningun pedido", async () => {
   const antes = pedidos.length;
   const r = await postPagar({ email: "karen@zentra.py", password: "mala", plan: "emprendedor" });
@@ -201,6 +235,19 @@ t("al volver de pagar, dice hasta cuando quedo pago", async () => {
 t("un hash que no existe no inventa un pago", async () => {
   const html = await (await fetch(SRV + "/pagopar/resultado/NOEXISTE")).text();
   if (!html.includes("No encontramos ese pago")) throw new Error("dijo cualquier cosa");
+});
+
+t("sin la clave en la direccion, la pagina no habla de pruebas", async () => {
+  const html = await (await fetch(SRV + "/pagar")).text();
+  if (/prueba/i.test(html)) throw new Error("se ve el modo prueba sin pedirlo");
+  if (/name="clave"/.test(html)) throw new Error("dejó el campo de la clave a la vista");
+});
+
+t("con la clave en la direccion, lo dice y la conserva al reenviar", async () => {
+  const html = await (await fetch(SRV + "/pagar?clave=" + encodeURIComponent(CLAVE_PRUEBA))).text();
+  if (!html.includes("Cobro de prueba")) throw new Error("no avisa que es de prueba");
+  if (!html.includes("Gs. 1.000")) throw new Error("no muestra el monto de prueba");
+  if (!html.includes(`name="clave"`)) throw new Error("se pierde la clave al enviar");
 });
 
 let malas = 0;
