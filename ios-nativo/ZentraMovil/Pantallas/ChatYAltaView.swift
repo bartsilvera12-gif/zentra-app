@@ -1,9 +1,19 @@
 import SwiftUI
 
 /// Alta de cliente, con consulta de RUC en la SET.
+///
+/// Son dos formularios en uno, igual que en Android: el largo del módulo
+/// Clientes y el corto de media venta.
+///
+/// La diferencia no es de estilo. Con alguien esperando en el mostrador, pedir
+/// seis campos para emitir una factura es pedirle a quien atiende que elija
+/// entre facturar rápido o cargar bien el cliente. El resto se completa después
+/// desde el módulo, que es cuando hay tiempo.
 struct NuevoClienteView: View {
     @Environment(\.tema) private var t
     @Environment(\.dismiss) private var cerrar
+    /// De dónde se abrió. Decide qué se pide y qué dice el botón.
+    var desdeVenta = false
     var alGuardar: (Cliente) -> Void = { _ in }
 
     @State private var doc = ""
@@ -48,13 +58,26 @@ struct NuevoClienteView: View {
                     }
 
                     Bloque(titulo: "DATOS") {
-                        campo("Nombre o razón social", $nombre)
-                        campo("Contacto", $contacto)
-                        campo("Teléfono", $tel, teclado: .phonePad)
-                        campo("Correo", $email, teclado: .emailAddress)
-                        campo("Ciudad", $ciudad)
-                        campo("Dirección", $direccion)
+                        campo("Nombre o razón social", $nombre,
+                              marcador: "Se completa con la SET, o escribilo")
+                        // En media venta sólo el nombre: lo demás es para
+                        // después, desde el módulo.
+                        if !desdeVenta {
+                            campo("Contacto", $contacto)
+                            campo("Teléfono", $tel, teclado: .phonePad)
+                            campo("Correo", $email, teclado: .emailAddress)
+                            campo("Ciudad", $ciudad)
+                            campo("Dirección", $direccion)
+                        }
                     }
+
+                    Text(desdeVenta
+                         ? "Los demás datos se completan después desde el módulo Clientes."
+                         : "Solo el nombre es obligatorio; el resto se puede completar después.")
+                        .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     if let error {
                         Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk)
@@ -63,6 +86,7 @@ struct NuevoClienteView: View {
                 .padding(.vertical, 12)
             }
             .background(t.bg)
+            .cerrarTeclado()
             .navigationTitle("Nuevo cliente")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -70,7 +94,11 @@ struct NuevoClienteView: View {
                     Button("Cancelar") { cerrar() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") { Task { await guardar() } }
+                    // "Guardar y continuar" en media venta: el botón dice
+                    // a dónde lleva, que es de vuelta a la factura.
+                    Button(desdeVenta ? "Guardar y continuar" : "Guardar cliente") {
+                        Task { await guardar() }
+                    }
                         .disabled(!puedeGuardar)
                 }
             }
@@ -78,11 +106,12 @@ struct NuevoClienteView: View {
     }
 
     private func campo(_ etiqueta: String, _ v: Binding<String>,
-                       teclado: UIKeyboardType = .default) -> some View {
+                       teclado: UIKeyboardType = .default,
+                       marcador: String = "") -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(etiqueta.uppercased()).font(Tipo.barlow(.semibold, 10)).tracking(1.2)
                 .foregroundStyle(t.ink2)
-            TextField("", text: v)
+            TextField(marcador, text: v)
                 .keyboardType(teclado)
                 .textInputAutocapitalization(teclado == .emailAddress ? .never : .words)
                 .autocorrectionDisabled()

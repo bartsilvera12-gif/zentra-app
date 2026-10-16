@@ -147,6 +147,7 @@ struct AjusteStockView: View {
                 .padding(.vertical, 12)
             }
             .background(t.bg)
+            .cerrarTeclado()
             .navigationTitle("Ajuste de stock")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -373,6 +374,7 @@ struct NuevoProductoView: View {
                 .padding(.vertical, 12)
             }
             .background(t.bg)
+            .cerrarTeclado()
             .navigationTitle("Nuevo producto")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -505,6 +507,7 @@ struct NuevoProveedorView: View {
                 .padding(.vertical, 12)
             }
             .background(t.bg)
+            .cerrarTeclado()
             .navigationTitle("Nuevo proveedor")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -606,12 +609,33 @@ struct NuevaCompraView: View {
     /// Si la línea que se está armando se puede agregar.
     private var puedeAgregar: Bool { prod != nil && n > 0 && cu > 0 }
 
-    private var puede: Bool {
-        prov != nil && !lineas.isEmpty
-            && !cuentaContableId.isEmpty && (credito || !cuentaPagoId.isEmpty)
-            && (moneda == "PYG" || cambio > 0)
-            && !guardando
+    /// Qué falta para que el ERP acepte la compra, dicho en una línea.
+    ///
+    /// Port de `faltaParaElErp` en Android. Va a la vista y no sólo al apagar
+    /// el botón: un botón gris no dice cuál de los seis campos es el que
+    /// falta, y acá los que faltan son de contabilidad, que no se adivinan.
+    ///
+    /// El orden importa: se nombra una cosa por vez, la primera que falta.
+    /// Una lista de todo lo que falta se lee como un reproche y no se
+    /// actualiza mientras se completa.
+    private var faltaParaElErp: String? {
+        if lineas.isEmpty && !puedeAgregar { return "Agregá al menos un producto a la compra." }
+        if timbrado.trimmingCharacters(in: .whitespaces).isEmpty {
+            return "Falta el timbrado de la factura: tu ERP no acepta la compra sin él."
+        }
+        if cuentas.isEmpty {
+            return "No se pudieron cargar las cuentas contables de tu ERP. Probá volver a entrar."
+        }
+        if cuentaContableId.isEmpty { return "Elegí en qué cuenta contable se asienta la compra." }
+        if !credito && cuentaPagoId.isEmpty { return "Elegí de qué cuenta sale el pago." }
+        if credito && cuotas < 1 { return "Indicá cuántas cuotas tendrá el crédito." }
+        if moneda == "USD" && cambio <= 0 {
+            return "Indicá el tipo de cambio: el ERP lleva los libros en guaraníes."
+        }
+        return nil
     }
+
+    private var puede: Bool { prov != nil && faltaParaElErp == nil && !guardando }
 
     /// Suma la línea que se está armando y limpia el renglón.
     ///
@@ -790,6 +814,9 @@ struct NuevaCompraView: View {
                             }
                         }
                         if let error { Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk) }
+                        else if let falta = faltaParaElErp {
+                            Aviso(texto: falta, bg: Tint.avisoBg, ink: Tint.avisoInk)
+                        }
                         if neto > 0 {
                             Bloque(titulo: "TOTAL") {
                                 Dato(k: "Unidades",
@@ -810,6 +837,7 @@ struct NuevaCompraView: View {
                 .padding(.vertical, 12)
             }
             .background(t.bg)
+            .cerrarTeclado()
             .navigationTitle("Registrar compra")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -946,6 +974,7 @@ struct ElegirProductoAjusteView: View {
                 .padding(.vertical, 12)
             }
             .background(t.bg)
+            .cerrarTeclado()
             .searchable(text: $q, prompt: "Producto, SKU o código de barras")
             .navigationTitle("Ajustar stock")
             .navigationBarTitleDisplayMode(.inline)

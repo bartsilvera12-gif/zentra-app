@@ -100,11 +100,12 @@ struct NuevaVentaView: View {
             barra
         }
         .background(t.bg)
+        .cerrarTeclado()
         .avisoPlan($aviso)
         .sheet(isPresented: $nuevoCliente) {
             // Al guardar queda elegido para esta venta: quien lo dio de alta
             // acá lo hizo para facturarle ahora, no para tenerlo en la lista.
-            NuevoClienteView { c in
+            NuevoClienteView(desdeVenta: true) { c in
                 clientes.insert(c, at: 0)
                 cliente = c
                 sinNombre = false
