@@ -110,6 +110,16 @@ enum SupabaseDatos {
         return json ?? []
     }
 
+    /// `yyyy-MM-dd` como lo manda Postgres para un `date`.
+    private static func fechaISO(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "America/Asuncion")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: String(s.prefix(10)))
+    }
+
     private static func filas(_ crudo: Any) -> [[String: Any]] {
         (crudo as? [[String: Any]]) ?? []
     }
@@ -159,8 +169,11 @@ enum SupabaseDatos {
     private nonisolated(unsafe) static var cachePrecios: [Plan: Int]?
 
     static func perfil() async throws -> Perfil {
+        // El plan y el vencimiento vienen en el mismo viaje que el perfil.
+        // Son los que deciden qué se puede hacer: sin ellos la app deja a todo
+        // el mundo en gratis, y quien pagó no recibe lo que pagó.
         let crudo = try await pedir("GET", "/usuarios", query: [
-            "select": "id,nombre,email,rol,empresas(nombre)",
+            "select": "id,nombre,email,rol,empresas(nombre,plan,vence)",
             "limit": "1",
         ])
         guard let u = filas(crudo).first else {
@@ -173,11 +186,16 @@ enum SupabaseDatos {
         let email = (u["email"] as? String) ?? ""
         let nombre = (u["nombre"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             ?? String(email.split(separator: "@").first ?? "")
+        let emp = u["empresas"] as? [String: Any]
         return Perfil(
             id: (u["id"] as? String) ?? "",
             nombre: nombre,
             rol: (u["rol"] as? String) ?? "",
-            empresa: ((u["empresas"] as? [String: Any])?["nombre"] as? String) ?? ""
+            empresa: (emp?["nombre"] as? String) ?? "",
+            // Un plan que no reconocemos se ignora en vez de tratarse como
+            // gratis: ante un valor raro en la columna, manda el directorio.
+            plan: (emp?["plan"] as? String).flatMap(Plan.init(rawValue:)),
+            vence: (emp?["vence"] as? String).flatMap(fechaISO)
         )
     }
 
@@ -507,6 +525,52 @@ enum SupabaseDatos {
         })
 
         return numero
+    }
+
+    /// Corrige un producto ya cargado, en nuestras tablas.
+    ///
+    /// Viaja sólo lo que cambió. Mandar todo pisaría con lo que tiene este
+    /// teléfono lo que otro acaba de editar: el campo se toma como "cambialo"
+    /// por el hecho de estar presente.
+    ///
+    /// **El stock no se toca acá.** Se mueve con un ajuste, que deja un
+    /// movimiento y se puede auditar. Editarlo a mano haría que el stock y su
+    /// historial dijeran cosas distintas, y el que manda es el historial.
+    static func editarProducto(_ id: String, _ cambios: [String: Any]) async throws -> InvProducto {
+        guard !cambios.isEmpty else {
+            guard let p = try await producto(id) else {
+                throw ApiError.http(status: 404, mensaje: "Ese producto ya no existe.",
+                                    ruta: "/productos")
+            }
+            return p
+        }
+        let crudo = try await pedir("PATCH", "/productos", query: ["id": "eq.\(id)"],
+                                    cuerpo: cambios, preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el producto editado.",
+                                ruta: "/productos")
+        }
+        return aProductoLocal(o)
+    }
+
+    /// Corrige un proveedor ya cargado. Mismas reglas que el producto.
+    static func editarProveedor(_ id: String, _ cambios: [String: Any]) async throws -> Proveedor {
+        let crudo = try await pedir("PATCH", "/proveedores", query: ["id": "eq.\(id)"],
+                                    cuerpo: cambios, preferencia: "return=representation")
+        guard let o = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el proveedor editado.",
+                                ruta: "/proveedores")
+        }
+        let plazo = o["credito_plazo_dias"] as? Int
+        return Proveedor(
+            id: texto(o["id"]), nombre: (o["nombre"] as? String) ?? "",
+            doc: (o["doc"] as? String) ?? "",
+            condicion: plazo.map { "Crédito \($0) días" } ?? "Contado",
+            rubro: (o["rubro"] as? String) ?? "", ciudad: (o["ciudad"] as? String) ?? "",
+            contacto: (o["contacto"] as? String) ?? "", tel: (o["tel"] as? String) ?? "",
+            email: (o["email"] as? String) ?? "",
+            activo: ((o["estado"] as? String) ?? "Activo") != "Inactivo"
+        )
     }
 
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {

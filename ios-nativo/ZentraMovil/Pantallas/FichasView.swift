@@ -148,6 +148,9 @@ struct ProductoDetalleView: View {
     @Environment(\.tema) private var t
     @State private var fresco: InvProducto?
     @State private var ajustar = false
+    @State private var editar = false
+    @State private var aviso: String?
+    @Environment(Estado.self) private var estado
 
     private var p: InvProducto { fresco ?? producto }
 
@@ -200,8 +203,23 @@ struct ProductoDetalleView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Ajustar") { ajustar = true }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                // El botón no se apaga: se toca y dice por qué. Un botón gris
+                // sin explicación hace creer que la app se rompió.
+                Button("Editar") {
+                    if let m = Planes.motivoBloqueo(.inventarioEditar, estado.contextoPlan()) {
+                        withAnimation(.spring(duration: 0.3)) { aviso = m }
+                    } else { editar = true }
+                }
+            }
         }
         .sheet(isPresented: $ajustar) { AjusteStockView(producto: p) }
+        .sheet(isPresented: $editar) {
+            // Al volver se queda con lo que devolvió el servidor, no con lo
+            // que escribió el formulario: si el ERP normalizó algo, manda eso.
+            NuevoProductoView(editando: p) { fresco = $0 }
+        }
+        .avisoPlan($aviso)
         .task { fresco = (try? await RepoERP.producto(producto.id)) ?? nil }
     }
 
@@ -287,42 +305,48 @@ struct VentaDetalleView: View {
 struct ProveedorDetalleView: View {
     let p: Proveedor
     @Environment(\.tema) private var t
+    @Environment(Estado.self) private var estado
+    @State private var fresco: Proveedor?
+    @State private var editar = false
+    @State private var aviso: String?
+
+    private var v: Proveedor { fresco ?? p }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
                 Bloque(titulo: "PROVEEDOR") {
                     HStack(spacing: 12) {
-                        Inicial(texto: p.nombre, color: C.cian)
+                        Inicial(texto: v.nombre, color: C.cian)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(p.nombre).font(Tipo.barlow(.semibold, 16)).foregroundStyle(t.ink)
-                            Text(p.doc).font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
+                            Text(v.nombre).font(Tipo.barlow(.semibold, 16)).foregroundStyle(t.ink)
+                            Text(v.doc).font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
                         }
                         Spacer(minLength: 0)
-                        Chip(texto: p.activo ? "Activo" : "Inactivo",
-                             bg: p.activo ? Tint.okBg : Tint.errorBg,
-                             ink: p.activo ? Tint.okInk : Tint.errorInk)
+                        Chip(texto: v.activo ? "Activo" : "Inactivo",
+                             bg: v.activo ? Tint.okBg : Tint.errorBg,
+                             ink: v.activo ? Tint.okInk : Tint.errorInk)
                     }
                 }
                 Bloque(titulo: "DATOS") {
-                    Dato(k: "Condición de pago", v: p.condicion)
-                    Dato(k: "Rubro", v: p.rubro)
-                    Dato(k: "Contacto", v: p.contacto)
-                    Dato(k: "Teléfono", v: p.tel)
-                    Dato(k: "Correo", v: p.email)
-                    Dato(k: "Dirección", v: p.ciudad)
+                    Dato(k: "Condición de pago", v: v.condicion)
+                    Dato(k: "Rubro", v: v.rubro)
+                    Dato(k: "Contacto", v: v.contacto)
+                    Dato(k: "Teléfono", v: v.tel)
+                    Dato(k: "Correo", v: v.email)
+                    Dato(k: "Dirección", v: v.ciudad)
                 }
-                if !p.tel.isEmpty || !p.email.isEmpty {
+                if !v.tel.isEmpty || !v.email.isEmpty {
                     Bloque(titulo: "CONTACTAR") {
-                        if let n = waNumero(p.tel) {
+                        if let n = waNumero(v.tel) {
                             AccionContacto(icono: "message.fill", titulo: "WhatsApp",
                                            destino: URL(string: "https://wa.me/\(n)"))
                             AccionContacto(icono: "phone.fill", titulo: "Llamar",
-                                           destino: URL(string: "tel://\(p.tel.filter(\.isNumber))"))
+                                           destino: URL(string: "tel://\(v.tel.filter(\.isNumber))"))
                         }
-                        if !p.email.isEmpty {
+                        if !v.email.isEmpty {
                             AccionContacto(icono: "envelope.fill", titulo: "Correo",
-                                           destino: URL(string: "mailto:\(p.email)"))
+                                           destino: URL(string: "mailto:\(v.email)"))
                         }
                     }
                 }
@@ -330,6 +354,19 @@ struct ProveedorDetalleView: View {
             .padding(.vertical, 12)
         }
         .background(t.bg)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Editar") {
+                    if let m = Planes.motivoBloqueo(.proveedoresEditar, estado.contextoPlan()) {
+                        withAnimation(.spring(duration: 0.3)) { aviso = m }
+                    } else { editar = true }
+                }
+            }
+        }
+        .sheet(isPresented: $editar) {
+            NuevoProveedorView(editando: v) { fresco = $0 }
+        }
+        .avisoPlan($aviso)
         .navigationTitle("Proveedor")
         .navigationBarTitleDisplayMode(.inline)
     }

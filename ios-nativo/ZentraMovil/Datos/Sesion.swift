@@ -41,7 +41,9 @@ final class Estado {
             tenant = t
 
             try await Auth.shared.entrar(usuario: usuario, clave: clave)
-            perfil = try await ApiERP.perfil()
+            let p = try await ApiERP.perfil()
+            perfil = p
+            aplicarPlan(de: p)
             await registrarTelefono()
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
@@ -62,6 +64,7 @@ final class Estado {
         // en vez de entrar a una app que no sabe quién es.
         if let p = try? await ApiERP.perfil() {
             perfil = p
+            aplicarPlan(de: p)
             await registrarTelefono()
         } else {
             await Auth.shared.salir()
@@ -73,6 +76,22 @@ final class Estado {
     /// Va sin bloquear ni romper el login: que los avisos no se puedan registrar
     /// no es motivo para dejar a un vendedor afuera. El token cambia al
     /// reinstalar la app, así que se vuelve a mandar en cada entrada.
+    /// El plan que dice la base manda sobre el del directorio.
+    ///
+    /// El directorio da el plan de arranque —para la instalación pública,
+    /// gratis—, pero el que vale es el de `zentra.empresas`, que es el que
+    /// actualiza el server cuando entra un pago. Sin esto, pagar no desbloquea
+    /// nada: la app seguiría tratando a esa empresa como gratis para siempre.
+    ///
+    /// `nil` no pisa: significa "no se pudo leer", y ahí es mejor dejar lo que
+    /// venía que bajarle el plan a alguien por una lectura que falló.
+    private func aplicarPlan(de p: Perfil) {
+        guard var t = tenant else { return }
+        if let plan = p.plan { t.plan = plan }
+        if let vence = p.vence { t.vence = vence }
+        tenant = t
+    }
+
     private func registrarTelefono() async {
         guard let token = tokenPush, !token.isEmpty else { return }
         esAgente = (try? await RepoERP.registrarDispositivo(token))?.esAgente

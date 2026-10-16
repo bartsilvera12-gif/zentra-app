@@ -302,7 +302,16 @@ struct NuevoProductoView: View {
     @State private var ubicaciones: [RepoERP.Opcion] = []
     @State private var guardando = false
     @State private var error: String?
+
+    /// El producto que se está corrigiendo. `nil` es un alta.
+    ///
+    /// Es el mismo formulario para las dos cosas a propósito: los campos son
+    /// los mismos y mantener dos pantallas gemelas termina con una al día y la
+    /// otra no, que es lo que ya pasó con el campo de texto.
+    var editando: InvProducto?
     var alGuardar: (InvProducto) -> Void = { _ in }
+
+    private var esEdicion: Bool { editando != nil }
 
     private var c: Double { Double(costo) ?? 0 }
     private var p: Double { Double(precio) ?? 0 }
@@ -398,8 +407,19 @@ struct NuevoProductoView: View {
                     }
 
                     Bloque(titulo: "STOCK") {
-                        campo("Inventario inicial", $stockInicial, teclado: .decimalPad)
+                        // Al editar no está: el stock se mueve con un ajuste,
+                        // que deja movimiento y se puede auditar. Cambiarlo
+                        // acá dejaría el stock y su historial diciendo cosas
+                        // distintas.
+                        if !esEdicion {
+                            campo("Inventario inicial", $stockInicial, teclado: .decimalPad)
+                        }
                         campo("Mínimo", $minimo, teclado: .decimalPad)
+                        if esEdicion {
+                            Text("El stock se cambia desde Ajustar stock, que deja el movimiento anotado.")
+                                .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     if let error { Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk) }
@@ -409,7 +429,7 @@ struct NuevoProductoView: View {
             .background(t.bg)
             .cerrarTeclado()
             .errorArriba($error)
-            .navigationTitle("Nuevo producto")
+            .navigationTitle(esEdicion ? "Editar producto" : "Nuevo producto")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
@@ -419,6 +439,7 @@ struct NuevoProductoView: View {
                 }
             }
             .task {
+                precargar()
                 // Los catálogos son opcionales: si el ERP no los da, el producto
                 // se carga igual sin categoría ni depósito.
                 async let c = RepoERP.categorias()
@@ -428,8 +449,57 @@ struct NuevoProductoView: View {
         }
     }
 
+    /// Carga el formulario con lo que ya tiene el producto.
+    ///
+    /// Sin esto la edición arrancaría en blanco y "sólo mando lo que cambió"
+    /// mandaría todo vacío, que es borrar la ficha.
+    private func precargar() {
+        guard let e = editando, nombre.isEmpty else { return }
+        nombre = e.nombre
+        sku = e.sku
+        barras = e.barras
+        unidad = e.unidad
+        costo = e.costo > 0 ? "\(e.costo)" : ""
+        precio = e.precio > 0 ? "\(e.precio)" : ""
+        minimo = e.minimo > 0 ? Formato.miles(e.minimo) : ""
+        iva = e.iva
+    }
+
+    /// Lo que cambió respecto del producto original.
+    ///
+    /// Compara contra lo que vino, no contra vacío: un campo que no se tocó no
+    /// viaja, y así dos personas pueden editar cosas distintas de la misma
+    /// ficha sin pisarse.
+    private var cambios: [String: Any] {
+        guard let e = editando else { return [:] }
+        var c: [String: Any] = [:]
+        let n = nombre.trimmingCharacters(in: .whitespaces)
+        let k = sku.trimmingCharacters(in: .whitespaces)
+        if n != e.nombre { c["nombre"] = n }
+        if k != e.sku { c["sku"] = k }
+        if barras != e.barras { c["barras"] = barras }
+        if unidad != e.unidad { c["unidad"] = unidad }
+        if Int(self.c.rounded()) != e.costo { c["costo"] = Int(self.c.rounded()) }
+        if Int(self.p.rounded()) != e.precio { c["precio"] = Int(self.p.rounded()) }
+        let m = Double(minimo.replacingOccurrences(of: ",", with: ".")) ?? 0
+        if m != e.minimo { c["minimo"] = m }
+        return c
+    }
+
     private func guardar() async {
         guardando = true; error = nil
+        if let e = editando {
+            do {
+                let p = try await RepoERP.editarProducto(e.id, cambios)
+                alGuardar(p)
+                cerrar()
+            } catch {
+                self.error = (error as? LocalizedError)?.errorDescription
+                    ?? "No se pudo guardar el producto."
+            }
+            guardando = false
+            return
+        }
         do {
             let p = try await RepoERP.crearProducto(
                 nombre: nombre.trimmingCharacters(in: .whitespaces),
@@ -472,7 +542,42 @@ struct NuevoProveedorView: View {
     @State private var rubros: [RepoERP.Opcion] = []
     @State private var guardando = false
     @State private var error: String?
+
+    /// El proveedor que se está corrigiendo. `nil` es un alta.
+    var editando: Proveedor?
     var alGuardar: (Proveedor) -> Void = { _ in }
+
+    private var esEdicion: Bool { editando != nil }
+
+    /// Carga el formulario con lo que ya tiene.
+    private func precargar() {
+        guard let e = editando, nombre.isEmpty else { return }
+        nombre = e.nombre
+        ruc = e.doc
+        rubro = e.rubro
+        contacto = e.contacto
+        tel = e.tel
+        email = e.email
+        credito = e.condicion.localizedCaseInsensitiveContains("Crédito")
+        plazo = Int(e.condicion.filter(\.isNumber)) ?? 30
+    }
+
+    /// Lo que cambió respecto del original. Lo que no se tocó no viaja.
+    private var cambios: [String: Any] {
+        guard let e = editando else { return [:] }
+        var c: [String: Any] = [:]
+        let n = nombre.trimmingCharacters(in: .whitespaces)
+        if n != e.nombre { c["nombre"] = n }
+        if ruc != e.doc { c["doc"] = ruc }
+        if rubro != e.rubro { c["rubro"] = rubro }
+        if contacto != e.contacto { c["contacto"] = contacto }
+        if tel != e.tel { c["tel"] = tel }
+        if email != e.email { c["email"] = email }
+        let plazoViejo = Int(e.condicion.filter(\.isNumber)) ?? 0
+        let plazoNuevo = credito ? plazo : 0
+        if plazoNuevo != plazoViejo { c["plazoDias"] = plazoNuevo }
+        return c
+    }
 
     private var puede: Bool {
         nombre.trimmingCharacters(in: .whitespaces).count >= 2 && !guardando
@@ -534,20 +639,38 @@ struct NuevoProveedorView: View {
             .background(t.bg)
             .cerrarTeclado()
             .errorArriba($error)
-            .navigationTitle("Nuevo proveedor")
+            .navigationTitle(esEdicion ? "Editar proveedor" : "Nuevo proveedor")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Registrar") { Task { await guardar() } }.disabled(!puede)
+                    Button(esEdicion ? "Guardar proveedor" : "Registrar") {
+                        Task { await guardar() }
+                    }
+                    .disabled(!puede)
                 }
             }
-            .task { rubros = await RepoERP.categoriasProveedor() }
+            .task {
+                precargar()
+                rubros = await RepoERP.categoriasProveedor()
+            }
         }
     }
 
     private func guardar() async {
         guardando = true; error = nil
+        if let e = editando {
+            do {
+                let p = try await RepoERP.editarProveedor(e.id, cambios)
+                alGuardar(p)
+                cerrar()
+            } catch {
+                self.error = (error as? LocalizedError)?.errorDescription
+                    ?? "No se pudo guardar el proveedor."
+            }
+            guardando = false
+            return
+        }
         do {
             let p = try await RepoERP.crearProveedor(
                 nombre: nombre.trimmingCharacters(in: .whitespaces),

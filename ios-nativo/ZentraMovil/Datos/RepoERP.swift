@@ -257,6 +257,91 @@ enum RepoERP {
             productoId: productoId, tipo: tipo, cantidad: cantidad, motivo: motivo)
     }
 
+    /// Corrige un producto ya cargado.
+    ///
+    /// Recibe sólo lo que cambió, con los nombres de la app; acá se traduce a
+    /// los del ERP. Si no cambió nada no se manda: un PATCH vacío igual
+    /// cuenta como edición y pisa la fecha de modificación de otro.
+    static func editarProducto(_ id: String, _ cambios: [String: Any]) async throws -> InvProducto {
+        if await !conErp() {
+            return try await SupabaseDatos.editarProducto(id, aColumnasLocales(cambios))
+        }
+        var cuerpo: [String: Any] = [:]
+        if let v = cambios["nombre"] { cuerpo["nombre"] = v }
+        if let v = cambios["sku"] { cuerpo["sku"] = v }
+        if let v = cambios["barras"] as? String { cuerpo["codigo_barras"] = onull(v) }
+        if let v = cambios["unidad"] as? String {
+            cuerpo["unidad_medida"] = v.isEmpty ? "UNIDAD" : v
+        }
+        if let v = cambios["costo"] { cuerpo["costo_promedio"] = v }
+        if let v = cambios["precio"] { cuerpo["precio_venta"] = v }
+        if let v = cambios["minimo"] { cuerpo["stock_minimo"] = v }
+        guard !cuerpo.isEmpty else {
+            guard let p = try await producto(id) else {
+                throw ApiError.http(status: 404, mensaje: "Ese producto ya no existe.",
+                                    ruta: "/productos")
+            }
+            return p
+        }
+        let r = try await ApiERP.patch("/productos/\(esc(id))", cuerpo: cuerpo)
+        guard let o = desenvolver(r) else {
+            throw ApiError.http(status: 200, mensaje: "El ERP no devolvió el producto actualizado.",
+                                ruta: "/productos")
+        }
+        return aProducto(o)
+    }
+
+    /// Corrige un proveedor ya cargado.
+    static func editarProveedor(_ id: String, _ cambios: [String: Any]) async throws -> Proveedor {
+        if await !conErp() {
+            return try await SupabaseDatos.editarProveedor(id, aColumnasProveedor(cambios))
+        }
+        var cuerpo: [String: Any] = [:]
+        if let v = cambios["nombre"] { cuerpo["nombre"] = v }
+        if let v = cambios["doc"] as? String { cuerpo["ruc"] = onull(v) }
+        if let v = cambios["tel"] as? String { cuerpo["telefono"] = onull(v) }
+        if let v = cambios["email"] as? String { cuerpo["email"] = onull(v) }
+        if let v = cambios["ciudad"] as? String { cuerpo["direccion"] = onull(v) }
+        if let v = cambios["contacto"] as? String { cuerpo["contacto"] = onull(v) }
+        if let v = cambios["plazoDias"] {
+            cuerpo["condicion_pago"] = (v as? Int).map { $0 > 0 } == true ? "credito" : "contado"
+            cuerpo["plazo_pago_dias"] = onull((v as? Int).flatMap { $0 > 0 ? $0 : nil })
+        }
+        guard !cuerpo.isEmpty else {
+            throw ApiError.http(status: 400, mensaje: "No cambiaste nada.", ruta: "/proveedores")
+        }
+        let r = try await ApiERP.patch("/proveedores/\(esc(id))", cuerpo: cuerpo)
+        guard let o = desenvolver(r) else {
+            throw ApiError.http(status: 200, mensaje: "El ERP no devolvió el proveedor actualizado.",
+                                ruta: "/proveedores")
+        }
+        return aProveedor(o)
+    }
+
+    /// Los nombres de la app a las columnas de `zentra.productos`.
+    ///
+    /// Casi todos coinciden; los que no, se traducen. `stock` no está a
+    /// propósito: se mueve con un ajuste, nunca editando la fila.
+    private static func aColumnasLocales(_ c: [String: Any]) -> [String: Any] {
+        var r: [String: Any] = [:]
+        for k in ["nombre", "sku", "barras", "unidad", "costo", "precio", "minimo",
+                  "categoria", "deposito"] where c[k] != nil {
+            r[k] = c[k]
+        }
+        return r
+    }
+
+    private static func aColumnasProveedor(_ c: [String: Any]) -> [String: Any] {
+        var r: [String: Any] = [:]
+        for k in ["nombre", "doc", "rubro", "ciudad", "contacto", "tel", "email"]
+        where c[k] != nil { r[k] = c[k] }
+        if let d = c["entregaDias"] as? Int { r["entrega_dias"] = max(0, d) }
+        if let p = c["plazoDias"] as? Int {
+            r["credito_plazo_dias"] = p > 0 ? p : NSNull()
+        }
+        return r
+    }
+
     /// Lo mismo que `conErp()`, para las pantallas.
     static func usaErp() async -> Bool { await conErp() }
 
