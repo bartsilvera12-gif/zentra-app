@@ -67,6 +67,37 @@ struct AjusteStockView: View {
 
     @State private var tipo = "ENTRADA"
     @State private var cantidad = ""
+    @State private var guardando = false
+    @State private var error: String?
+    @State private var conErp = false
+    /// Aplica el ajuste.
+    ///
+    /// Primero al servidor y después a la copia local: así lo que se ve en la
+    /// lista es lo que quedó guardado. Al revés —pintar y después mandar— el
+    /// stock de la pantalla y el de la base se separan cuando algo falla, y
+    /// nadie se entera hasta que no cuadra el inventario.
+    private func guardar() async {
+        guard puede, !guardando else { return }
+        guardando = true; error = nil
+        do {
+            _ = try await RepoERP.ajustarStock(
+                productoId: producto.id, tipo: tipo, cantidad: n, motivo: motivo)
+            locales.aplicar(producto, tipo: tipo, cantidad: n, motivo: motivo)
+            cerrar()
+        } catch {
+            // Con ERP el ajuste no sale, y eso ya lo avisa la pantalla. Igual
+            // se anota acá, que es para lo que sirve mientras tanto.
+            if conErp {
+                locales.aplicar(producto, tipo: tipo, cantidad: n, motivo: motivo)
+                cerrar()
+            } else {
+                self.error = (error as? LocalizedError)?.errorDescription
+                    ?? "No se pudo guardar el ajuste."
+            }
+        }
+        guardando = false
+    }
+
     @State private var motivo = "Merma"
 
     /// Los mismos de `MOTIVOS` en `src/lib/data.ts`, en el mismo orden.
@@ -86,7 +117,10 @@ struct AjusteStockView: View {
                     if let bloqueo {
                         Aviso(texto: bloqueo, bg: Tint.avisoBg, ink: Tint.avisoInk)
                     }
-                    AvisoLocal(que: "Este ajuste queda sólo en el teléfono")
+                    // Sólo con ERP: ahí no hay endpoint y el ajuste de verdad
+                    // queda en el teléfono. Sin ERP se guarda en nuestras
+                    // tablas, y decir lo contrario sería asustar al pedo.
+                    if conErp { AvisoLocal(que: "Este ajuste queda sólo en el teléfono") }
 
                     Bloque(titulo: "PRODUCTO") {
                         Text(producto.nombre).font(Tipo.barlow(.semibold, 15)).foregroundStyle(t.ink)
@@ -148,16 +182,15 @@ struct AjusteStockView: View {
             }
             .background(t.bg)
             .cerrarTeclado()
+            .errorArriba($error)
+            .task { conErp = await RepoERP.usaErp() }
             .navigationTitle("Ajuste de stock")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") {
-                        locales.aplicar(producto, tipo: tipo, cantidad: n, motivo: motivo)
-                        cerrar()
-                    }
-                    .disabled(!puede || bloqueo != nil)
+                    Button("Guardar") { Task { await guardar() } }
+                        .disabled(!puede || guardando || bloqueo != nil)
                 }
             }
         }

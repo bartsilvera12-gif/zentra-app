@@ -350,7 +350,7 @@ enum SupabaseDatos {
             _ = try? await pedir("POST", "/movimientos", cuerpo: [[
                 "empresa_id": empresa, "producto_id": creado.id,
                 "tipo": "ENTRADA", "cantidad": stockInicial,
-                "motivo": "Inventario inicial",
+                "origen": "Inventario inicial",
             ]])
             return try await producto(creado.id) ?? creado
         }
@@ -417,6 +417,96 @@ enum SupabaseDatos {
     /// todos.
     static func eliminarMiCuenta() async throws {
         _ = try await pedir("POST", "/rpc/eliminar_mi_cuenta", cuerpo: [String: Any]())
+    }
+
+    /// Un ajuste de stock, como movimiento.
+    ///
+    /// La cantidad va **con signo**: negativa en salidas y mermas. Es lo que
+    /// espera la columna, y lo que hace que el trigger mueva el stock para el
+    /// lado correcto. El motivo va en `origen`, que es la columna que existe
+    /// —`motivo` no existe, y escribirlo hace que PostgREST rechace la fila.
+    static func ajustarStock(
+        productoId: String, tipo: String, cantidad: Double, motivo: String
+    ) async throws -> Double {
+        let empresa = try await empresaActual()
+        let signo: Double = tipo == "SALIDA" ? -1 : 1
+        let con = signo * abs(cantidad)
+        guard con != 0 else {
+            throw ApiError.http(status: 400, mensaje: "La cantidad no puede ser cero.",
+                                ruta: "/movimientos")
+        }
+
+        _ = try await pedir("POST", "/movimientos", cuerpo: [[
+            "empresa_id": empresa, "producto_id": productoId,
+            "tipo": tipo, "cantidad": con, "origen": motivo,
+        ]])
+
+        // Se relee el producto en vez de sumar el delta acá: el stock lo
+        // mantiene el trigger, y si dos personas ajustan a la vez el que vale
+        // es el de la base, no la cuenta que hizo este teléfono.
+        return try await producto(productoId)?.stock ?? 0
+    }
+
+    /// Una compra con sus líneas, en nuestras tablas.
+    ///
+    /// Son dos viajes sin transacción —la cabecera y las líneas—, y hay que
+    /// saberlo: si se corta la señal en el medio queda una compra con el
+    /// número consumido y sin líneas. Se ve en el listado y se puede anular.
+    /// Hacerlo en uno solo necesita una función del lado del servidor.
+    static func crearCompra(
+        provId: String?, lineas: [CompraLinea],
+        credito: Bool, plazoDias: Int, cuotas: Int,
+        timbrado: String, comprobante: String,
+        moneda: String, tipoCambio: Double
+    ) async throws -> String {
+        let empresa = try await empresaActual()
+
+        let numeroCrudo = try await pedir("POST", "/rpc/siguiente_numero",
+                                          cuerpo: ["p_empresa": empresa, "p_tipo": "compra"])
+        let numero = (numeroCrudo as? String) ?? texto(numeroCrudo)
+
+        var cabecera: [String: Any] = [
+            "empresa_id": empresa, "numero": numero,
+            "condicion": credito ? "Crédito" : "Contado",
+            // Al contado se cierra en el acto; a crédito queda por pagar.
+            "estado": credito ? "Pendiente" : "Pagada",
+            "cuotas": max(1, cuotas),
+            "moneda": moneda,
+        ]
+        if let provId, !provId.isEmpty { cabecera["proveedor_id"] = provId }
+        if credito { cabecera["plazo_dias"] = max(1, plazoDias) }
+        if !timbrado.isEmpty { cabecera["timbrado"] = timbrado }
+        if !comprobante.isEmpty { cabecera["factura"] = comprobante }
+        // La tabla exige cotización si la compra no es en guaraníes.
+        if moneda != "PYG" { cabecera["tipo_cambio"] = tipoCambio }
+
+        let crudo = try await pedir("POST", "/compras", cuerpo: [cabecera],
+                                    preferencia: "return=representation")
+        guard let c = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió la compra creada.",
+                                ruta: "/compras")
+        }
+        let compraId = texto(c["id"])
+
+        _ = try await pedir("POST", "/compra_lineas", cuerpo: lineas.map { l in
+            [
+                "compra_id": compraId, "producto_id": l.prodId,
+                "nombre": l.nombre, "unidad": l.unidad,
+                "cantidad": l.cantidad, "costo": l.costo,
+                "iva": l.iva.rawValue,
+            ]
+        })
+
+        // Una compra entra stock. Va como movimiento, que es lo que lo mueve.
+        _ = try? await pedir("POST", "/movimientos", cuerpo: lineas.map { l in
+            [
+                "empresa_id": empresa, "producto_id": l.prodId,
+                "tipo": "ENTRADA", "cantidad": l.cantidad,
+                "origen": "Compra \(numero)", "ref": numero,
+            ]
+        })
+
+        return numero
     }
 
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {

@@ -239,6 +239,24 @@ enum RepoERP {
     ///
     /// Se resuelve en cada llamada y no al arrancar: cuando se carga este
     /// archivo todavía no hubo login y no se sabe de qué empresa es quien entra.
+    /// Aplica un ajuste de stock. Devuelve el stock que quedó.
+    ///
+    /// Con ERP no hay a dónde mandarlo: ese endpoint todavía no existe del
+    /// lado de ellos, y la app lo dice en vez de fingir que guardó. Sin ERP va
+    /// a nuestras tablas como movimiento, que es lo que mueve el stock.
+    static func ajustarStock(
+        productoId: String, tipo: String, cantidad: Double, motivo: String
+    ) async throws -> Double {
+        if await conErp() {
+            throw ApiError.http(
+                status: 501,
+                mensaje: "Tu ERP todavía no acepta ajustes de stock desde la app. El cambio queda sólo en este teléfono.",
+                ruta: "/inventario/ajuste")
+        }
+        return try await SupabaseDatos.ajustarStock(
+            productoId: productoId, tipo: tipo, cantidad: cantidad, motivo: motivo)
+    }
+
     /// Lo mismo que `conErp()`, para las pantallas.
     static func usaErp() async -> Bool { await conErp() }
 
@@ -621,6 +639,28 @@ enum RepoERP {
                 status: 400,
                 mensaje: "Agregá al menos un producto a la compra.",
                 ruta: "/compras")
+        }
+        // Sin ERP la compra va a nuestras tablas, igual que el resto.
+        if await !conErp() {
+            let numero = try await SupabaseDatos.crearCompra(
+                provId: provId, lineas: lineas,
+                credito: credito, plazoDias: plazoDias, cuotas: cuotas,
+                timbrado: timbrado, comprobante: comprobante,
+                moneda: moneda, tipoCambio: tipoCambio)
+            let primera = lineas[0]
+            return Compra(
+                id: numero, numero: numero,
+                producto: lineas.count == 1 ? primera.nombre : "\(lineas.count) productos",
+                cantidad: lineas.reduce(0) { $0 + $1.cantidad },
+                costo: primera.costo,
+                // Con varias líneas el IVA puede ser distinto en cada una; la
+                // fila del listado muestra el de la primera, y el detalle las
+                // tiene todas.
+                iva: primera.iva,
+                pago: credito ? "Crédito \(plazoDias) días" : "Contado",
+                pagada: !credito,
+                fecha: Formato.fechaDeHoy(),
+                factura: comprobante)
         }
         guard !cuentaContableId.isEmpty else {
             throw ApiError.http(
