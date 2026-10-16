@@ -67,13 +67,22 @@ export async function restaurarSesion(d: DepsRestauro): Promise<Restauro> {
 
 async function intentar(d: DepsRestauro): Promise<Restauro> {
   try {
-    let tenant: TenantConfig | null = null;
-    const codigo = d.ultimoCodigo();
-    if (codigo) {
-      tenant = await d.resolver(codigo);
-      // Antes de preguntar por la sesión: la clave de guardado depende de esto.
-      d.activar(tenant);
-    }
+    // SIEMPRE se resuelve y se activa, también sin código guardado.
+    //
+    // Antes esto estaba adentro de un `if (codigo)`, y la instalación pública
+    // —la de quien baja la app de la tienda y entra sin código de empresa—
+    // nunca activaba su cliente. Sin cliente activo no hay a quién
+    // preguntarle por la sesión: `sb()` lanza, el intento termina en silencio
+    // y la app muestra el login teniendo la sesión guardada al lado. Resultado:
+    // en modo Zentra, cada vez que Android descartaba la app había que volver
+    // a escribir la contraseña; con ERP andaba, porque ahí sí hay código.
+    //
+    // Un código vacío devuelve el tenant público, así que el camino es el
+    // mismo para los dos y no hay una rama que se pruebe sola.
+    const codigo = d.ultimoCodigo() ?? "";
+    const tenant = await d.resolver(codigo);
+    // Antes de preguntar por la sesión: la clave de guardado depende de esto.
+    d.activar(tenant);
 
     const sesion = await d.sesion();
     if (!sesion) return { estado: "sin-sesion" };

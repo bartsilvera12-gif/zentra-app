@@ -43,12 +43,15 @@ t("sin Supabase no se toca nada", async () => {
   if (pasos.length) throw new Error("preguntó igual: " + pasos.join(","));
 });
 
-t("sin código guardado igual se busca la sesión (instalación pública)", async () => {
+t("sin código guardado también se activa el cliente (instalación pública)", async () => {
+  // Esta prueba decía lo contrario y daba por bueno el error: sin código no se
+  // activaba nada. En la app de verdad, preguntar por la sesión sin cliente
+  // activo lanza, el intento muere en silencio y aparece el login con la
+  // sesión guardada al lado. Un código vacío resuelve al tenant público.
   const { d, pasos } = deps({ ultimoCodigo: () => null });
   const r = await restaurarSesion(d);
   if (r.estado !== "entrada") throw new Error("no entró");
-  if (r.tenant !== null) throw new Error("inventó un tenant");
-  if (pasos.join(",") !== "sesion") throw new Error("pasos: " + pasos.join(","));
+  if (pasos.join(",") !== "resolver:,activar,sesion") throw new Error("pasos: " + pasos.join(","));
 });
 
 t("sin sesión guardada se queda en el login", async () => {

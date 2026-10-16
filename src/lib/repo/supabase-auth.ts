@@ -41,6 +41,44 @@ function traducir(msg: string): string {
  * la empresa corre junto con el alta: en el primer registro la fila puede no
  * estar visible todavía.
  */
+/**
+ * El último perfil que se pudo leer, por usuario.
+ *
+ * Existe para una sola cosa: que un rato sin señal no cierre la sesión. Se
+ * guarda por `userId` para que dos cuentas en el mismo teléfono no se mezclen,
+ * y se descarta sola al cerrar sesión.
+ */
+const LLAVE_PERFIL = "zentra-perfil";
+
+function guardarPerfil(userId: string, usuario: Sesion["usuario"]): void {
+  try {
+    localStorage.setItem(LLAVE_PERFIL, JSON.stringify({ userId, usuario }));
+  } catch {
+    /* sin almacenamiento, se vuelve a pedir y listo */
+  }
+}
+
+function perfilGuardado(userId: string): Sesion["usuario"] | null {
+  try {
+    const crudo = localStorage.getItem(LLAVE_PERFIL);
+    if (!crudo) return null;
+    const o = JSON.parse(crudo) as { userId?: string; usuario?: Sesion["usuario"] };
+    // De otra cuenta no sirve, y mostrar el nombre de otro sería peor que
+    // pedir la contraseña.
+    return o?.userId === userId && o.usuario ? o.usuario : null;
+  } catch {
+    return null;
+  }
+}
+
+function olvidarPerfil(): void {
+  try {
+    localStorage.removeItem(LLAVE_PERFIL);
+  } catch {
+    /* ya está */
+  }
+}
+
 async function leerPerfil(userId: string, reintentar = true): Promise<Sesion["usuario"]> {
   // Dos consultas y no un `empresas(nombre)` embebido: el join de PostgREST se
   // apoya en la clave foránea, y una instalación sobre un ERP expone **vistas**,
@@ -112,13 +150,15 @@ export const supabaseAuth: AuthRepo = {
     if (error) throw new AuthError(traducir(error.message));
     if (!data.session || !data.user) throw new AuthError("No se pudo iniciar sesión.");
 
-    return {
-      token: data.session.access_token,
-      usuario: await leerPerfil(data.user.id),
-    };
+    // Se guarda desde el login y no sólo al restaurar: si el primer arranque
+    // después de entrar cae sin señal, ya hay un perfil que usar.
+    const perfil = await leerPerfil(data.user.id);
+    guardarPerfil(data.user.id, perfil);
+    return { token: data.session.access_token, usuario: perfil };
   },
 
   async logout() {
+    olvidarPerfil();
     const { error } = await sb().auth.signOut();
     if (error) throw new AuthError(traducir(error.message));
   },
@@ -126,10 +166,26 @@ export const supabaseAuth: AuthRepo = {
   async sesionActual() {
     const { data } = await sb().auth.getSession();
     if (!data.session) return null;
-    return {
-      token: data.session.access_token,
-      usuario: await leerPerfil(data.session.user.id),
-    };
+
+    // Si el perfil no se puede leer, la sesión NO se pierde.
+    //
+    // `getSession` lee del teléfono, pero el perfil viaja por red, y antes
+    // cualquier tropiezo —señal mala, Supabase lento— terminaba en el login
+    // con la sesión guardada intacta. Para quien usa la app en la calle eso
+    // es "se cierra sola cada rato".
+    //
+    // Se usa el último perfil conocido, que es más honesto que inventar uno
+    // vacío: conserva el plan, así que alguien que paga Max no queda limitado
+    // a Free por un segundo sin señal.
+    try {
+      const usuario = await leerPerfil(data.session.user.id);
+      guardarPerfil(data.session.user.id, usuario);
+      return { token: data.session.access_token, usuario };
+    } catch (e) {
+      const guardado = perfilGuardado(data.session.user.id);
+      if (!guardado) throw e;
+      return { token: data.session.access_token, usuario: guardado };
+    }
   },
 
   async eliminarCuenta() {
@@ -138,6 +194,7 @@ export const supabaseAuth: AuthRepo = {
     const { error } = await sb().rpc("eliminar_mi_cuenta");
     if (error) throw new AuthError(traducir(error.message));
     // La sesión apunta a un usuario que ya no existe: hay que soltarla.
+    olvidarPerfil();
     await sb().auth.signOut().catch(() => {});
   },
 
