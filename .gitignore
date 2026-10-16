@@ -42,6 +42,10 @@ npm-debug.log*
 # Copia temporal que usa scripts/android-init.mjs
 .google-services.json.bak
 ios-nativo/ZentraMovil/Recursos/Secretos.plist
+# La configuración de Firebase del proyecto de iOS. No se versiona por la misma
+# razón que `Secretos.plist`: identifica el proyecto de Firebase y se baja de la
+# consola, no se escribe a mano. Sin él la app arranca igual, sin avisos.
+ios-nativo/ZentraMovil/Recursos/GoogleService-Info.plist
 
 # Las copias de trabajo que crea Claude Code para correr agentes en
 # paralelo. Son temporales y se borran solas: versionarlas seria guardar
