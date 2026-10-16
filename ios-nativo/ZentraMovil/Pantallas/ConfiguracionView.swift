@@ -94,6 +94,22 @@ struct ConfiguracionView: View {
             etiqueta("NOTIFICACIONES")
             fila("Avisos push", "Ventas, cobros y entregas") {
                 Toggle("", isOn: a.push).labelsHidden().tint(C.teal)
+                    // Prender el interruptor es lo que pide el permiso y
+                    // registra el teléfono. No se pide al arrancar: iOS da un
+                    // solo diálogo, y gastarlo antes de que nadie lo haya
+                    // pedido es gastarlo mal.
+                    .onChange(of: ajustes.push) { _, prendido in
+                        guard prendido else { return }
+                        Task {
+                            if await Avisos.pedirPermiso() {
+                                Push.shared.registrar()
+                            } else {
+                                // Lo negaron: el interruptor no puede quedar
+                                // prendido prometiendo algo que no va a pasar.
+                                ajustes.push = false
+                            }
+                        }
+                    }
             }
             fila("Stock bajo", "Alertar bajo el mínimo") {
                 Toggle("", isOn: a.stockBajo).labelsHidden().tint(C.teal)
