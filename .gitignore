@@ -42,3 +42,8 @@ npm-debug.log*
 # Copia temporal que usa scripts/android-init.mjs
 .google-services.json.bak
 ios-nativo/ZentraMovil/Recursos/Secretos.plist
+
+# Las copias de trabajo que crea Claude Code para correr agentes en
+# paralelo. Son temporales y se borran solas: versionarlas seria guardar
+# una copia entera del repo adentro del repo.
+.claude/worktrees/
