@@ -328,8 +328,8 @@ struct NuevoProductoView: View {
                 VStack(spacing: 12) {
                     Bloque(titulo: "PRODUCTO") {
                         campo("Nombre", $nombre)
-                        campo("Código / SKU", $sku)
-                        campo("Código de barras", $barras)
+                        campo("Código / SKU", $sku, codigo: true)
+                        campo("Código de barras", $barras, codigo: true)
                         if !categorias.isEmpty {
                             Picker("Categoría", selection: $categoriaId) {
                                 Text("Sin categoría").tag("")
@@ -417,18 +417,9 @@ struct NuevoProductoView: View {
     }
 
     private func campo(_ e: String, _ v: Binding<String>,
-                       teclado: UIKeyboardType = .default) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(e.uppercased()).font(Tipo.barlow(.semibold, 10)).tracking(1.2)
-                .foregroundStyle(t.ink2)
-            TextField("", text: v)
-                .keyboardType(teclado)
-                .autocorrectionDisabled()
-                .font(.system(size: 16))
-                .padding(.horizontal, 12).frame(height: 44)
-                .background(t.bg, in: .rect(cornerRadius: 10))
-                .overlay { RoundedRectangle(cornerRadius: 10).stroke(t.border) }
-        }
+                       teclado: UIKeyboardType = .default,
+                       codigo: Bool = false) -> some View {
+        CampoTexto(etiqueta: e, valor: v, teclado: teclado, codigo: codigo)
     }
 }
 
@@ -460,7 +451,7 @@ struct NuevoProveedorView: View {
                 VStack(spacing: 12) {
                     Bloque(titulo: "PROVEEDOR") {
                         campo("Nombre o razón social", $nombre)
-                        campo("RUC", $ruc)
+                        campo("RUC", $ruc, codigo: true)
                         // El rubro son las categorías del ERP, no texto libre:
                         // mandarlo escrito a mano no lo clasificaría en nada.
                         if rubros.isEmpty {
@@ -542,19 +533,9 @@ struct NuevoProveedorView: View {
     }
 
     private func campo(_ e: String, _ v: Binding<String>,
-                       teclado: UIKeyboardType = .default) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(e.uppercased()).font(Tipo.barlow(.semibold, 10)).tracking(1.2)
-                .foregroundStyle(t.ink2)
-            TextField("", text: v)
-                .keyboardType(teclado)
-                .textInputAutocapitalization(teclado == .emailAddress ? .never : .words)
-                .autocorrectionDisabled()
-                .font(.system(size: 16))
-                .padding(.horizontal, 12).frame(height: 44)
-                .background(t.bg, in: .rect(cornerRadius: 10))
-                .overlay { RoundedRectangle(cornerRadius: 10).stroke(t.border) }
-        }
+                       teclado: UIKeyboardType = .default,
+                       codigo: Bool = false) -> some View {
+        CampoTexto(etiqueta: e, valor: v, teclado: teclado, codigo: codigo)
     }
 }
 
@@ -768,8 +749,8 @@ struct NuevaCompraView: View {
                             }
                         }
                         Bloque(titulo: "COMPROBANTE") {
-                            campo("Timbrado", $timbrado, teclado: .numberPad)
-                            campo("N.° de factura", $comprobante)
+                            campo("Timbrado", $timbrado, teclado: .numberPad, codigo: true)
+                            campo("N.° de factura", $comprobante, codigo: true)
                         }
                         Bloque(titulo: "CONDICIÓN") {
                             Picker("", selection: $credito) {
@@ -907,17 +888,9 @@ struct NuevaCompraView: View {
     }
 
     private func campo(_ e: String, _ v: Binding<String>,
-                       teclado: UIKeyboardType = .default) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(e.uppercased()).font(Tipo.barlow(.semibold, 10)).tracking(1.2)
-                .foregroundStyle(t.ink2)
-            TextField("", text: v)
-                .keyboardType(teclado).autocorrectionDisabled()
-                .font(.system(size: 16))
-                .padding(.horizontal, 12).frame(height: 44)
-                .background(t.bg, in: .rect(cornerRadius: 10))
-                .overlay { RoundedRectangle(cornerRadius: 10).stroke(t.border) }
-        }
+                       teclado: UIKeyboardType = .default,
+                       codigo: Bool = false) -> some View {
+        CampoTexto(etiqueta: e, valor: v, teclado: teclado, codigo: codigo)
     }
 }
 

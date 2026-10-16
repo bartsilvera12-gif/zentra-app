@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Port de `src/lib/nombre.ts`.
 ///
@@ -116,5 +117,108 @@ enum Formato {
         s = s.trimmingCharacters(in: .whitespaces)
 
         return String(s.prefix(1)).uppercased(with: es) + s.dropFirst()
+    }
+}
+
+/// Un campo que guarda un **código**, no una frase.
+///
+/// iOS corrige mientras se escribe: el guión de `GAS-2L` sale como guión
+/// tipográfico (‐), las comillas se curvan, y tres puntos se vuelven puntos
+/// suspensivos. En una oración eso está bien; en un SKU, un RUC, un timbrado o
+/// un código de barras es otro código. `GAS-2L` y `GAS‐2L` se ven casi iguales
+/// y no son lo mismo: el producto no aparece al buscarlo, y el que lo cargó
+/// jura que lo escribió bien.
+///
+/// Se normaliza al escribir y no al guardar, para que lo que se ve en pantalla
+/// sea lo que se guarda. Arreglarlo recién al guardar dejaría el campo
+/// mostrando el carácter equivocado, que es la parte que confunde.
+///
+/// Vale también para lo que llega pegado desde otra app, que trae lo que traiga.
+struct CodigoLimpio: ViewModifier {
+    @Binding var texto: String
+
+    /// Lo que iOS pone, y lo que corresponde en un código.
+    private static let reemplazos: [Character: Character] = [
+        "\u{2010}": "-", "\u{2011}": "-", "\u{2012}": "-",
+        "\u{2013}": "-", "\u{2014}": "-", "\u{2015}": "-",
+        "\u{2018}": "'", "\u{2019}": "'", "\u{201B}": "'",
+        "\u{201C}": "\"", "\u{201D}": "\"",
+        "\u{00A0}": " ",
+    ]
+
+    static func limpiar(_ s: String) -> String {
+        var r = String(s.map { reemplazos[$0] ?? $0 })
+        // Los puntos suspensivos son un solo carácter y no tres puntos.
+        r = r.replacingOccurrences(of: "\u{2026}", with: "...")
+        return r
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.characters)
+            .onChange(of: texto) { _, nuevo in
+                let limpio = Self.limpiar(nuevo)
+                if limpio != nuevo { texto = limpio }
+            }
+    }
+}
+
+extension View {
+    /// Marca el campo como código: sin correcciones tipográficas.
+    func codigoLimpio(_ texto: Binding<String>) -> some View {
+        modifier(CodigoLimpio(texto: texto))
+    }
+}
+
+/// Aplica `CodigoLimpio` sólo cuando el campo es un código.
+///
+/// Existe porque un `if` adentro de un modificador cambiaría el tipo de la
+/// vista según el valor, y SwiftUI pierde el estado del campo cuando eso pasa:
+/// el teclado se cerraría solo al escribir el primer carácter.
+struct SiCodigo: ViewModifier {
+    let activo: Bool
+    @Binding var texto: String
+
+    func body(content: Content) -> some View {
+        content
+            .textInputAutocapitalization(activo ? .characters : .sentences)
+            .onChange(of: texto) { _, nuevo in
+                guard activo else { return }
+                let limpio = CodigoLimpio.limpiar(nuevo)
+                if limpio != nuevo { texto = limpio }
+            }
+    }
+}
+
+/// Un campo de formulario con su etiqueta arriba.
+///
+/// Estaba copiado tres veces en `FormulariosView`, una por pantalla, y las tres
+/// eran idénticas. Cuando hubo que marcar los campos que son códigos, edité una
+/// y las otras dos quedaron atrás: el SKU se arreglaba en Nuevo producto y
+/// seguía roto en Compras. Un solo lugar evita justamente eso.
+struct CampoTexto: View {
+    @Environment(\.tema) private var t
+    let etiqueta: String
+    @Binding var valor: String
+    var teclado: UIKeyboardType = .default
+    var marcador: String = ""
+    /// El campo guarda un código: sin correcciones tipográficas.
+    var codigo: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(etiqueta.uppercased()).font(Tipo.barlow(.semibold, 10)).tracking(1.2)
+                .foregroundStyle(t.ink2)
+            TextField(marcador, text: $valor)
+                .keyboardType(teclado)
+                .autocorrectionDisabled()
+                // 16pt: por debajo, iOS hace zoom al enfocar y la pantalla salta.
+                .font(.system(size: 16))
+                .modifier(SiCodigo(activo: codigo, texto: $valor))
+                .padding(.horizontal, 12).frame(height: 44)
+                .background(t.bg, in: .rect(cornerRadius: 10))
+                .overlay { RoundedRectangle(cornerRadius: 10).stroke(t.border) }
+        }
     }
 }

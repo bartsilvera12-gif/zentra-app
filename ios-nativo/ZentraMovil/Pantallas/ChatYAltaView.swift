@@ -38,7 +38,7 @@ struct NuevoClienteView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     Bloque(titulo: "DOCUMENTO") {
-                        campo("RUC o CI", $doc, teclado: .numbersAndPunctuation)
+                        campo("RUC o CI", $doc, teclado: .numbersAndPunctuation, codigo: true)
                         Button { Task { await consultarSet() } } label: {
                             HStack(spacing: 8) {
                                 if consultando { ProgressView().controlSize(.small) }
@@ -107,7 +107,8 @@ struct NuevoClienteView: View {
 
     private func campo(_ etiqueta: String, _ v: Binding<String>,
                        teclado: UIKeyboardType = .default,
-                       marcador: String = "") -> some View {
+                       marcador: String = "",
+                       codigo: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(etiqueta.uppercased()).font(Tipo.barlow(.semibold, 10)).tracking(1.2)
                 .foregroundStyle(t.ink2)
@@ -115,6 +116,7 @@ struct NuevoClienteView: View {
                 .keyboardType(teclado)
                 .textInputAutocapitalization(teclado == .emailAddress ? .never : .words)
                 .autocorrectionDisabled()
+                .modifier(SiCodigo(activo: codigo, texto: v))
                 // 16pt: por debajo, iOS hace zoom al enfocar y la pantalla salta.
                 .font(.system(size: 16))
                 .padding(.horizontal, 12).frame(height: 44)
