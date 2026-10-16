@@ -32,6 +32,19 @@ const numerados = readdirSync(DIR)
   .filter((f) => /^\d+_.*\.sql$/.test(f))
   .sort();
 
+/**
+ * Lo que está numerado pero NO va en el instalador.
+ *
+ * `12_datos_demo.sql` carga un comercio de mentira para que los revisores de
+ * Google vean algo, y antes de cargarlo borra las ventas, los productos y los
+ * clientes de la empresa que elija. En la instalación de un cliente eso no es
+ * "datos de ejemplo de más": es borrarle el negocio.
+ */
+const FUERA_DEL_INSTALADOR = ["12_datos_demo.sql"];
+
+/** Los que sí tienen que estar en el pegado único. */
+const delInstalador = numerados.filter((f) => !FUERA_DEL_INSTALADOR.includes(f));
+
 /** Todo el SQL de la instalación, junto, para buscar una columna. */
 const sql = numerados.map((f) => readFileSync(join(DIR, f), "utf8")).join("\n");
 
@@ -73,7 +86,7 @@ t("los tres campos de Max están en productos", () => {
 
 t("el pegado único trae todos los archivos numerados", () => {
   const pegado = readFileSync(join(DIR, PEGADO), "utf8");
-  const faltan = numerados.filter((f) => !pegado.includes(f));
+  const faltan = delInstalador.filter((f) => !pegado.includes(f));
   if (faltan.length)
     throw new Error(
       `todo_en_uno.sql no trae ${faltan.join(", ")}.\n` +
@@ -83,7 +96,7 @@ t("el pegado único trae todos los archivos numerados", () => {
 
 t("el pegado único no se editó a mano", () => {
   const pegado = readFileSync(join(DIR, PEGADO), "utf8");
-  for (const f of numerados) {
+  for (const f of delInstalador) {
     const suelto = readFileSync(join(DIR, f), "utf8").trimEnd();
     if (!pegado.includes(suelto))
       throw new Error(
@@ -91,6 +104,18 @@ t("el pegado único no se editó a mano", () => {
           "        Se edita el archivo suelto y se vuelve a generar el pegado.",
       );
   }
+});
+
+t("el pegado único no trae los datos de demostración", () => {
+  // Al revés que las otras dos: acá lo que se verifica es una ausencia. Si
+  // esto alguna vez empieza a fallar, alguien le sacó el filtro al generador
+  // y el instalador de un cliente va a borrarle las ventas.
+  const pegado = readFileSync(join(DIR, PEGADO), "utf8");
+  for (const f of FUERA_DEL_INSTALADOR) {
+    if (pegado.includes(f)) throw new Error(`${f} se coló en todo_en_uno.sql`);
+  }
+  if (/delete from zentra\.ventas/i.test(pegado))
+    throw new Error("el instalador tiene un borrado de ventas adentro");
 });
 
 let malas = 0;

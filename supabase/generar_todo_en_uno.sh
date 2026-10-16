@@ -15,8 +15,15 @@ out=todo_en_uno.sql
   # pegado único no traía `10_planes_lectura_publica.sql`, así que quien
   # instalaba con `todo_en_uno.sql` se quedaba sin la lista de precios y la
   # hoja de planes le mentía por omisión.
+  # Hay archivos numerados que NO van en el instalador: `12_datos_demo.sql`
+  # carga un comercio de mentira y, antes, borra las ventas y los productos de
+  # la empresa que elija. En la instalación de un cliente eso no es "datos de
+  # ejemplo de más": es borrarle el negocio.
   for f in [0-9]*.sql; do
     [ "$f" = "$out" ] && continue
+    case "$f" in
+      12_datos_demo.sql) continue ;;
+    esac
     echo
     echo "-- >>>>>>>>>>>>>>>>>>>>>>>> $f <<<<<<<<<<<<<<<<<<<<<<<<"
     echo
