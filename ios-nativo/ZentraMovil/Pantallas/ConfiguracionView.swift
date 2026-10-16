@@ -157,9 +157,16 @@ struct ConfiguracionView: View {
                     .foregroundStyle(t.ink2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                // Dónde se paga. La dirección va siempre como texto; el botón
-                // sólo si está configurado. Google Play no permite mandar a
-                // pagar afuera, y eso no depende del código.
+                // Cómo se sube de plan.
+                //
+                // Ni el botón de pagar ni la dirección de cobro: las tiendas
+                // prohíben dirigir a pagar afuera, y nombrar la dirección
+                // cuenta igual que enlazarla.
+                //
+                // Queda escribirle a soporte, que sí está permitido y además
+                // es mejor: hoy el botón mandaba a alguien solo a una página
+                // de pago, y nadie del otro lado se enteraba de que había
+                // intención de comprar.
                 if let url = Config.linkDePago {
                     Link(destination: url) {
                         Text("Ver planes y pagar")
@@ -167,9 +174,16 @@ struct ConfiguracionView: View {
                             .frame(maxWidth: .infinity).frame(height: 46)
                             .background(C.teal, in: .rect(cornerRadius: 12))
                     }
+                } else if let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
+                                                Soporte.contacto(nombre: estado.perfil?.nombre,
+                                                                 empresa: estado.perfil?.empresa)) {
+                    Link(destination: wa) {
+                        Text("Escribirnos para cambiar de plan")
+                            .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 46)
+                            .background(C.teal, in: .rect(cornerRadius: 12))
+                    }
                 }
-                Text("Se paga en \(Config.cobrosUrl.isEmpty ? "cobros.neura.com.py" : Config.cobrosUrl.replacingOccurrences(of: "https://", with: ""))/pagar, desde el navegador.")
-                    .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
             }
         }
     }

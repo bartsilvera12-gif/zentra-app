@@ -79,13 +79,21 @@ struct HojaPlanes: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 14)
                         .background(C.cian, in: .rect(cornerRadius: 12))
                 }
-            } else if !Config.cobrosUrl.isEmpty {
-                // Sin enlace queda la dirección escrita, que es informar. El
-                // botón se apaga en la compilación de la tienda: Google Play
-                // no permite mandar a pagar afuera.
-                Text("Se paga en \(Config.cobrosUrl.replacingOccurrences(of: "https://", with: ""))/pagar, desde el navegador.")
-                    .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink3)
-                    .multilineTextAlignment(.center)
+            } else if let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
+                                            Soporte.contacto(nombre: estado.perfil?.nombre,
+                                                             empresa: estado.perfil?.empresa)) {
+                // Sin el botón de pagar, la salida es escribirnos. Las tiendas
+                // prohíben dirigir a pagar afuera, y nombrar la dirección de
+                // cobro cuenta igual que enlazarla.
+                //
+                // Dejar sólo "Ahora no" sería un callejón: alguien que acaba
+                // de ver que su plan no incluye algo necesita saber qué hacer.
+                Link(destination: wa) {
+                    Text("Escribirnos para cambiar de plan")
+                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(C.cian, in: .rect(cornerRadius: 12))
+                }
             }
 
             Button("Ahora no") { cerrar() }
