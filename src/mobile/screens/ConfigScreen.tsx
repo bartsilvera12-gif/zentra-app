@@ -43,21 +43,24 @@ export function ConfigScreen() {
    * mal una vez.
    */
   /**
-   * Abre WhatsApp con el mensaje ya armado.
+   * El enlace de WhatsApp, con el mensaje ya armado.
    *
    * Va con los datos de quien escribe y la versión instalada adentro: del otro
    * lado, la primera pregunta siempre es quién sos y qué versión tenés, y esa
    * vuelta convierte diez minutos de soporte en dos días.
+   *
+   * Es un enlace y no un botón con `window.open` a propósito: adentro del APK
+   * lo que está probado que abre la app que corresponde es un `<a href>` —es
+   * lo que usa la tarjeta de archivo del chat—, mientras que `window.open`
+   * depende de cómo el WebView trate las ventanas nuevas.
    */
-  const escribirASoporte = (motivo: MotivoSoporte) => {
-    const url = linkDeSoporte(config.soporteWhatsapp, motivo, {
+  const linkSoporte = (motivo: MotivoSoporte) =>
+    linkDeSoporte(config.soporteWhatsapp, motivo, {
       nombre: s.sesion?.nombre,
       empresa: s.sesion?.empresa || s.tenant?.nombre,
       version: config.version,
       build: config.build,
     });
-    if (url) window.open(url, "_blank", "noopener");
-  };
 
   const suscripcion = (() => {
     const ctx = plan();
@@ -287,22 +290,26 @@ export function ConfigScreen() {
                   {config.cobrosUrl.replace(/^https?:\/\//, "")}/pagar
                 </div>
                 {config.linkDePago && (
-                  <button
-                    onClick={() => window.open(`${config.cobrosUrl}/pagar`, "_blank", "noopener")}
+                  <a
+                    href={`${config.cobrosUrl}/pagar`}
+                    target="_blank"
+                    rel="noreferrer"
                     style={{
                       marginTop: 10,
+                      display: "block",
                       width: "100%",
                       padding: "11px",
-                      border: 0,
                       borderRadius: 10,
                       background: MARCA.acento,
                       color: "#fff",
                       cursor: "pointer",
+                      textAlign: "center",
+                      textDecoration: "none",
                       font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
                     }}
                   >
                     Pagar o renovar
-                  </button>
+                  </a>
                 )}
               </div>
             )}
@@ -377,16 +384,17 @@ export function ConfigScreen() {
         <Card gap={14}>
           <SectionLabel>Soporte</SectionLabel>
           {SOPORTE.map((sp) => (
-            <button
+            <a
               key={sp.tag}
-              onClick={() => escribirASoporte(sp.motivo)}
+              href={linkSoporte(sp.motivo) ?? undefined}
+              target="_blank"
+              rel="noreferrer"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
                 textAlign: "left",
-                border: 0,
-                background: "none",
+                textDecoration: "none",
                 padding: 0,
                 cursor: "pointer",
               }}
@@ -412,7 +420,7 @@ export function ConfigScreen() {
                 <span style={{ font: "400 11.5px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>{sp.detalle}</span>
               </span>
               <span style={{ font: "600 16px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>›</span>
-            </button>
+            </a>
           ))}
           <div
             style={{
