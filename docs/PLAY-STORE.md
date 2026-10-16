@@ -129,6 +129,7 @@ público.
 | Gráfico destacado | 1024 × 500 PNG o JPG |
 | Capturas de teléfono | Entre 2 y 8, mínimo 320 px de lado corto |
 | Política de privacidad | `https://cobros.neura.com.py/privacidad` — la sirve el mismo server de cobros (`server/src/pagina.js`) |
+| URL de eliminación de cuenta | `https://cobros.neura.com.py/eliminar-cuenta` — misma idea. Google la muestra en la ficha, al lado de la de privacidad |
 | Correo de contacto | Visible en la ficha |
 
 La política de privacidad está escrita y servida en

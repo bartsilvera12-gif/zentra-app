@@ -40,7 +40,7 @@ import {
   registrarPago,
   usuarioDelToken,
 } from "./db.js";
-import { paginaPagar, paginaPrivacidad, paginaResultado } from "./pagina.js";
+import { paginaEliminarCuenta, paginaPagar, paginaPrivacidad, paginaResultado } from "./pagina.js";
 import { esCobroDePrueba } from "./cobro-prueba.js";
 
 const PORT = Number(process.env.PORT || 8790);
@@ -364,6 +364,21 @@ function anotarFallo(ip) {
 app.get("/privacidad", (_req, res) => {
   res.type("html").send(
     paginaPrivacidad({
+      whatsapp: process.env.SOPORTE_WHATSAPP || "595973989068",
+      email: process.env.CONTACTO_EMAIL || "",
+    }),
+  );
+});
+
+/**
+ * Como borrar la cuenta.
+ *
+ * Google la pide aparte de la politica de privacidad y la muestra en la ficha
+ * de Play: tiene que poder abrirla alguien que todavia no instalo la app.
+ */
+app.get("/eliminar-cuenta", (_req, res) => {
+  res.type("html").send(
+    paginaEliminarCuenta({
       whatsapp: process.env.SOPORTE_WHATSAPP || "595973989068",
       email: process.env.CONTACTO_EMAIL || "",
     }),

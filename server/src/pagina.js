@@ -479,3 +479,74 @@ export function paginaPrivacidad({ whatsapp = "", email = "", actualizada = "" }
     true,
   );
 }
+
+/**
+ * Cómo borrar la cuenta.
+ *
+ * Google exige una dirección pública, que se pueda abrir sin instalar la app
+ * y sin iniciar sesión, donde se explique cómo pedir la baja y qué se borra.
+ * Aparece en la ficha de Play al lado de la de privacidad.
+ *
+ * La página no borra nada por sí sola, y es a propósito: borrar una cuenta
+ * desde un formulario público, sin más prueba que escribir un correo, es
+ * darle a cualquiera la posibilidad de borrarle el negocio a otro. Lo que
+ * hace es decir los dos caminos que sí existen: el de la app, que es
+ * inmediato y ya está hecho, y el de escribirnos, para quien perdió el
+ * teléfono o ya desinstaló.
+ *
+ * Dice también qué NO se borra, porque hay cosas que no se pueden borrar: una
+ * factura emitida tiene plazos legales de conservación, y prometer lo
+ * contrario en una página pública es peor que aclararlo.
+ */
+export function paginaEliminarCuenta({ whatsapp = "", email = "" } = {}) {
+  const tel = String(whatsapp || "").replace(/\D/g, "");
+  const contacto = [
+    tel ? `<li>WhatsApp: <a href="https://wa.me/${esc(tel)}">+${esc(tel)}</a></li>` : "",
+    email ? `<li>Correo: <a href="mailto:${esc(email)}">${esc(email)}</a></li>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return marco(
+    "Eliminar tu cuenta",
+    `<h1>Eliminar tu cuenta de Zentra</h1>
+    <p class="sub">Dos formas: desde la app, o escribiéndonos.</p>
+
+    <div class="tarjeta datos">
+      <h2>Desde la app, al instante</h2>
+      <ol>
+        <li>Abrí Zentra e iniciá sesión.</li>
+        <li>Entrá a <strong>Configuración</strong>.</li>
+        <li>Al final, tocá <strong>Eliminar mi cuenta</strong> y confirmá.</li>
+      </ol>
+      <p>La cuenta se cierra en el momento. No hay que esperar ni pedir nada.</p>
+
+      <h2>Si no podés entrar a la app</h2>
+      <p>Si perdiste el acceso o ya desinstalaste, escribinos desde el correo
+      con el que te registraste y pedí la baja. La procesamos dentro de los
+      <strong>30 días</strong>.</p>
+      <ul>${contacto || "<li>Usá el contacto que figura en la ficha de Google Play.</li>"}</ul>
+      <p>Pedimos que escribas desde el correo de la cuenta porque es la única
+      forma que tenemos de saber que sos vos. No borramos una cuenta porque
+      alguien nos escriba el correo de otro.</p>
+
+      <h2>Qué se borra</h2>
+      <ul>
+        <li>Tu usuario y tus datos de acceso.</li>
+        <li>Los datos que cargaste: productos, clientes, proveedores, compras
+        y ventas.</li>
+        <li>Los mensajes y archivos que hayas enviado desde la app.</li>
+        <li>El identificador que se usaba para mandarte notificaciones.</li>
+      </ul>
+
+      <h2>Qué puede quedar, y por cuánto</h2>
+      <p>Los comprobantes de venta ya emitidos y los registros de pago de la
+      suscripción se conservan mientras lo exija la ley, aunque la cuenta se
+      elimine. No se usan para nada más. Si tu empresa tiene otros usuarios,
+      los datos del negocio siguen siendo de ellos: lo que se borra es tu
+      usuario.</p>
+    </div>`,
+    false,
+    true,
+  );
+}

@@ -263,6 +263,25 @@ t("la politica de privacidad se puede leer sin cuenta", async () => {
   if (html.includes("noindex")) throw new Error("quedó con noindex");
 });
 
+t("la pagina para borrar la cuenta se abre sin instalar nada", async () => {
+  const r = await fetch(SRV + "/eliminar-cuenta");
+  if (r.status !== 200) throw new Error("no contesta: " + r.status);
+  const html = await r.text();
+  // Google pide que diga los pasos y qué se borra; y nosotros, que diga qué
+  // no se borra, que es lo que nadie aclara y después se reclama.
+  for (const debe of ["Eliminar mi cuenta", "Configuración", "30 días", "Qué se borra", "Qué puede quedar"]) {
+    if (!html.includes(debe)) throw new Error("no dice: " + debe);
+  }
+  if (html.includes("noindex")) throw new Error("quedó con noindex");
+});
+
+t("esa pagina no borra nada por si sola", async () => {
+  // Un formulario público que borre con sólo escribir un correo le deja a
+  // cualquiera borrarle el negocio a otro.
+  const html = await (await fetch(SRV + "/eliminar-cuenta")).text();
+  if (/<form/i.test(html)) throw new Error("tiene un formulario que borra");
+});
+
 let malas = 0;
 for (const [n, f] of casos) {
   try {
