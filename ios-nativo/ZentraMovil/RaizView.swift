@@ -41,6 +41,7 @@ struct RaizView: View {
         .task {
             // Sesión guardada: se entra sin volver a pedir la contraseña.
             await estado.reanudar()
+            await estado.engancharPush()
             revisando = false
         }
         // Y al volver del segundo plano, releer el plan. `.task` corre una sola

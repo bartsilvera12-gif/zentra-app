@@ -56,6 +56,9 @@
 			);
 			dependencies = (
 			);
+			packageProductDependencies = (
+				1A0000000000000000000020 /* FirebaseMessaging */,
+			);
 			fileSystemSynchronizedGroups = (
 				1A0000000000000000000006 /* ZentraMovil */,
 			);
@@ -89,6 +92,9 @@
 			mainGroup = 1A0000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			packageReferences = (
+				1A0000000000000000000021 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			productRefGroup = 1A0000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -174,6 +180,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				MARKETING_VERSION = 0.1.0;
+				CODE_SIGN_ENTITLEMENTS = ZentraMovil/ZentraMovil.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = py.com.zentra.movil.nativo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -199,6 +206,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				MARKETING_VERSION = 0.1.0;
+				CODE_SIGN_ENTITLEMENTS = ZentraMovil/ZentraMovil.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = py.com.zentra.movil.nativo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -229,6 +237,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1A0000000000000000000021 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1A0000000000000000000020 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A0000000000000000000021 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1A0000000000000000000001 /* Project object */;
 }

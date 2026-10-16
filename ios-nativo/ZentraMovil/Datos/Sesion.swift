@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// Estado de sesión de la app. Lo que en la web vive en el store.
 @Observable
@@ -125,9 +126,29 @@ final class Estado {
     /// entonces no se afirma nada, ni a favor ni en contra.
     var esAgente: Bool?
 
-    /// Lo deja la capa de push cuando Firebase entrega el token.
-    /// Todavía nadie lo setea: falta el plugin de notificaciones en iOS.
+    /// Lo deja `Push` cuando Firebase entrega el token.
     var tokenPush: String?
+
+    /// Engancha la llegada del token y, si el permiso ya está dado, registra.
+    ///
+    /// El token puede llegar antes o después de que haya sesión: Firebase lo
+    /// entrega cuando quiere. Por eso se guarda siempre y se manda al ERP sólo
+    /// cuando hay con quién asociarlo; si llega antes de entrar, lo levanta
+    /// `registrarTelefono()` al abrir sesión.
+    @MainActor
+    func engancharPush() async {
+        Push.shared.alLlegarToken = { [weak self] token in
+            guard let self else { return }
+            self.tokenPush = token
+            Task { await self.registrarTelefono() }
+        }
+        // Sin permiso no se registra: iOS da un solo diálogo y lo pide la
+        // pantalla de Configuración, que es donde se prende el interruptor.
+        if await UNUserNotificationCenter.current()
+            .notificationSettings().authorizationStatus == .authorized {
+            await Push.shared.registrar()
+        }
+    }
 
     func salir() async {
         if let token = tokenPush, !token.isEmpty {

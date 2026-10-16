@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- El entorno de APNs al que apunta este build.
+	     `development` lo cambia Xcode por `production` al archivar para
+	     TestFlight o la tienda: son dos servidores distintos de Apple, y un
+	     token sacado en uno no sirve en el otro. Por eso probar con cable no
+	     demuestra que ande en TestFlight. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
