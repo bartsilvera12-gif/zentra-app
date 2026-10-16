@@ -210,6 +210,8 @@ enum ApiError: LocalizedError {
     case sinCola
     /// La instalación no tiene ERP, así que no hay WhatsApp que leer.
     case sinChat
+    /// El servidor rechazó el token y renovarlo tampoco alcanzó.
+    case sesionVencida
     case http(status: Int, mensaje: String, ruta: String)
 
     var errorDescription: String? {
@@ -222,6 +224,8 @@ enum ApiError: LocalizedError {
             "Las conversaciones salen del WhatsApp de tu ERP. Esta instalación no tiene uno conectado."
         case .sinCola:
             "Tu usuario no está en ninguna cola de atención, así que no tiene conversaciones asignadas. Pedile a un administrador que te sume."
+        case .sesionVencida:
+            "Tu sesión venció. Cerrá sesión y volvé a entrar."
         case .http(_, let m, _): m
         }
     }

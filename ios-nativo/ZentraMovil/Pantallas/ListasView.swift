@@ -358,6 +358,7 @@ struct Lista<Contenido: View, Encabezado: View>: View {
             .padding(.vertical, 12)
         }
         .background(t.bg)
+        .cerrarTeclado()
         .navigationTitle(titulo)
         .navigationBarTitleDisplayMode(.large)
     }

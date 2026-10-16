@@ -21,7 +21,44 @@ enum SupabaseDatos {
     /// El schema va en las cabeceras y no en la ruta: las tablas no viven en
     /// `public`, y una instalación sobre el ERP de un cliente puede exponer
     /// vistas en un schema propio.
+    /// Hace el pedido y, si el servidor rechaza el token, lo renueva y
+    /// reintenta **una** vez.
+    ///
+    /// `tokenVigente()` sólo mira la fecha de vencimiento que guardamos acá, y
+    /// hay varias formas de que el servidor rechace un token que para nosotros
+    /// está vigente: el reloj del teléfono corrido, una sesión cerrada desde
+    /// otro lado, el refresh rotado. En todos esos casos el token local parece
+    /// bueno y el servidor dice 401.
+    ///
+    /// Sin esto, el 401 salía como un error cualquiera —y en un formulario
+    /// largo, donde el aviso queda abajo de todo, salía como nada: tocabas
+    /// Guardar y no pasaba absolutamente nada.
     private static func pedir(
+        _ metodo: String, _ ruta: String,
+        query: [String: String] = [:],
+        cuerpo: Any? = nil,
+        preferencia: String? = nil
+    ) async throws -> Any {
+        do {
+            return try await pedirUnaVez(metodo, ruta, query: query, cuerpo: cuerpo,
+                                         preferencia: preferencia)
+        } catch let e as ApiError {
+            guard case .http(401, _, _) = e else { throw e }
+            // Renovar a la fuerza, aunque para nosotros no estuviera vencida.
+            guard (try? await Auth.shared.renovar()) != nil else {
+                throw ApiError.sesionVencida
+            }
+            do {
+                return try await pedirUnaVez(metodo, ruta, query: query, cuerpo: cuerpo,
+                                             preferencia: preferencia)
+            } catch let e2 as ApiError {
+                if case .http(401, _, _) = e2 { throw ApiError.sesionVencida }
+                throw e2
+            }
+        }
+    }
+
+    private static func pedirUnaVez(
         _ metodo: String, _ ruta: String,
         query: [String: String] = [:],
         cuerpo: Any? = nil,
@@ -81,6 +118,46 @@ enum SupabaseDatos {
 
     /// Quién entró. Sale de `zentra.usuarios` y el nombre de la empresa de
     /// `zentra.empresas`, con un solo pedido.
+    /// Cuánto sale cada plan. Port de `src/lib/precios-planes.ts`.
+    ///
+    /// El precio no está escrito en la app, a propósito: vive en
+    /// `zentra.planes` y el server de cobros lo lee de ahí para cobrar. Si la
+    /// app tuviera su copia, el día que cambie un precio habría dos verdades y
+    /// la que se le muestra a la gente sería la vieja. Ya pasó: el código decía
+    /// 49.000 y 89.000 mientras la base decía 80.000 y 150.000.
+    ///
+    /// La tabla se lee sin sesión —su política de lectura es pública, es una
+    /// lista de precios—, así que esto anda incluso antes de entrar.
+    ///
+    /// Si no se puede leer devuelve vacío y la hoja muestra los planes sin
+    /// precio. Mejor eso que un número inventado.
+    static func preciosDePlanes() async -> [Plan: Int] {
+        if let c = cachePrecios { return c }
+        guard let crudo = try? await pedir("GET", "/planes",
+                                           query: ["select": "codigo,precio_mensual"])
+        else { return [:] }
+
+        var out: [Plan: Int] = [:]
+        for f in filas(crudo) {
+            guard let codigo = f["codigo"] as? String, let plan = Plan(rawValue: codigo)
+            else { continue }
+            if let n = f["precio_mensual"] as? Double { out[plan] = Int(n) }
+            else if let n = f["precio_mensual"] as? Int { out[plan] = n }
+            else if let t = f["precio_mensual"] as? String, let n = Double(t) {
+                out[plan] = Int(n)
+            }
+        }
+        // Se pide una vez y queda: son tres números que no cambian mientras la
+        // app está abierta, y la hoja puede abrirse muchas veces seguidas.
+        cachePrecios = out
+        return out
+    }
+
+    /// Al cerrar sesión: la próxima instalación puede tener otros precios.
+    static func olvidarPrecios() { cachePrecios = nil }
+
+    private nonisolated(unsafe) static var cachePrecios: [Plan: Int]?
+
     static func perfil() async throws -> Perfil {
         let crudo = try await pedir("GET", "/usuarios", query: [
             "select": "id,nombre,email,rol,empresas(nombre)",
