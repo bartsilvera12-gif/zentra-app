@@ -574,7 +574,12 @@ enum SupabaseDatos {
     }
 
     static func crearCliente(_ campos: [String: Any]) async throws -> Cliente {
-        let crudo = try await pedir("POST", "/clientes", cuerpo: [campos],
+        // Sin `empresa_id` la política de seguridad rechaza la fila: la regla
+        // es "sólo podés insertar en tu empresa", y una fila sin empresa no
+        // cumple con ninguna. El alta de cliente nunca lo mandaba.
+        var fila = campos
+        fila["empresa_id"] = try await empresaActual()
+        let crudo = try await pedir("POST", "/clientes", cuerpo: [fila],
                                     preferencia: "return=representation")
         guard let c = filas(crudo).first else {
             throw ApiError.http(status: 200, mensaje: "La base no devolvió el cliente creado.",

@@ -79,14 +79,12 @@ struct NuevoClienteView: View {
                         .padding(.horizontal, 16)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let error {
-                        Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk)
-                    }
                 }
                 .padding(.vertical, 12)
             }
             .background(t.bg)
             .cerrarTeclado()
+            .errorArriba($error)
             .navigationTitle("Nuevo cliente")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
