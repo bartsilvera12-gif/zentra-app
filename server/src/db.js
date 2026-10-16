@@ -80,9 +80,23 @@ export async function planVendible(codigo) {
   const fila = uno(
     await rest(`/planes?codigo=eq.${encodeURIComponent(codigo)}&select=codigo,nombre,precio_mensual,vendible&limit=1`),
   );
-  if (!fila || fila.vendible !== true) return null;
+  // Cuando esto devuelve null, quien lo pidio ve "ese plan no esta a la
+  // venta" y no hay forma de saber por que: si el codigo no existe, si esta
+  // marcado como no vendible o si el precio quedo en cero. Las tres se
+  // arreglan distinto y ninguna se ve desde afuera, asi que se anotan.
+  if (!fila) {
+    console.warn("[plan] no existe el plan %s", codigo);
+    return null;
+  }
+  if (fila.vendible !== true) {
+    console.warn("[plan] %s esta marcado como no vendible", codigo);
+    return null;
+  }
   const precio = Number(fila.precio_mensual);
-  if (!Number.isFinite(precio) || precio <= 0) return null;
+  if (!Number.isFinite(precio) || precio <= 0) {
+    console.warn("[plan] %s tiene precio %s: no se puede cobrar", codigo, fila.precio_mensual);
+    return null;
+  }
   return { ...fila, precio_mensual: precio };
 }
 
