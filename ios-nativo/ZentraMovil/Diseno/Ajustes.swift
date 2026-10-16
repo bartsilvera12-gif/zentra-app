@@ -28,6 +28,22 @@ final class Ajustes {
     var resumenDiario = false { didSet { g(resumenDiario, "resumenDiario") } }
     var sonido = true { didSet { g(sonido, "sonido") } }
 
+    /// Los emojis y stickers marcados como favoritos en el chat.
+    ///
+    /// Van en `UserDefaults` y no en el servidor a propósito: son una
+    /// preferencia de este teléfono, como el orden de un teclado. No vale la
+    /// pena un viaje de red —ni un campo en el ERP— por saber que a alguien le
+    /// gusta el pulgar arriba.
+    private static let kFavoritos = "zentra.chat.favoritos"
+
+    static func favoritosChat() -> [String] {
+        UserDefaults.standard.stringArray(forKey: kFavoritos) ?? []
+    }
+
+    static func guardarFavoritosChat(_ v: [String]) {
+        UserDefaults.standard.set(v, forKey: kFavoritos)
+    }
+
     private func g(_ v: Bool, _ k: String) {
         UserDefaults.standard.set(v, forKey: "zentra.\(k)")
     }

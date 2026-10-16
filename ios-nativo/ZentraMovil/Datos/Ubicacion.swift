@@ -83,9 +83,9 @@ enum UbicacionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .sinPermiso:
-            "La app no tiene permiso para usar tu ubicación. Activalo en Ajustes → Zentra Móvil → Ubicación."
+            "Necesitamos permiso para usar la ubicación."
         case .noSePudo:
-            "No pudimos obtener tu ubicación. Probá de nuevo al aire libre."
+            "No pudimos tomar tu ubicación. Probá de nuevo al aire libre."
         }
     }
 }

@@ -143,25 +143,92 @@ struct ConversacionesView: View {
     @Environment(\.tema) private var t
     @Environment(Estado.self) private var estado
     @State private var filas: [Chat] = []
+    @State private var q = ""
+    @State private var filtro = Colas.todas
     @State private var cargando = true
     @State private var error: String?
+    @State private var nueva = false
+
+    private static let sinLeer = "No leídas"
+    private static let cerradas = "Cerradas"
+
+    private var colas: [Colas.Cola] { Colas.desde(filas.filter { !$0.cerrada }) }
+
+    /// Un solo filtro, no dos.
+    ///
+    /// Había dos filas —"Todas / No leídas" por un lado y las colas por otro— y
+    /// las dos empezaban con "Todas": dos botones iguales, uno al lado del
+    /// otro, que hacían cosas distintas. Ahora es una sola fila con una sola
+    /// selección. Se pierde "no leídas DE una cola", que casi nadie cruza, y se
+    /// gana que el filtro se entienda de un vistazo.
+    private var colaActiva: String {
+        colas.contains { $0.nombre == filtro } ? filtro : Colas.todas
+    }
+
+    private var vistas: [Chat] {
+        let verCerradas = filtro == Self.cerradas
+        let n = q.trimmingCharacters(in: .whitespaces).lowercased()
+        return filas.filter { c in
+            // Una cerrada no aparece entre las abiertas aunque el ERP la mande.
+            if verCerradas ? !c.cerrada : c.cerrada { return false }
+            if !Colas.entra(c, en: colaActiva) { return false }
+            if filtro == Self.sinLeer, c.noLeidos == 0 { return false }
+            return n.isEmpty
+                || [c.nombre, c.vistaPrevia].contains { $0.lowercased().contains(n) }
+        }
+    }
+
+    private var noLeidosTotal: Int {
+        filas.filter { !$0.cerrada }.reduce(0) { $0 + $1.noLeidos }
+    }
+
+    /// Lo que va bajo el título: cuántas hay y cuántas esperan respuesta.
+    private var resumen: String {
+        let abiertas = filas.filter { !$0.cerrada }.count
+        let base = "\(abiertas) abierta\(abiertas == 1 ? "" : "s")"
+        return noLeidosTotal > 0 ? "\(base) · \(noLeidosTotal) sin leer" : base
+    }
 
     var body: some View {
-        Lista(titulo: "Conversaciones", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "No hay conversaciones todavía.",
+        Lista(titulo: "Conversaciones", resumen: resumen,
+              cargando: cargando, error: error, vacio: vistas.isEmpty,
+              vacioTexto: filas.isEmpty
+                ? "No hay conversaciones todavía."
+                : "Probá con otro nombre.",
               encabezado: {
-                  // El final mudo: todo parece bien —interruptor prendido,
-                  // permiso dado, token guardado— y no suena nada, porque el
-                  // ERP manda los avisos de chat por `agent_id` y este usuario
-                  // no tiene uno. Vale decirlo en vez de dejar que lo descubra.
-                  if let b = Planes.motivoBloqueo(.chatModulo, estado.contextoPlan()) {
-                      Aviso(texto: b, bg: Tint.avisoBg, ink: Tint.avisoInk)
-                  } else if estado.esAgente == false {
-                      Aviso(texto: "No estás dado de alta como agente de conversaciones, así que los avisos de chat no te van a llegar aunque los tengas prendidos. Pedile a un administrador que te sume.",
-                            bg: Tint.avisoBg, ink: Tint.avisoInk)
+                  VStack(spacing: 10) {
+                      // El final mudo: todo parece bien —interruptor prendido,
+                      // permiso dado, token guardado— y no suena nada, porque el
+                      // ERP manda los avisos de chat por `agent_id` y este usuario
+                      // no tiene uno. Vale decirlo en vez de dejar que lo descubra.
+                      if let b = Planes.motivoBloqueo(.chatModulo, estado.contextoPlan()) {
+                          Aviso(texto: b, bg: Tint.avisoBg, ink: Tint.avisoInk)
+                      } else if estado.esAgente == false {
+                          Aviso(texto: "No estás dado de alta como agente de conversaciones, así que los avisos de chat no te van a llegar aunque los tengas prendidos. Pedile a un administrador que te sume.",
+                                bg: Tint.avisoBg, ink: Tint.avisoInk)
+                      }
+
+                      ScrollView(.horizontal) {
+                          HStack(spacing: 8) {
+                              chip(Colas.todas, Colas.todas, "bubble.left.and.bubble.right")
+                              chip(Self.sinLeer, Self.sinLeer, "circle.fill")
+                              chip(Self.cerradas, Self.cerradas, nil)
+                              // Las colas sólo si el ERP las informa; si no, la
+                              // fila queda como antes.
+                              ForEach(colas) { c in
+                                  chip(c.nombre,
+                                       c.sinLeer > 0
+                                        ? "\(c.nombre) (\(c.sinLeer > 99 ? "99+" : "\(c.sinLeer)"))"
+                                        : c.nombre,
+                                       "tag")
+                              }
+                          }
+                          .padding(.horizontal, 14)
+                      }
+                      .scrollIndicators(.hidden)
                   }
               }) {
-            ForEach(filas) { c in
+            ForEach(vistas) { c in
                 NavigationLink { ChatView(chat: c) } label: {
                 FilaCard {
                     HStack(spacing: 12) {
@@ -171,15 +238,23 @@ struct ConversacionesView: View {
                                 .foregroundStyle(t.ink).lineLimit(1)
                             Text(c.vistaPrevia.isEmpty ? "Sin mensajes" : c.vistaPrevia)
                                 .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2).lineLimit(1)
+                            // Sólo si el ERP mandó el campo: "Sin asignar" en
+                            // todas sería afirmar algo que no sabemos.
+                            if c.informaResponsable {
+                                Text(c.responsable ?? "Sin asignar")
+                                    .font(Tipo.barlow(.regular, 10.5))
+                                    .foregroundStyle(t.ink3).lineLimit(1)
+                            }
                         }
                         Spacer(minLength: 0)
                         VStack(alignment: .trailing, spacing: 5) {
                             Text(c.hora).font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink3)
                             if c.noLeidos > 0 {
-                                Text("\(c.noLeidos)")
+                                Text(c.noLeidos > 99 ? "99+" : "\(c.noLeidos)")
                                     .font(Tipo.barlow(.semibold, 11)).foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
                                     .frame(minWidth: 20, minHeight: 20)
-                                    .background(C.cian, in: .circle)
+                                    .background(C.cian, in: .capsule)
                             }
                         }
                     }
@@ -187,6 +262,18 @@ struct ConversacionesView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+        .searchable(text: $q, prompt: "Buscar conversación…")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { nueva = true } label: {
+                    Image(systemName: "square.and.pencil")
+                }
+                .accessibilityLabel("Nueva conversación")
+            }
+        }
+        .sheet(isPresented: $nueva) {
+            NuevaConversacionView(abiertas: filas)
         }
         .task { await cargar() }
         .refreshable { await cargar() }
@@ -196,6 +283,27 @@ struct ConversacionesView: View {
                 filas = nuevas
             }
         }
+    }
+
+    private func chip(_ valor: String, _ texto: String, _ simbolo: String?) -> some View {
+        let on = filtro == valor
+        return Button { filtro = valor } label: {
+            HStack(spacing: 5) {
+                if let simbolo {
+                    Image(systemName: simbolo)
+                        // El punto de "No leídas" es más chico que un ícono:
+                        // es una marca, no un dibujo.
+                        .font(.system(size: simbolo == "circle.fill" ? 7 : 11, weight: .semibold))
+                }
+                Text(texto)
+            }
+            .font(Tipo.barlow(.semibold, 12.5))
+            .foregroundStyle(on ? .white : t.ink2)
+            .padding(.horizontal, 14).frame(height: 32)
+            .background(on ? C.cian : t.card, in: .capsule)
+            .overlay { Capsule().stroke(on ? .clear : t.border) }
+        }
+        .buttonStyle(.plain)
     }
 
     private func cargar() async {
@@ -363,5 +471,72 @@ struct DetalleVentasView: View {
             self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar."
         }
         cargando = false
+    }
+}
+
+/// Empezar una conversación con alguien que ya escribió.
+///
+/// Es un selector sobre las conversaciones que ya existen, no una agenda: el
+/// chat es de WhatsApp y una conversación la abre quien escribe, no nosotros.
+/// Por eso no hay "Clientes" y "Proveedores" como filtros — en el chat del ERP
+/// todas son conversaciones de WhatsApp y el tipo es siempre "Cliente", así que
+/// un filtro no devolvía nada y el otro no filtraba nada.
+struct NuevaConversacionView: View {
+    @Environment(\.tema) private var t
+    @Environment(\.dismiss) private var cerrar
+    let abiertas: [Chat]
+    @State private var q = ""
+    @State private var elegida: Chat?
+
+    private var vistas: [Chat] {
+        let n = q.trimmingCharacters(in: .whitespaces).lowercased()
+        let vivas = abiertas.filter { !$0.cerrada }
+        guard !n.isEmpty else { return vivas }
+        return vivas.filter { $0.nombre.lowercased().contains(n) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if vistas.isEmpty {
+                        Aviso(texto: abiertas.isEmpty
+                              ? "Sin contactos"
+                              : "Probá con otro nombre.",
+                              bg: t.card, ink: t.ink2)
+                    }
+                    ForEach(vistas) { c in
+                        NavigationLink { ChatView(chat: c) } label: {
+                            FilaCard {
+                                HStack(spacing: 11) {
+                                    Inicial(texto: c.nombre, color: C.naranja)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(c.nombre)
+                                            .font(Tipo.barlow(.semibold, 14))
+                                            .foregroundStyle(t.ink).lineLimit(1)
+                                        Text("Cliente · conversación abierta")
+                                            .font(Tipo.barlow(.regular, 11.5))
+                                            .foregroundStyle(t.ink2)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(t.ink3)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 12)
+            }
+            .background(t.bg)
+            .searchable(text: $q, prompt: "Buscar cliente o proveedor…")
+            .navigationTitle("Nueva conversación")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
+            }
+        }
     }
 }
