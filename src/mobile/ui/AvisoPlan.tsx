@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { config } from "@/lib/config";
+import { avisarCompra, comprarPlan, preciosDePlay, sePuedeComprar } from "@/lib/compras-play";
+import { repo } from "@/lib/repo";
 import { gs } from "@/lib/format";
 import { ORDEN_PLANES, PLANES, type Plan } from "@/lib/planes";
 import { preciosDePlanes, type PreciosDePlan } from "@/lib/precios-planes";
@@ -28,12 +30,27 @@ import { useApp } from "@/store/AppContext";
 export function AvisoPlan() {
   const { s, t, set, plan } = useApp();
   const [precios, setPrecios] = useState<PreciosDePlan>({});
+  // Si en este teléfono se puede comprar con Google. Arranca en `null`
+  // —todavía no sabemos— y no en `false`: mostrar la dirección de pago y un
+  // segundo después reemplazarla por un botón es peor que esperar.
+  const [conPlay, setConPlay] = useState<boolean | null>(null);
+  const [dePlay, setDePlay] = useState<Partial<Record<Plan, string>>>({});
+  const [comprando, setComprando] = useState<Plan | null>(null);
+  const [falla, setFalla] = useState("");
   const abierto = !!s.avisoPlan;
 
   useEffect(() => {
     if (!abierto) return;
     let vivo = true;
     void preciosDePlanes().then((p) => vivo && setPrecios(p));
+    void sePuedeComprar().then((ok) => {
+      if (!vivo) return;
+      setConPlay(ok);
+      // El precio que muestra Google puede no ser el de `zentra.planes`:
+      // cobra en la moneda de la cuenta y le suma sus impuestos. Si se va a
+      // comprar ahí, el número que se muestra tiene que ser el que se cobra.
+      if (ok) void preciosDePlay().then((p) => vivo && setDePlay(p));
+    });
     return () => {
       vivo = false;
     };
@@ -43,6 +60,41 @@ export function AvisoPlan() {
 
   const actual: Plan = plan().plan;
   const cerrar = () => set({ avisoPlan: null });
+
+  /**
+   * Comprar desde la app.
+   *
+   * El token de la sesión se pide en el momento y no se guarda: es el que el
+   * servidor usa para saber de qué empresa es la compra.
+   *
+   * Al final se relee la sesión, que es de donde sale el plan. Sin eso habría
+   * que cerrar y abrir la app para ver lo que se acaba de pagar, que es el
+   * mismo problema que ya arreglamos con el pago por la web.
+   */
+  const comprar = async (p: Plan) => {
+    setFalla("");
+    setComprando(p);
+    try {
+      const sesion = await repo.auth.sesionActual();
+      if (!sesion?.token) {
+        setFalla("Volvé a iniciar sesión y probá de nuevo.");
+        return;
+      }
+      const r = await comprarPlan(p, (productId, purchaseToken) =>
+        avisarCompra(config.cobrosUrl, sesion.token, productId, purchaseToken),
+      );
+      if (r.estado === "cancelado") return;
+      if (r.estado === "error") {
+        setFalla(r.motivo);
+        return;
+      }
+      const fresca = await repo.auth.sesionActual();
+      if (fresca?.usuario) set({ sesion: fresca.usuario, avisoPlan: null });
+      else set({ avisoPlan: null });
+    } finally {
+      setComprando(null);
+    }
+  };
 
   return (
     <div
@@ -143,7 +195,7 @@ export function AvisoPlan() {
                         repetir "Gratis" al lado de "Gratis" se lee como un
                         error. Sin precio tampoco se escribe nada: el plan se
                         entiende por lo que incluye. */}
-                    {precio ? `${gs(precio)} /mes` : ""}
+                    {dePlay[codigo] ? `${dePlay[codigo]} /mes` : precio ? `${gs(precio)} /mes` : ""}
                   </span>
                 </div>
                 <ul style={{ margin: "9px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 5 }}>
@@ -164,12 +216,53 @@ export function AvisoPlan() {
                     </li>
                   ))}
                 </ul>
+
+                {/* El botón sólo en los planes que no son el tuyo y que se
+                    pueden comprar. En el gratis no hay nada que cobrar. */}
+                {conPlay && !esElTuyo && codigo !== "free" && (
+                  <button
+                    onClick={() => void comprar(codigo)}
+                    disabled={comprando !== null}
+                    style={{
+                      width: "100%",
+                      marginTop: 11,
+                      padding: "11px",
+                      border: 0,
+                      borderRadius: 10,
+                      background: MARCA.acento,
+                      color: "#fff",
+                      opacity: comprando && comprando !== codigo ? 0.5 : 1,
+                      cursor: comprando ? "default" : "pointer",
+                      font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+                    }}
+                  >
+                    {comprando === codigo ? "Abriendo Google Play…" : `Suscribirme a ${def.nombre}`}
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
 
-        {config.linkDePago && config.cobrosUrl ? (
+        {falla && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: "11px 13px",
+              borderRadius: 10,
+              background: "rgba(178,58,16,.10)",
+              color: "#B23A10",
+              font: "400 12.5px/1.45 var(--font-barlow),Barlow,sans-serif",
+            }}
+          >
+            {falla}
+          </div>
+        )}
+
+        {/* Con la facturación de Google adentro, acá no va nada más: mandar a
+            pagar afuera desde la app está prohibido por la política de pagos
+            de Play, y ese "afuera" incluye un texto con la dirección. */}
+        {conPlay ? null : config.linkDePago && config.cobrosUrl ? (
           <a
             href={`${config.cobrosUrl}/pagar`}
             target="_blank"
