@@ -154,19 +154,60 @@ struct ComprasView: View {
     @State private var cargando = true
     @State private var error: String?
     @State private var nueva = false
+    @State private var filtro = "Todas"
+
+    private let filtros = ["Todas", "Por pagar", "Pagadas", "Crédito"]
+
+    /// Lo comprado este mes.
+    ///
+    /// Se calcula de verdad. En Android el mismo recuadro dice "Total del mes"
+    /// y suma TODAS las compras del listado, que con un año cargado es otro
+    /// número y nadie lo nota hasta que lo cruza con algo.
+    private var delMes: Int {
+        let cal = Calendar.current
+        let hoy = Date()
+        return filas.filter { c in
+            guard let f = Self.iso.date(from: c.fecha) else { return false }
+            return cal.isDate(f, equalTo: hoy, toGranularity: .month)
+        }
+        .reduce(0) { $0 + $1.total }
+    }
+
+    private var porPagar: Int {
+        filas.filter { !$0.pagada }.reduce(0) { $0 + $1.total }
+    }
+
+    private static let iso: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
     private var vistas: [Compra] {
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !n.isEmpty else { return filas }
         return filas.filter {
-            // Por cualquier producto de la compra, no sólo el primero: buscar
-            // "jabón" tiene que traer la compra que lo incluye aunque venga
-            // en el tercer renglón.
-            $0.numero.lowercased().contains(n)
-                || $0.proveedor.lowercased().contains(n)
-                || $0.lineas.contains { l in l.nombre.lowercased().contains(n) }
-                || $0.producto.lowercased().contains(n)
+            switch filtro {
+            case "Por pagar": if $0.pagada { return false }
+            case "Pagadas": if !$0.pagada { return false }
+            case "Crédito": if $0.pago != "Crédito" { return false }
+            default: break
+            }
+            guard !n.isEmpty else { return true }
+            return coincide($0, n)
         }
+    }
+
+    /// Si una compra entra en lo que se está buscando.
+    ///
+    /// Mira cualquier producto de la compra, no sólo el primero: buscar
+    /// "jabón" tiene que traer la compra que lo incluye aunque venga en el
+    /// tercer renglón.
+    private func coincide(_ c: Compra, _ n: String) -> Bool {
+        c.numero.lowercased().contains(n)
+            || c.proveedor.lowercased().contains(n)
+            || c.producto.lowercased().contains(n)
+            || c.lineas.contains { $0.nombre.lowercased().contains(n) }
     }
 
     /// Qué se compró, en un renglón.
@@ -181,8 +222,39 @@ struct ComprasView: View {
     }
 
     var body: some View {
-        Lista(titulo: "Compras", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay compras cargadas.") {
+        Lista(titulo: "Compras",
+              resumen: filas.isEmpty ? nil
+                : "\(vistas.count) de \(filas.count) · \(filas.filter { !$0.pagada }.count) por pagar",
+              cargando: cargando, error: error, vacio: filas.isEmpty,
+              vacioTexto: "Todavía no hay compras cargadas.",
+              encabezado: {
+                  VStack(spacing: 10) {
+                      HStack(spacing: 10) {
+                          Kpi(rotulo: "ESTE MES", valor: Panel.gs(delMes))
+                          Kpi(rotulo: "POR PAGAR", valor: Panel.gs(porPagar),
+                              tinte: porPagar > 0 ? Tint.avisoInk : nil)
+                      }
+                      .padding(.horizontal, 14)
+
+                      ScrollView(.horizontal) {
+                          HStack(spacing: 8) {
+                              ForEach(filtros, id: \.self) { f in
+                                  Button { filtro = f } label: {
+                                      Text(f)
+                                          .font(Tipo.barlow(.semibold, 12.5))
+                                          .foregroundStyle(filtro == f ? .white : t.ink2)
+                                          .padding(.horizontal, 14).frame(height: 32)
+                                          .background(filtro == f ? C.cian : t.card, in: .capsule)
+                                          .overlay { Capsule().stroke(filtro == f ? .clear : t.border) }
+                                  }
+                                  .buttonStyle(.plain)
+                              }
+                          }
+                          .padding(.horizontal, 14)
+                      }
+                      .scrollIndicators(.hidden)
+                  }
+              }) {
             ForEach(vistas) { c in
                 NavigationLink { CompraDetalleView(c: c) } label: {
                 FilaCard {
