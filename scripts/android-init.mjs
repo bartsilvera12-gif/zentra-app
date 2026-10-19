@@ -447,20 +447,39 @@ iconoDeNotificacion();
 function agregarPermisos() {
   const RUTA = "android/app/src/main/AndroidManifest.xml";
   if (!existsSync(RUTA)) return;
+  /**
+   * Cada permiso, con los atributos que necesite.
+   *
+   * Los dos de Bluetooth son para la impresora de tickets. El plugin de
+   * impresión también los declara en su propio manifiesto y el de la app gana
+   * sobre el suyo, así que están escritos acá a propósito: si se dejara que
+   * los ponga la librería, el día que se cambie de plugin el APK se queda sin
+   * permisos y nadie se enteraría hasta que una impresora no conecte.
+   *
+   * `neverForLocation` en el escaneo es lo que evita que Android además pida
+   * ubicación para buscar impresoras: es una declaración de que no sacamos la
+   * ubicación de lo que el Bluetooth ve, y es verdad. Sin el atributo el
+   * sistema la exige, y pedir ubicación para imprimir un ticket es lo que hace
+   * que alguien niegue el permiso para siempre.
+   */
   const permisos = [
-    "android.permission.RECORD_AUDIO",
-    "android.permission.MODIFY_AUDIO_SETTINGS",
-    "android.permission.ACCESS_COARSE_LOCATION",
-    "android.permission.ACCESS_FINE_LOCATION",
+    { nombre: "android.permission.RECORD_AUDIO" },
+    { nombre: "android.permission.MODIFY_AUDIO_SETTINGS" },
+    { nombre: "android.permission.ACCESS_COARSE_LOCATION" },
+    { nombre: "android.permission.ACCESS_FINE_LOCATION" },
+    { nombre: "android.permission.BLUETOOTH_CONNECT" },
+    { nombre: "android.permission.BLUETOOTH_SCAN", extra: 'android:usesPermissionFlags="neverForLocation"' },
   ];
   let xml = readFileSync(RUTA, "utf8");
-  const faltan = permisos.filter((p) => !xml.includes(p));
+  const faltan = permisos.filter((p) => !xml.includes(p.nombre));
   if (!faltan.length) return;
 
-  const lineas = faltan.map((p) => `    <uses-permission android:name="${p}" />`).join("\n");
+  const lineas = faltan
+    .map((p) => `    <uses-permission android:name="${p.nombre}"${p.extra ? " " + p.extra : ""} />`)
+    .join("\n");
   xml = xml.replace("</manifest>", `${lineas}\n</manifest>`);
   writeFileSync(RUTA, xml);
-  console.log(`\nPermisos agregados al manifiesto: ${faltan.join(", ")}`);
+  console.log(`\nPermisos agregados al manifiesto: ${faltan.map((p) => p.nombre).join(", ")}`);
 }
 
 agregarPermisos();

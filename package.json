@@ -16,7 +16,7 @@
     "android:init": "node scripts/android-init.mjs",
     "android": "npm run sync && npx cap open android",
     "apk": "npm run android:init && cd android && ./gradlew assembleDebug && cd .. && node -e \"console.log('\\nEl APK esta en android/app/build/outputs/apk/debug/app-debug.apk')\"",
-    "test": "npm run test:esquema && npm run test:inventario && npm run test:directorio && npm run test:api && npm run test:nombre && npm run test:sin-ejemplo && npm run test:atras && npm run test:reportes && npm run test:colores && npm run test:grabador && npm run test:tema && npm run test:favoritos && npm run test:planes && npm run test:precios && npm run test:avisos && npm run test:proveedor && npm run test:emisor && npm run test:vencimiento && npm run test:hilo && npm run test:colas && npm run test:sesion && npm run test:firma && npm run test:avatar && npm run test:ubicacion && npm run test:imagen && npm run test:soporte && npm run test:colores-reporte && npm run test:impresion && npm run test:al-volver && npm run test:exportar && npm run test:compras-play && npm run test:marco",
+    "test": "npm run test:esquema && npm run test:inventario && npm run test:directorio && npm run test:api && npm run test:nombre && npm run test:sin-ejemplo && npm run test:atras && npm run test:reportes && npm run test:colores && npm run test:grabador && npm run test:tema && npm run test:favoritos && npm run test:planes && npm run test:precios && npm run test:avisos && npm run test:proveedor && npm run test:emisor && npm run test:vencimiento && npm run test:hilo && npm run test:colas && npm run test:sesion && npm run test:firma && npm run test:avatar && npm run test:ubicacion && npm run test:imagen && npm run test:soporte && npm run test:colores-reporte && npm run test:impresion && npm run test:al-volver && npm run test:exportar && npm run test:compras-play && npm run test:marco && npm run test:ticket && npm run test:impresora",
     "test:esquema": "node test/esquema.mjs",
     "test:inventario": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/inventario.mjs",
     "test:directorio": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs test/directorio.mjs",
@@ -48,7 +48,9 @@
     "test:al-volver": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs --test test/al-volver.mjs",
     "test:exportar": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs --test test/exportar.mjs",
     "test:compras-play": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs --test test/compras-play.mjs",
-    "test:marco": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs --test test/marco.mjs"
+    "test:marco": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs --test test/marco.mjs",
+    "test:ticket": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs --test test/ticket.mjs",
+    "test:impresora": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-transform-types --import ./test/hook.mjs --test test/impresora.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",
@@ -57,6 +59,7 @@
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/push-notifications": "^8.1.3",
     "@capgo/native-purchases": "^8.9.6",
+    "@delicity/capacitor-thermal-printer": "^8.5.2",
     "@supabase/supabase-js": "^2.117.2",
     "next": "15.5.4",
     "react": "19.1.1",

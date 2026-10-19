@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { MARCA } from "@/lib/theme";
+import { esNativo } from "@/lib/nativo";
+import { anchoGuardado, imprimirTicket, impresoraGuardada } from "@/lib/impresora";
 import { METODOS, PASOS_VENTA } from "@/lib/data";
 import { repo } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
@@ -32,6 +35,28 @@ export function VentaScreen() {
   // El crédito es de Max. Si el plan no lo incluye, el motivo se muestra en el
   // mismo lugar donde ya se explica la regla del cliente identificado.
   const sinCredito = motivoBloqueo("ventas.credito", plan());
+  // Imprimir el ticket es lo que el plan vende como "facturación con
+  // auto-impresor", igual que en el detalle de venta.
+  const sinImpresion = motivoBloqueo("facturacion.autoImpresor", plan());
+
+  /**
+   * Si hay impresora elegida, para que al terminar la venta el botón lleve a
+   * donde corresponde: a imprimir si ya hay una, a elegirla si no.
+   *
+   * Se lee al entrar a la pantalla y no al arrancar la app: es una llamada
+   * nativa, y hasta que alguien vende no hace falta.
+   */
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const g = await impresoraGuardada();
+      if (vivo) set({ impGuardada: g, impLeyendo: false, impAncho: anchoGuardado() });
+    })();
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Lo más delicado de la app: una venta se registra contra estos ids. Con el
   // catálogo de ejemplo, el ERP recibiría productos que no existen.
@@ -94,6 +119,49 @@ export function VentaScreen() {
   // venta no hay número: poner uno sería decirle al vendedor que ya facturó.
   const vNumero = s.vVenta?.numero ?? "—";
   const vFecha = s.vVenta?.fecha ?? "—";
+
+  /**
+   * Imprimir el ticket de la venta que se acaba de registrar.
+   *
+   * Sólo cuando hay venta: `vVenta` es la que devolvió el backend, y sin ella
+   * no hay número, no hay fecha y no hay nada que imprimir. Es la misma regla
+   * de la pantalla de "venta registrada", que ya no inventa un número.
+   *
+   * Lo que queda escrito es lo que informó la impresora. `impresora.ts`
+   * distingue "imprimió" de "el ticket salió hacia la impresora y esta no
+   * confirma", porque en una térmica Bluetooth genérica el canal es de ida, y
+   * quien entrega la mercadería tiene derecho a saber de cuál de las dos se
+   * trata.
+   */
+  const imprimirElTicket = async () => {
+    const venta = s.vVenta;
+    if (!venta) return;
+    if (sinImpresion) return set({ avisoPlan: sinImpresion });
+    if (!esNativo()) {
+      // En el navegador lo que hay es el diálogo del sistema, que imprime la
+      // pantalla. No es un ticket, y se dice.
+      set({
+        impAviso:
+          "Se abrió el diálogo de impresión del sistema, que imprime lo que estás viendo. La impresora térmica funciona con la app instalada en el teléfono.",
+        impAvisoGrave: false,
+      });
+      window.print();
+      return;
+    }
+    if (s.impImprimiendo) return;
+    set({ impImprimiendo: true, impAviso: "", impAvisoGrave: false });
+    const r = await imprimirTicket(venta, { emisor, ancho: s.impAncho });
+    set({
+      impImprimiendo: false,
+      impAviso:
+        r.estado === "impreso"
+          ? "La impresora confirmó que imprimió el ticket."
+          : r.estado === "enviado"
+            ? "El ticket salió hacia la impresora. Esta impresora no confirma la impresión, así que fijate que el papel haya salido entero antes de entregar."
+            : r.motivo,
+      impAvisoGrave: r.estado === "error",
+    });
+  };
 
   const back = () => {
     if (s.vPaso === "factura") return set({ vPaso: "listo" });
@@ -989,6 +1057,59 @@ export function VentaScreen() {
                 </div>
               </div>
             </div>
+            {/* Cómo salió la impresión, con el texto que escribió
+                `impresora.ts`. No dice "✓ impreso" por las dudas: lo dice
+                cuando la impresora lo confirmó. */}
+            {s.impAviso && (
+              <div
+                style={{
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  font: "500 12px/1.4 var(--font-barlow),Barlow,sans-serif",
+                  background: s.impAvisoGrave ? "#FBE9E7" : "#E6F1F5",
+                  color: s.impAvisoGrave ? "#8C2F2B" : "#0A4A5C",
+                }}
+              >
+                {s.impAviso}
+              </div>
+            )}
+
+            {/* Imprimir es lo primero que se hace con una venta recién
+                registrada, así que va arriba de ver la factura. Si todavía no
+                hay impresora elegida, el botón lleva a elegirla: una vez, no en
+                cada venta. */}
+            {esNativo() && !s.impLeyendo && !s.impGuardada ? (
+              <button
+                onClick={() => set({ screen: "config" })}
+                style={{
+                  height: 48,
+                  borderRadius: 13,
+                  cursor: "pointer",
+                  font: "600 14.5px/1 var(--font-barlow),Barlow,sans-serif",
+                  background: t.card,
+                  border: `1.5px solid ${MARCA.acento}`,
+                  color: MARCA.acento,
+                }}
+              >
+                Elegir impresora
+              </button>
+            ) : (
+              <button
+                onClick={() => void imprimirElTicket()}
+                style={{
+                  height: 48,
+                  border: 0,
+                  borderRadius: 13,
+                  background: MARCA.acento,
+                  color: "#fff",
+                  font: "600 14.5px/1 var(--font-barlow),Barlow,sans-serif",
+                  cursor: "pointer",
+                }}
+              >
+                {s.impImprimiendo ? "Imprimiendo…" : "Imprimir ticket"}
+              </button>
+            )}
+
             <button
               onClick={() => set({ vPaso: "factura" })}
               style={{
@@ -1018,6 +1139,10 @@ export function VentaScreen() {
                   // de la anterior.
                   vVenta: null,
                   vErrorAlta: "",
+                  // Sin esto, la venta siguiente arrancaría mostrando cómo
+                  // salió la impresión de la anterior.
+                  impAviso: "",
+                  impAvisoGrave: false,
                 })
               }
               style={{

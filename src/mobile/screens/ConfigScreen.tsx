@@ -4,17 +4,30 @@ import { config } from "@/lib/config";
 import { MARCA } from "@/lib/theme";
 import { guardarPreferencia, temaDelSistema } from "@/lib/tema";
 import type { ThemeName } from "@/lib/types";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
 import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
-import { estadoDeSuscripcion } from "@/lib/planes";
+import {
+  anchoGuardado,
+  buscarImpresoras,
+  elegirImpresora,
+  estadoDeImpresora,
+  guardarAncho,
+  imprimirPrueba,
+  impresoraGuardada,
+  olvidarImpresora,
+  sePuedeImprimir,
+  type ImpresoraVista,
+} from "@/lib/impresora";
+import type { AnchoPapel } from "@/lib/ticket";
+import { estadoDeSuscripcion, motivoBloqueo } from "@/lib/planes";
 import { linkDeSoporte, type MotivoSoporte } from "@/lib/soporte";
 import { repo } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
 import { BottomNav } from "../layout/BottomNav";
 import { StatusBar } from "../layout/StatusBar";
 import { IconBurbuja, IconIdea } from "../ui/Icons";
-import { Card, Notice, SectionLabel, Toggle } from "../ui/primitives";
+import { Card, GhostButton, Notice, SectionLabel, Toggle } from "../ui/primitives";
 
 function IconSol({ stroke }: { stroke: string }) {
   return (
@@ -183,6 +196,138 @@ export function ConfigScreen() {
         pushAviso: e instanceof Error && e.message ? e.message : "No pudimos activar los avisos.",
       });
     }
+  };
+
+  /* ---------- impresora térmica ---------- */
+
+  // Imprimir el ticket es lo que el plan vende como "facturación con
+  // auto-impresor". Se pregunta acá igual que en el detalle de venta: elegir
+  // impresora con un plan que no imprime es hacer perder el tiempo.
+  const sinImpresion = motivoBloqueo("facturacion.autoImpresor", plan());
+  const hayPlugin = sePuedeImprimir();
+  /** Lo que el scan fue encontrando, para no perder un aviso con otro. */
+  const halladas = useRef<ImpresoraVista[]>([]);
+
+  /**
+   * Lo que ya está elegido, leído del perfil que guarda el plugin.
+   *
+   * Se lee al abrir Configuración y no al arrancar la app: es una llamada
+   * nativa, y nadie necesita saber si hay impresora hasta que mira esta
+   * pantalla o manda un ticket.
+   */
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const guardada = await impresoraGuardada();
+      if (!vivo) return;
+      set({ impGuardada: guardada, impLeyendo: false, impAncho: anchoGuardado() });
+      // El estado es aparte porque muchas impresoras no lo informan: si no
+      // vuelve nada, no se muestra nada en vez de mostrar "Conectada".
+      const estado = guardada ? await estadoDeImpresora(guardada.id) : null;
+      if (vivo) set({ impEstado: estado ?? "" });
+    })();
+    return () => {
+      vivo = false;
+    };
+    // `set` es estable y el efecto corre una vez: volver a leer en cada render
+    // dispararía un scan de estado por tecla tocada en la pantalla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const buscar = async () => {
+    if (sinImpresion) return set({ avisoPlan: sinImpresion });
+    if (s.impBuscando) return;
+    halladas.current = [];
+    set({ impBuscando: true, impEncontradas: [], impAviso: "", impAvisoGrave: false });
+    // Las que van apareciendo se muestran en el momento: ocho segundos mirando
+    // una pantalla quieta se sienten como que la app se colgó.
+    //
+    // La lista se acumula en una referencia y no leyendo el estado porque el
+    // plugin avisa varias veces en el mismo instante y `set` recibe un parche,
+    // no una función: con dos avisos juntos, el segundo pisaría al primero.
+    const r = await buscarImpresoras((i) => {
+      if (halladas.current.some((x) => x.id === i.id)) return;
+      halladas.current = halladas.current.concat(i);
+      set({ impEncontradas: halladas.current });
+    });
+    if (!r.ok) return set({ impBuscando: false, impAviso: r.motivo, impAvisoGrave: true });
+    set({
+      impBuscando: false,
+      impEncontradas: r.dato,
+      // Un scan que no encontró nada no es una falla: es un dato, y lo que
+      // sigue es prender la impresora o acercarse.
+      impAviso: r.dato.length
+        ? ""
+        : "No apareció ninguna impresora. Fijate que esté prendida, con el Bluetooth del teléfono prendido, y a menos de unos metros.",
+      impAvisoGrave: false,
+    });
+  };
+
+  const elegir = async (id: string) => {
+    if (sinImpresion) return set({ avisoPlan: sinImpresion });
+    set({ impAviso: "", impAvisoGrave: false });
+    const r = await elegirImpresora(id, s.impAncho);
+    if (!r.ok) return set({ impAviso: r.motivo, impAvisoGrave: true });
+    const estado = await estadoDeImpresora(r.dato.id);
+    set({
+      impGuardada: r.dato,
+      impEncontradas: [],
+      impEstado: estado ?? "",
+      // Se dice que quedó guardada, que es lo que pasó. Que imprima bien se
+      // sabe con el ticket de prueba, no con la conexión.
+      impAviso: "Impresora guardada. Probala con un ticket de prueba antes de la primera venta.",
+      impAvisoGrave: false,
+    });
+  };
+
+  const quitar = async () => {
+    const id = s.impGuardada?.id;
+    if (!id) return;
+    const r = await olvidarImpresora(id);
+    set({
+      impGuardada: r.ok ? null : s.impGuardada,
+      impEstado: "",
+      impAviso: r.ok ? "Se quitó la impresora. La próxima vez que imprimas hay que elegir una." : r.motivo,
+      impAvisoGrave: !r.ok,
+    });
+  };
+
+  /**
+   * El ancho del rollo.
+   *
+   * Lo elige la persona y no se le pregunta a la impresora porque la impresora
+   * no lo sabe: el plugin lo deduce del modelo y con las genéricas no lo
+   * reconoce. El rollo lo ve quien lo cambia.
+   */
+  const cambiarAncho = (mm: AnchoPapel) => {
+    set({ impAncho: mm, impAviso: "", impAvisoGrave: false });
+    // Se guarda acá y no sólo al conectar: el rollo se puede elegir antes de
+    // tener impresora, y esa elección tiene que seguir valiendo al volver.
+    guardarAncho(mm);
+    // Si ya hay una elegida hay que reconectar para que el ancho quede también
+    // del lado del plugin; mientras no se reconecte, el ticket se arma con el
+    // ancho nuevo igual, que es el que decide las columnas.
+    if (s.impGuardada) void elegirImpresora(s.impGuardada.id, mm);
+  };
+
+  const probar = async () => {
+    if (sinImpresion) return set({ avisoPlan: sinImpresion });
+    if (s.impImprimiendo) return;
+    set({ impImprimiendo: true, impAviso: "", impAvisoGrave: false });
+    const r = await imprimirPrueba(s.impAncho);
+    set({
+      impImprimiendo: false,
+      // Los tres resultados son distintos y se dicen distinto. "Enviado" no es
+      // "impreso": en una ESC/POS por Bluetooth el canal es de ida y lo único
+      // que sabemos es que el ticket salió de acá.
+      impAviso:
+        r.estado === "impreso"
+          ? "La impresora confirmó que imprimió el ticket de prueba."
+          : r.estado === "enviado"
+            ? "El ticket de prueba salió hacia la impresora. Esta impresora no confirma la impresión, así que mirá el papel: si la regla de números no llega al borde, cambiá el ancho del rollo."
+            : r.motivo,
+      impAvisoGrave: r.estado === "error",
+    });
   };
 
   const temaBtn = (
@@ -375,6 +520,161 @@ export function ConfigScreen() {
           {/* "Sonido y vibración" también se va: no lo leía nadie, y además no
               es nuestro para controlar — el sonido de una notificación lo
               maneja Android por canal, desde los ajustes del teléfono. */}
+        </Card>
+
+        {/* La impresora se elige una vez y queda. Nadie quiere elegir
+            impresora en cada venta, y por eso vive acá y no en el mostrador. */}
+        <Card gap={12}>
+          <SectionLabel>Impresora de tickets</SectionLabel>
+
+          {!hayPlugin ? (
+            // En el navegador no hay plugin nativo: el Bluetooth del navegador
+            // no llega a una impresora SPP. Decirlo es más útil que un botón
+            // que no va a encontrar nada nunca.
+            <Notice bg={claro ? "#eef2f6" : t.card} ink={t.ink2} border={t.border}>
+              La impresora Bluetooth funciona con la app instalada en el teléfono. Desde el navegador queda la
+              impresión del sistema, en el detalle de la venta.
+            </Notice>
+          ) : (
+            <>
+              <div style={{ font: "400 12.5px/1.45 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                Para impresoras térmicas Bluetooth, de las de rollo de 58 y 80 mm.
+              </div>
+
+              {s.impGuardada ? (
+                <div
+                  style={{
+                    borderRadius: 12,
+                    padding: "11px 12px",
+                    background: t.bg,
+                    border: `1px solid ${t.border}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ font: "600 14px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
+                    {s.impGuardada.nombre}
+                  </div>
+                  <div style={{ font: "400 11.5px/1.3 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                    {/* El estado sólo sale si el aparato lo informó. Muchas
+                        ESC/POS no informan nada, y en ese caso no se escribe
+                        "Conectada", que sería afirmarlo sin saberlo. */}
+                    {[s.impGuardada.detalle, s.impEstado].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ font: "400 12.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                  {s.impLeyendo ? "Viendo si hay una guardada…" : "Todavía no elegiste ninguna."}
+                </div>
+              )}
+
+              {/* El ancho del rollo: es el que decide cuántas columnas tiene el
+                  ticket, y elegirlo mal se ve en el papel y en ningún otro
+                  lado. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                  Ancho del rollo
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {([58, 80] as AnchoPapel[]).map((mm) => {
+                    const on = s.impAncho === mm;
+                    return (
+                      <button
+                        key={mm}
+                        onClick={() => cambiarAncho(mm)}
+                        aria-pressed={on}
+                        style={{
+                          flex: 1,
+                          height: 42,
+                          borderRadius: 11,
+                          cursor: "pointer",
+                          font: "600 13.5px/1 var(--font-barlow),Barlow,sans-serif",
+                          background: on ? MARCA.suave : t.card,
+                          border: `1.5px solid ${on ? MARCA.acento : t.border}`,
+                          color: on ? MARCA.acento : t.ink2,
+                        }}
+                      >
+                        {mm} mm
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {s.impEncontradas.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  <SectionLabel>Encontradas</SectionLabel>
+                  {s.impEncontradas.map((i) => (
+                    <button
+                      key={i.id}
+                      onClick={() => void elegir(i.id)}
+                      style={{
+                        borderRadius: 12,
+                        padding: "11px 12px",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        background: t.card,
+                        border: `1px solid ${t.border}`,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 3,
+                      }}
+                    >
+                      <span style={{ font: "600 13.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
+                        {i.nombre}
+                      </span>
+                      <span style={{ font: "400 11.5px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>
+                        {i.detalle}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {s.impAviso && (
+                <Notice
+                  bg={s.impAvisoGrave ? (claro ? "#fdf1f1" : "#3a2328") : claro ? "#eef2f6" : t.card}
+                  ink={s.impAvisoGrave ? "#9e3b3b" : t.ink2}
+                  border={s.impAvisoGrave ? undefined : t.border}
+                >
+                  {s.impAviso}
+                </Notice>
+              )}
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <GhostButton
+                  label={s.impBuscando ? "Buscando…" : s.impGuardada ? "Cambiar impresora" : "Buscar impresoras"}
+                  flex={1}
+                  onClick={() => void buscar()}
+                />
+                {s.impGuardada && (
+                  <GhostButton
+                    label={s.impImprimiendo ? "Imprimiendo…" : "Imprimir prueba"}
+                    flex={1}
+                    onClick={() => void probar()}
+                  />
+                )}
+              </div>
+              {s.impGuardada && (
+                <button
+                  onClick={() => void quitar()}
+                  style={{
+                    borderRadius: 12,
+                    padding: "11px 14px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    font: "600 13px/1 var(--font-barlow),Barlow,sans-serif",
+                    background: "transparent",
+                    border: `1px solid ${t.border}`,
+                    color: "#9e3b3b",
+                  }}
+                >
+                  Quitar la impresora guardada
+                </button>
+              )}
+            </>
+          )}
         </Card>
 
         <Card gap={14}>

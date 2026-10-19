@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { esNativo } from "@/lib/nativo";
+import { anchoGuardado, imprimirTicket, impresoraGuardada } from "@/lib/impresora";
 import { MARCA } from "@/lib/theme";
 import { CHATS } from "@/lib/data";
 import { repo, usaApiDelErp } from "@/lib/repo";
@@ -40,21 +42,23 @@ const VIOLETA = MARCA.headerSuave;
 /**
  * Qué pasó de verdad, para decirlo tal cual.
  *
- * Acá decía "La factura se envió a la impresora térmica vinculada", y no hay
- * impresora, ni plugin de impresión, ni Bluetooth, ni ESC/POS en el proyecto:
- * el botón sólo guardaba una palabra en el estado. Es la mentira más cara que
- * podía decir esta pantalla, porque quien atiende el mostrador entrega la
- * mercadería convencido de que el ticket salió, y nunca salió nada.
+ * Acá decía "La factura se envió a la impresora térmica vinculada" cuando no
+ * había impresora, ni plugin, ni Bluetooth, ni ESC/POS en el proyecto: el botón
+ * sólo guardaba una palabra en el estado. Era la mentira más cara que podía
+ * decir esta pantalla, porque quien atiende el mostrador entrega la mercadería
+ * convencido de que el ticket salió, y nunca salió nada.
  *
- * Lo que sí existe es el diálogo de impresión del sistema, en el navegador, y
- * compartir texto. Esto es lo que hay, y es lo que se dice. Cuando haya
- * impresión de verdad, el aviso cambia acá y en ningún otro lado.
+ * Ahora la impresora existe —`src/lib/impresora.ts`, por Bluetooth— y la regla
+ * no cambió: lo que se dice es lo que el aparato informó. Por eso el resultado
+ * de imprimir NO está en esta tabla: lo escribe `impresora.ts` según lo que
+ * contestó la impresora, y la pantalla sólo lo muestra. Acá quedan los avisos
+ * de lo que esta pantalla sí decide sola.
  */
 const AVISOS: Record<string, string> = {
   imprimir:
     "Se abrió el diálogo de impresión del sistema: imprime lo que estás viendo en pantalla. Zentra no le manda nada a ninguna impresora por su cuenta.",
-  "sin-impresora":
-    "Desde la app todavía no se puede imprimir: no hay impresora conectada. Abrí Zentra en el navegador de la computadora para usar la impresión del sistema, o pasale el comprobante por WhatsApp.",
+  "lista-sin-impresora":
+    "La impresora térmica imprime tickets de venta, no la lista del rango: el rollo es de 58 u 80 mm y la tabla no entra. Compartila en texto, o abrí Zentra en el navegador de la computadora para imprimirla.",
   compartido: "Se abrió el menú de compartir con el comprobante en texto. No se generó ningún PDF: eso todavía no existe.",
   copiado: "El comprobante se copió en texto, listo para pegar donde quieras. No se generó ningún PDF: eso todavía no existe.",
   "sin-compartir": "Este teléfono no deja compartir desde la app, así que no se compartió nada. Podés pasarlo por WhatsApp.",
@@ -70,6 +74,26 @@ export function DetVentasScreen() {
   // auto-impresor". Se pregunta primero que nada para que, cuando el plan no lo
   // incluya, el motivo hable del plan y no de la impresora que falta.
   const sinImpresion = motivoBloqueo("facturacion.autoImpresor", plan());
+
+  /**
+   * Si hay impresora elegida, para que el botón diga qué va a hacer.
+   *
+   * Se lee acá y no al arrancar la app: es una llamada nativa, y hasta que
+   * alguien mira una venta no hace falta. Mientras no se sepa, el botón dice
+   * "Imprimir" —que es lo que va a pasar en la mayoría de los casos— y si no
+   * hay impresora el resultado lo dice.
+   */
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const g = await impresoraGuardada();
+      if (vivo) set({ impGuardada: g, impLeyendo: false, impAncho: anchoGuardado() });
+    })();
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const dvq = norm(s.dvQuery.trim());
   // El historial sale del ERP, ya filtrado por el rango que se eligió.
@@ -134,16 +158,50 @@ export function DetVentasScreen() {
     ].join("\n");
 
   /**
-   * Imprimir.
+   * Imprimir la lista del rango.
    *
-   * El plan primero, el sistema después: adentro del APK no hay por dónde
-   * imprimir, y decirlo es más útil que abrir un diálogo que no existe.
+   * No es un ticket: en un rollo de 58 mm no entra una tabla. Adentro del APK
+   * se dice eso en vez de mandarle a la térmica algo que va a salir cortado.
    */
-  const imprimir = () => {
+  const imprimirLista = () => {
     if (sinImpresion) return set({ avisoPlan: sinImpresion });
-    if (esNativo()) return set({ dvAccion: "sin-impresora" });
+    if (esNativo()) return set({ dvAccion: "lista-sin-impresora" });
     set({ dvAccion: "imprimir" });
     window.print();
+  };
+
+  /**
+   * Imprimir el ticket de esta venta.
+   *
+   * El plan primero —es lo que se vende como "facturación con auto-impresor"—,
+   * después la impresora térmica si estamos en el APK, y en el navegador el
+   * diálogo del sistema, que es lo que ahí existe.
+   *
+   * Lo que queda escrito en pantalla es lo que informó la impresora, ni más ni
+   * menos: `impresora.ts` distingue "imprimió" de "el ticket salió hacia la
+   * impresora y esta no confirma", y acá no se redondea ninguno de los dos.
+   */
+  const imprimirTicketDeVenta = async () => {
+    if (!det) return;
+    if (sinImpresion) return set({ avisoPlan: sinImpresion });
+    if (!esNativo()) {
+      set({ dvAccion: "imprimir", impAviso: "" });
+      window.print();
+      return;
+    }
+    if (s.impImprimiendo) return;
+    set({ impImprimiendo: true, impAviso: "", impAvisoGrave: false, dvAccion: "" });
+    const r = await imprimirTicket(det, { emisor, ancho: s.impAncho });
+    set({
+      impImprimiendo: false,
+      impAviso:
+        r.estado === "impreso"
+          ? "La impresora confirmó que imprimió el ticket."
+          : r.estado === "enviado"
+            ? "El ticket salió hacia la impresora. Esta impresora no confirma la impresión, así que fijate que el papel haya salido entero antes de entregar."
+            : r.motivo,
+      impAvisoGrave: r.estado === "error",
+    });
   };
 
   /**
@@ -325,7 +383,7 @@ export function DetVentasScreen() {
               return (
                 <button
                   key={v.id}
-                  onClick={() => set({ dvSub: "factura", dvSel: v.id, dvAccion: "" })}
+                  onClick={() => set({ dvSub: "factura", dvSel: v.id, dvAccion: "", impAviso: "" })}
                   style={{
                     display: "flex",
                     flexDirection: "column",
@@ -399,7 +457,7 @@ export function DetVentasScreen() {
               </Notice>
             )}
             <div style={{ display: "flex", gap: 10 }}>
-              <GhostButton label="Imprimir la lista" flex={1} onClick={imprimir} />
+              <GhostButton label="Imprimir la lista" flex={1} onClick={imprimirLista} />
               <GhostButton label="Compartir en texto" flex={1} onClick={() => compartir(textoLista())} />
             </div>
           </div>
@@ -411,7 +469,7 @@ export function DetVentasScreen() {
         <>
           <div style={{ background: VIOLETA, padding: "4px 14px 16px", display: "flex", alignItems: "center", gap: 11 }}>
             <button
-              onClick={() => set({ dvSub: "lista", dvSel: null, dvAccion: "" })}
+              onClick={() => set({ dvSub: "lista", dvSel: null, dvAccion: "", impAviso: "" })}
               style={{
                 width: 32,
                 height: 32,
@@ -544,10 +602,30 @@ export function DetVentasScreen() {
               </Notice>
             )}
 
+            {/* Cómo salió la impresión, con el texto que escribió
+                `impresora.ts`: el rojo queda para lo que falló. */}
+            {s.impAviso && (
+              <Notice
+                bg={s.impAvisoGrave ? "#FBE9E7" : "#E6F1F5"}
+                ink={s.impAvisoGrave ? "#8C2F2B" : "#0A4A5C"}
+                border={s.impAvisoGrave ? "#E8B4AE" : "#A9CEDB"}
+              >
+                {s.impAviso}
+              </Notice>
+            )}
+
             {/* Los botones ya no dicen "✓ Enviado a imprimir" ni "✓ PDF listo":
                 ninguna de las dos cosas pasaba. Lo que pasó lo cuenta el aviso,
                 que es el único que sabe cómo salió. */}
-            <GhostButton label="Imprimir" onClick={imprimir} />
+            <GhostButton
+              label={s.impImprimiendo ? "Imprimiendo…" : "Imprimir"}
+              onClick={() => void imprimirTicketDeVenta()}
+            />
+            {/* Si no hay impresora elegida, el camino es ir a elegirla: una
+                vez, no en cada venta. */}
+            {esNativo() && !s.impLeyendo && !s.impGuardada && (
+              <GhostButton label="Elegir impresora" onClick={() => set({ screen: "config" })} />
+            )}
             <GhostButton label="Compartir en texto" onClick={() => compartir(textoComprobante())} />
             <button
               onClick={enviarWhatsapp}

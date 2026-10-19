@@ -1,6 +1,8 @@
 import { haceDias, hoyIso } from "@/lib/format";
 import type { TenantConfig } from "@/lib/tenant/types";
 import type { Plan } from "@/lib/planes";
+import type { ImpresoraVista } from "@/lib/impresora";
+import type { AnchoPapel } from "@/lib/ticket";
 import type {
   CompraLinea,
   Compra,
@@ -352,6 +354,42 @@ export interface AppState {
    */
   pushAvisoGrave: boolean;
 
+  /* Impresora térmica */
+  /**
+   * La impresora elegida, o `null` cuando todavía no se eligió ninguna.
+   *
+   * Es un espejo de lo que guarda el plugin, no la verdad: la verdad la tiene
+   * el perfil persistido del lado nativo, y esto es lo que se leyó la última
+   * vez para poder dibujarlo. `undefined` no existe a propósito: "no leído
+   * todavía" se distingue con `impLeyendo`, porque mostrar "no hay impresora"
+   * mientras se está leyendo manda a elegir una que ya está elegida.
+   */
+  impGuardada: ImpresoraVista | null;
+  impLeyendo: boolean;
+  /** Mientras corre el scan, que tarda ocho segundos y hay que mostrarlo. */
+  impBuscando: boolean;
+  /** Lo que fue apareciendo en el scan, en vivo. */
+  impEncontradas: ImpresoraVista[];
+  /**
+   * El ancho del rollo. Decide cuántas columnas tiene el ticket (32 ó 48), así
+   * que elegirlo mal se ve en el papel y en ningún otro lado.
+   */
+  impAncho: AnchoPapel;
+  /** El estado del aparato cuando el plugin lo informa. Vacío = no se sabe. */
+  impEstado: string;
+  /**
+   * Qué pasó con la impresora, ya escrito para mostrar.
+   *
+   * Uno solo para toda la app —Configuración, el detalle de venta y el final de
+   * la venta— porque es siempre la misma pregunta, y porque el texto lo escribe
+   * `impresora.ts`: la pantalla no inventa el resultado, lo muestra.
+   */
+  impAviso: string;
+  /** Si ese aviso es una falla (rojo) o sólo lo que pasó (gris). */
+  impAvisoGrave: boolean;
+  /** Mientras el ticket está saliendo, para no mandar dos de un doble toque. */
+  impImprimiendo: boolean;
+
   /* Home dashboard */
   hover: ModuleKey | null;
   /** Index of the visible dashboard page. */
@@ -560,6 +598,20 @@ export const initialState: AppState = {
   pushOcupado: false,
   pushAviso: "",
   pushAvisoGrave: false,
+
+  impGuardada: null,
+  // Arranca en true: la primera lectura del perfil guardado es nativa y tarda
+  // un instante, y en ese instante no hay que decir que no hay impresora.
+  impLeyendo: true,
+  impBuscando: false,
+  impEncontradas: [],
+  // 58 mm, que es el rollo más usado y el que entra en los dos: un ticket de
+  // 32 columnas sale bien en 80 mm, uno de 48 sale partido en 58.
+  impAncho: 58,
+  impEstado: "",
+  impAviso: "",
+  impAvisoGrave: false,
+  impImprimiendo: false,
 
   hover: null,
   dash: 0,
