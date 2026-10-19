@@ -314,6 +314,30 @@ struct VentaDetalleView: View {
         return Int(crudo.rounded())
     }
 
+    /// El comprobante en texto, para mandar por donde sea.
+    ///
+    /// Es lo que más se hace con una factura después de cobrarla: pasársela al
+    /// cliente. Hasta ahora se podía compartir el listado entero del mes pero
+    /// no una factura sola, que es lo que alguien pide por WhatsApp.
+    ///
+    /// Mismo formato que el del listado: una línea por renglón y los totales
+    /// abajo. Android acá aclara que no genera ningún PDF; en iOS sí, porque
+    /// `Pdf.deTexto` ya existe y lo usa el listado.
+    private var comprobante: String {
+        let cab = """
+        \(v.numero) · \(v.iso)
+        \(v.cliente)\(v.doc.isEmpty ? "" : " · \(v.doc)")
+        \(v.pago) · \(v.cobrada ? "Cobrada" : "Pendiente")
+        """
+        let cuerpo = v.lineas.map { l in
+            let cant = l.qty == l.qty.rounded() ? String(Int(l.qty)) : String(format: "%.3f", l.qty)
+            return "\(cant) × \(l.nombre)  \(Panel.gs(Int((Double(l.precio) * l.qty).rounded())))"
+        }.joined(separator: "\n")
+        return cab + "\n\n" + cuerpo
+            + "\n\nIVA incluido  \(Panel.gs(iva))"
+            + "\nTOTAL  \(Panel.gs(v.total))"
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -358,6 +382,25 @@ struct VentaDetalleView: View {
             .padding(.vertical, 12)
         }
         .background(t.bg)
+        .safeAreaInset(edge: .bottom) {
+            if !v.lineas.isEmpty {
+                HStack(spacing: 10) {
+                    ShareLink(item: Pdf.deTexto(comprobante, titulo: v.numero),
+                              preview: SharePreview(v.numero)) {
+                        Text("Exportar PDF").frame(maxWidth: .infinity)
+                    }
+                    ShareLink(item: comprobante) {
+                        Text("Compartir").frame(maxWidth: .infinity)
+                    }
+                }
+                .font(Tipo.barlow(.semibold, 13.5))
+                .foregroundStyle(t.ink)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14).padding(.top, 11).padding(.bottom, 13)
+                .background(t.card)
+                .overlay(alignment: .top) { Rectangle().fill(t.border).frame(height: 1) }
+            }
+        }
         .navigationTitle("Venta")
         .navigationBarTitleDisplayMode(.inline)
         // El listado de ventas no siempre trae las líneas; la ficha sí.
