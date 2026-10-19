@@ -51,7 +51,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../../ZentraMovil/Recursos/Zentra.storekit">
+         identifier = "../../../Zentra.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
