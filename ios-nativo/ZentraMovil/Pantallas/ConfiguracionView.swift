@@ -17,6 +17,9 @@ struct ConfiguracionView: View {
     @State private var errorBorrar: String?
     /// La instalación tiene ERP propio: entonces la cuenta no es nuestra.
     @State private var conErp = false
+    /// El motivo con el que se abre la hoja de planes desde acá. No hay nada
+    /// bloqueado —se entra a mirar—, así que el texto lo dice.
+    @State private var verPlanes: String?
 
     var body: some View {
         @Bindable var a = ajustes
@@ -46,6 +49,7 @@ struct ConfiguracionView: View {
             Text("Vas a tener que volver a escribir tu usuario y contraseña.")
         }
         .sheet(isPresented: $confirmarBorrar) { hojaBorrar }
+        .avisoPlan($verPlanes)
     }
 
     private var encabezado: some View {
@@ -159,31 +163,24 @@ struct ConfiguracionView: View {
 
                 // Cómo se sube de plan.
                 //
-                // Ni el botón de pagar ni la dirección de cobro: las tiendas
-                // prohíben dirigir a pagar afuera, y nombrar la dirección
-                // cuenta igual que enlazarla.
+                // Ni la dirección de cobro ni un enlace a pagar afuera: Apple
+                // lo prohíbe, y nombrar la dirección cuenta igual que
+                // enlazarla. Se abre la misma hoja de planes que sale al tocar
+                // algo bloqueado, que es la que tiene los botones de comprar.
                 //
-                // Queda escribirle a soporte, que sí está permitido y además
-                // es mejor: hoy el botón mandaba a alguien solo a una página
-                // de pago, y nadie del otro lado se enteraba de que había
-                // intención de comprar.
-                if let url = Config.linkDePago {
-                    Link(destination: url) {
-                        Text("Ver planes y pagar")
-                            .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).frame(height: 46)
-                            .background(C.teal, in: .rect(cornerRadius: 12))
-                    }
-                } else if let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
-                                                Soporte.contacto(nombre: estado.perfil?.nombre,
-                                                                 empresa: estado.perfil?.empresa)) {
-                    Link(destination: wa) {
-                        Text("Escribirnos para cambiar de plan")
-                            .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).frame(height: 46)
-                            .background(C.teal, in: .rect(cornerRadius: 12))
-                    }
+                // Antes acá había un enlace que mandaba a alguien solo a una
+                // página de pago y nadie del otro lado se enteraba de que
+                // había intención de comprar. Cuando no se puede comprar, la
+                // hoja ofrece escribirnos, que es mejor que eso.
+                Button {
+                    verPlanes = "Estás en el plan \(sus.plan)."
+                } label: {
+                    Text("Ver planes")
+                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).frame(height: 46)
+                        .background(C.teal, in: .rect(cornerRadius: 12))
                 }
+                .buttonStyle(.plain)
             }
         }
     }

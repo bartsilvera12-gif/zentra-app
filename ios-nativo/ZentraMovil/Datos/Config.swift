@@ -44,33 +44,18 @@ enum Config {
     /// página que no existe.
     static var cobrosUrl: String { sinBarra(texto("COBROS_URL")) }
 
-    /// Si la app puede mostrar el camino al pago.
+    /// El camino al pago por la web **no existe en iOS**, y no es un olvido.
     ///
-    /// **Apagado salvo que se encienda a mano, y a propósito.** Las dos
-    /// tiendas prohíben que una app dirija a pagar afuera —ni botón, ni
-    /// enlace, ni mencionar la dirección— y Paraguay no entra en la excepción
-    /// que abrieron para EE.UU., Reino Unido y el Espacio Económico Europeo.
-    /// Un botón así es rechazo en revisión.
+    /// Había un `LINK_DE_PAGO` que, encendido, mostraba un botón a la página
+    /// de cobros. En Android ese interruptor tiene sentido: el APK que se
+    /// reparte por fuera de Play puede cobrar por donde quiera. En iOS no hay
+    /// "por fuera" —no se puede instalar una app sin pasar por Apple—, así que
+    /// el interruptor sólo podía estar apagado, y un interruptor que nunca se
+    /// enciende es una trampa esperando a que alguien lo encienda.
     ///
-    /// El valor por defecto es el seguro: olvidarse de apagarlo cuesta una
-    /// vuelta de revisión, que son días. Olvidarse de encenderlo, en un canal
-    /// donde sí se puede, no cuesta nada.
-    ///
-    /// Es el mismo interruptor que `NEXT_PUBLIC_LINK_DE_PAGO` en Android, que
-    /// allá va en `0` para la compilación de Play y encendido para el APK que
-    /// se reparte por fuera. En iOS no hay "por fuera": no se puede instalar
-    /// una app sin pasar por Apple, así que en la práctica queda apagado.
-    ///
-    /// Lo que la app **sí** puede hacer es mostrar los planes y lo que incluye
-    /// cada uno. Informar no está prohibido; dirigir a comprar, sí.
-    static var mostrarLinkDePago: Bool {
-        ["1", "true", "si", "sí"].contains(texto("LINK_DE_PAGO").lowercased())
-    }
-
-    static var linkDePago: URL? {
-        guard mostrarLinkDePago, !cobrosUrl.isEmpty else { return nil }
-        return URL(string: cobrosUrl + "/pagar")
-    }
+    /// Ahora el plan se compra adentro, con la caja de Apple (`Compras.swift`).
+    /// `COBROS_URL` sigue haciendo falta, pero para otra cosa: es a dónde se le
+    /// manda el comprobante para que lo verifique.
 
     static var timeout: TimeInterval { 15 }
 
