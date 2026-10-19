@@ -83,8 +83,25 @@ struct ComprasView: View {
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
         guard !n.isEmpty else { return filas }
         return filas.filter {
-            $0.numero.lowercased().contains(n) || $0.producto.lowercased().contains(n)
+            // Por cualquier producto de la compra, no sólo el primero: buscar
+            // "jabón" tiene que traer la compra que lo incluye aunque venga
+            // en el tercer renglón.
+            $0.numero.lowercased().contains(n)
+                || $0.proveedor.lowercased().contains(n)
+                || $0.lineas.contains { l in l.nombre.lowercased().contains(n) }
+                || $0.producto.lowercased().contains(n)
         }
+    }
+
+    /// Qué se compró, en un renglón.
+    ///
+    /// Con una sola línea se nombra el producto, como siempre. Con varias no
+    /// entran, así que se dice el primero y cuántos más: nombrar sólo el
+    /// primero —que es lo que hacía— deja creer que la compra fue de eso y
+    /// nada más.
+    private func detalle(_ c: Compra) -> String {
+        guard c.lineas.count > 1 else { return c.producto }
+        return "\(c.producto) y \(c.lineas.count - 1) más"
     }
 
     var body: some View {
@@ -101,10 +118,19 @@ struct ComprasView: View {
                                  bg: c.pagada ? Tint.okBg : Tint.avisoBg,
                                  ink: c.pagada ? Tint.okInk : Tint.avisoInk)
                         }
-                        Text(c.producto).font(Tipo.barlow(.regular, 12.5))
+                        // El proveedor primero: una compra se busca por a
+                        // quién se le compró, no por el primer producto.
+                        if !c.proveedor.isEmpty {
+                            Text(c.proveedor).font(Tipo.barlow(.semibold, 12.5))
+                                .foregroundStyle(t.ink).lineLimit(1)
+                        }
+                        Text(detalle(c)).font(Tipo.barlow(.regular, 12.5))
                             .foregroundStyle(t.ink2).lineLimit(1)
                         HStack(spacing: 10) {
-                            Text("\(Int(c.cantidad)) × \(Panel.gs(c.costo))")
+                            // El total de la compra, no el de su primer
+                            // renglón. Con cuatro productos los otros tres no
+                            // aparecían ni en la cuenta.
+                            Text(Panel.gs(c.total))
                                 .font(Tipo.barlow(.semibold, 12)).foregroundStyle(t.ink)
                             Text(c.pago).font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
                             Spacer(minLength: 0)
@@ -116,7 +142,7 @@ struct ComprasView: View {
                 .buttonStyle(.plain)
             }
         }
-        .searchable(text: $q, prompt: "Buscar por número o producto")
+        .searchable(text: $q, prompt: "Buscar por número, proveedor o producto")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { nueva = true } label: { Image(systemName: "plus") }

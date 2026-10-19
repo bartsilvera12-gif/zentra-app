@@ -312,22 +312,36 @@ enum SupabaseDatos {
     }
 
     static func compras() async throws -> [Compra] {
+        // El proveedor viene embebido: sin él, un listado de compras no dice a
+        // quién se le compró, que es la mitad de para qué se mira.
         let crudo = try await pedir("GET", "/compras", query: [
-            "select": "*,compra_lineas(*)", "order": "fecha.desc",
+            "select": "*,compra_lineas(*),proveedores(id,nombre)", "order": "fecha.desc",
         ])
         return filas(crudo).map { c in
-            let l = ((c["compra_lineas"] as? [[String: Any]]) ?? []).first
+            let crudas = (c["compra_lineas"] as? [[String: Any]]) ?? []
+            let lineas = crudas.map {
+                CompraLinea(prodId: texto($0["producto_id"]),
+                            nombre: ($0["nombre"] as? String) ?? "(sin nombre)",
+                            unidad: ($0["unidad"] as? String) ?? "UNIDAD",
+                            cantidad: numero($0["cantidad"]),
+                            costo: entero($0["costo"]),
+                            iva: Iva.desde($0["iva"]))
+            }
+            let prov = c["proveedores"] as? [String: Any]
             return Compra(
                 id: texto(c["id"]),
                 numero: (c["numero"] as? String) ?? "",
-                producto: (l?["nombre"] as? String) ?? "(sin detalle)",
-                cantidad: numero(l?["cantidad"]),
-                costo: entero(l?["costo"]),
-                iva: Iva.desde(l?["iva"]),
+                provId: texto(prov?["id"]),
+                proveedor: (prov?["nombre"] as? String) ?? "",
+                producto: lineas.first?.nombre ?? "(sin detalle)",
+                cantidad: lineas.first?.cantidad ?? 0,
+                costo: lineas.first?.costo ?? 0,
+                iva: lineas.first?.iva ?? .diez,
                 pago: ((c["condicion"] as? String) ?? "Contado"),
                 pagada: ((c["estado"] as? String) ?? "") == "Pagada",
                 fecha: String(((c["fecha"] as? String) ?? "").prefix(10)),
-                factura: (c["factura"] as? String) ?? ""
+                factura: (c["factura"] as? String) ?? "",
+                lineas: lineas
             )
         }
     }

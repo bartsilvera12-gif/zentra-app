@@ -97,6 +97,10 @@ struct Proveedor: Identifiable, Equatable {
 struct Compra: Identifiable, Equatable {
     var id: String
     var numero: String
+    /// A quién se le compró. Vacío cuando la compra no lo trae.
+    var provId: String = ""
+    var proveedor: String = ""
+    /// El primer producto, para la fila del listado de una sola línea.
     var producto: String
     var cantidad: Double
     var costo: Int
@@ -105,6 +109,27 @@ struct Compra: Identifiable, Equatable {
     var pagada: Bool
     var fecha: String
     var factura: String
+    /// Todo lo que se compró.
+    ///
+    /// Antes no estaba y la fila se armaba con los campos sueltos de arriba,
+    /// que son los de la PRIMERA línea. Una compra de cuatro productos se veía
+    /// como uno y por el importe de uno: los otros tres no existían en ningún
+    /// lado de la app, ni en el listado ni en el total.
+    var lineas: [CompraLinea] = []
+
+    /// Lo que costó la compra, con IVA.
+    ///
+    /// En compras el IVA va POR ENCIMA del costo, porque el proveedor cotiza
+    /// neto. Suma las líneas cuando están; si no, cae a los campos sueltos,
+    /// que es lo que devuelve un ERP que manda una compra por producto.
+    var total: Int {
+        guard !lineas.isEmpty else {
+            return Int((Double(costo) * cantidad * (1 + RepoERP.tasa(iva))).rounded())
+        }
+        return lineas.reduce(0) { suma, l in
+            suma + Int((Double(l.costo) * l.cantidad * (1 + RepoERP.tasa(l.iva))).rounded())
+        }
+    }
 }
 
 struct Mensaje: Identifiable, Equatable {
@@ -942,9 +967,14 @@ enum RepoERP {
     private static func aCompra(_ c: [String: Any]) -> Compra {
         let credito = (noVacio(c["tipo_pago"]) ?? "").lowercased().contains("cred")
         let estado = (noVacio(c["estado"]) ?? "").lowercased()
+        // El ERP manda una compra por producto, así que acá no hay líneas que
+        // juntar: `total` cae a los campos sueltos y da lo mismo. Si algún día
+        // las manda, se mapean acá y el resto ya funciona.
         return Compra(
             id: texto(c["id"]),
             numero: noVacio(c["numero_control"]) ?? String(texto(c["id"]).prefix(8)),
+            provId: texto(c["proveedor_id"]),
+            proveedor: noVacio(c["proveedor_nombre"]) ?? noVacio(c["proveedor"]) ?? "",
             producto: noVacio(c["producto_nombre"]) ?? "(sin nombre)",
             cantidad: numero(c["cantidad"]),
             costo: entero(c["costo_unitario"]),
