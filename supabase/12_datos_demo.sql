@@ -209,12 +209,19 @@ begin
     -- asi quedan tres dias sin vender y algunos con dos, que es como vende un
     -- comercio de verdad.
     v_dia := (v_n * 17 + (v_n * v_n) % 7) % 30;
-    v_credito := (v_n % 5 = 0);
+    -- Cada cuatro y no cada cinco, y el cliente con 7 y no con 3. Las dos
+    -- cuentas tienen que ser primas con 15 —la cantidad de clientes— y no
+    -- engranar entre si, o el reparto se degenera: con 3 solo caian en 5 de
+    -- los 15 clientes, y como 15 es multiplo de 5, TODAS las ventas a credito
+    -- caian siempre en el mismo. Quedaba un cliente debiendo ocho facturas,
+    -- diez clientes sin una sola compra, y la cuenta corriente de la ficha
+    -- pareciendo rota cuando el que estaba mal era este archivo.
+    v_credito := (v_n % 4 = 0);
 
     select id, nombre, doc into v_cliente
       from zentra.clientes
      where empresa_id = v_empresa
-     order by nombre offset ((v_n * 3) % 15) limit 1;
+     order by nombre offset ((v_n * 7) % 15) limit 1;
 
     v_venta := gen_random_uuid();
 
