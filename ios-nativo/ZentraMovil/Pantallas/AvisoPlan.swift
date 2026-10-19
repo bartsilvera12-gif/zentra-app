@@ -158,26 +158,6 @@ struct HojaPlanes: View {
             // mandar a pagar afuera desde la app está prohibido, y ese "afuera"
             // incluye un texto con la dirección. Los botones de comprar están
             // en cada tarjeta.
-            // Si hay algo comprable adentro, afuera no se manda a nadie. Si
-            // no hay nada —productos sin crear, sin red, o el único plan que
-            // existe ya es el tuyo— hace falta decir qué hacer. `conCompras
-            // != nil` es para no mostrarlo mientras todavía se está
-            // averiguando: aparecer y desaparecer es peor que tardar.
-            if conCompras != nil, comprables.isEmpty,
-               let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
-                                     Soporte.contacto(nombre: estado.perfil?.nombre,
-                                                      empresa: estado.perfil?.empresa)) {
-                // Sin poder comprar, la salida es escribirnos. Dejar sólo
-                // "Ahora no" sería un callejón: alguien que acaba de ver que su
-                // plan no incluye algo necesita saber qué hacer.
-                Link(destination: wa) {
-                    Text("Escribirnos para cambiar de plan")
-                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(C.cian, in: .rect(cornerRadius: 12))
-                }
-            }
-
             Button("Ahora no") { cerrar() }
                 .font(Tipo.barlow(.semibold, 14))
                 .foregroundStyle(t.ink2)
