@@ -62,3 +62,4 @@ ios-nativo/ZentraMovil/Recursos/GoogleService-Info.plist
 # paralelo. Son temporales y se borran solas: versionarlas seria guardar
 # una copia entera del repo adentro del repo.
 .claude/worktrees/
+build-sim/
