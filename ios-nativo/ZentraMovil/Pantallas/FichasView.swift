@@ -86,8 +86,29 @@ struct ClienteDetalleView: View {
     let cliente: Cliente
     @Environment(\.tema) private var t
     @State private var fresco: Cliente?
+    @State private var ventas: [Venta] = []
 
     private var c: Cliente { fresco ?? cliente }
+
+    /// Las compras de este cliente, de la más nueva a la más vieja.
+    ///
+    /// Se cruza por id y, si la venta no lo trae —una de mostrador a la que
+    /// después se le puso el nombre—, por documento. Por nombre no: dos
+    /// "Despensa San Miguel" distintas terminarían compartiendo cuenta.
+    private var suyas: [Venta] {
+        ventas.filter {
+            (!$0.cliId.isEmpty && $0.cliId == c.id)
+                || (!c.doc.isEmpty && $0.doc == c.doc)
+        }
+    }
+
+    /// Lo que debe: sus ventas sin cobrar.
+    private var deuda: Int {
+        suyas.filter { !$0.cobrada }.reduce(0) { $0 + $1.total }
+    }
+
+    /// Lo que compró en el período que se mira.
+    private var comprado: Int { suyas.reduce(0) { $0 + $1.total } }
 
     var body: some View {
         ScrollView {
@@ -103,6 +124,39 @@ struct ClienteDetalleView: View {
                         Chip(texto: c.activo ? "Activo" : "Inactivo",
                              bg: c.activo ? Tint.okBg : Tint.errorBg,
                              ink: c.activo ? Tint.okInk : Tint.errorInk)
+                    }
+                }
+
+                // La cuenta corriente antes que los datos de contacto, igual
+                // que en la ficha de proveedor: a un cliente se lo abre para
+                // saber si debe, no para mirarle la ciudad.
+                if !suyas.isEmpty {
+                    Bloque(titulo: "CUENTA CORRIENTE") {
+                        Dato(k: "Debe", v: deuda > 0 ? Panel.gs(deuda) : "Al día")
+                        Dato(k: "Compró", v: Panel.gs(comprado))
+                        Dato(k: "Facturas", v: "\(suyas.count)")
+                        ForEach(suyas.prefix(6)) { v in
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(v.numero).font(Tipo.barlow(.semibold, 12.5))
+                                        .foregroundStyle(t.ink)
+                                    Text(v.iso).font(Tipo.barlow(.regular, 11))
+                                        .foregroundStyle(t.ink3)
+                                }
+                                Spacer(minLength: 0)
+                                Text(Panel.gs(v.total))
+                                    .font(Tipo.barlow(.semibold, 12.5)).foregroundStyle(t.ink)
+                                Chip(texto: v.cobrada ? "Cobrada" : "Pendiente",
+                                     bg: v.cobrada ? Tint.okBg : Tint.avisoBg,
+                                     ink: v.cobrada ? Tint.okInk : Tint.avisoInk)
+                            }
+                        }
+                        // El período va dicho. Un "compró ₲ 400.000" sin decir
+                        // de cuándo se lee como el total de siempre.
+                        Text(suyas.count > 6
+                             ? "Se muestran las 6 últimas de \(suyas.count), de los últimos 90 días."
+                             : "Últimos 90 días.")
+                            .font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink3)
                     }
                 }
 
@@ -137,7 +191,18 @@ struct ClienteDetalleView: View {
         .navigationBarTitleDisplayMode(.inline)
         // La ficha completa trae campos que el listado no selecciona. Si falla,
         // se queda con lo del listado en vez de vaciarse.
-        .task { fresco = (try? await RepoERP.cliente(cliente.id)) ?? nil }
+        .task {
+            fresco = (try? await RepoERP.cliente(cliente.id)) ?? nil
+            // 90 días: suficiente para que la cuenta corriente sirva y poco
+            // como para no traerse un año de facturas a la ficha.
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            f.locale = Locale(identifier: "en_US_POSIX")
+            let hasta = Date()
+            let desde = Calendar.current.date(byAdding: .day, value: -90, to: hasta) ?? hasta
+            ventas = (try? await RepoERP.ventas(desde: f.string(from: desde),
+                                                hasta: f.string(from: hasta))) ?? []
+        }
     }
 }
 

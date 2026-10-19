@@ -293,6 +293,7 @@ enum SupabaseDatos {
                 id: texto(v["id"]),
                 iso: String(((v["fecha"] as? String) ?? "").prefix(10)),
                 numero: (v["numero"] as? String) ?? "",
+                cliId: texto(v["cliente_id"]),
                 cliente: (v["cliente_texto"] as? String) ?? "Sin nombre",
                 doc: (v["cliente_doc"] as? String) ?? "Sin documento",
                 pago: credito

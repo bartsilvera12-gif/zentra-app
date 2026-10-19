@@ -56,6 +56,8 @@ struct Venta: Identifiable, Equatable {
     /// `yyyy-mm-dd`
     var iso: String
     var numero: String
+    /// Quién compró. Vacío en la venta de mostrador, que no lleva cliente.
+    var cliId: String = ""
     var cliente: String
     var doc: String
     var pago: String
@@ -1209,6 +1211,7 @@ enum RepoERP {
             id: texto(v["id"]),
             iso: fecha,
             numero: noVacio(v["numero_control"]) ?? String(texto(v["id"]).prefix(8)),
+            cliId: texto(v["cliente_id"]),
             cliente: noVacio(v["cliente_nombre"]) ?? "Sin nombre",
             doc: noVacio(v["cliente_doc"]) ?? "Sin documento",
             pago: credito
