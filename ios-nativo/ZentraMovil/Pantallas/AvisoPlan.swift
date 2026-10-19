@@ -38,6 +38,29 @@ struct HojaPlanes: View {
 
     private var actual: Plan { estado.tenant?.plan ?? .free }
 
+    /// El título, que no siempre es el mismo.
+    ///
+    /// "Esto viene con otro plan" está escrito para cuando alguien toca algo
+    /// con candado. Pero la hoja también se abre desde Configuración, a mirar,
+    /// y a quien ya está en el plan más alto le quedaba un título que le dice
+    /// que lo que quiere viene con otro plan — y no hay otro plan. Estar
+    /// arriba de todo es la señal: no llegaste acá por un candado.
+    private var titulo: String {
+        actual == Plan.orden.last ? "Los planes de Zentra" : "Esto viene con otro plan"
+    }
+
+    /// Los planes que se pueden comprar ahora mismo.
+    ///
+    /// Es una sola lista y la usan las dos partes que tienen que estar de
+    /// acuerdo: los botones de las tarjetas y la salida del pie. Con dos
+    /// condiciones separadas se separan, y se separaron: los botones pasaron a
+    /// pedir que exista ese producto y el pie se quedó pidiendo que exista
+    /// alguno, así que con un solo producto creado y ya comprado la hoja
+    /// quedaba sin botones y sin salida.
+    private var comprables: [Plan] {
+        Plan.orden.filter { $0 != .free && $0 != actual && deApple[$0] != nil }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // El tirador, dibujado por nosotros y fuera del scroll.
@@ -57,7 +80,7 @@ struct HojaPlanes: View {
             ScrollView {
             VStack(spacing: 10) {
                 VStack(spacing: 6) {
-                    Text("Esto viene con otro plan")
+                    Text(titulo)
                         .font(Tipo.barlow(.bold, 20)).foregroundStyle(t.ink)
                     Text("\(motivo) Mirá qué suma cada uno y seguí trabajando sin topes.")
                         .font(Tipo.barlow(.regular, 13.5)).foregroundStyle(t.ink2)
@@ -135,7 +158,12 @@ struct HojaPlanes: View {
             // mandar a pagar afuera desde la app está prohibido, y ese "afuera"
             // incluye un texto con la dirección. Los botones de comprar están
             // en cada tarjeta.
-            if conCompras == false,
+            // Si hay algo comprable adentro, afuera no se manda a nadie. Si
+            // no hay nada —productos sin crear, sin red, o el único plan que
+            // existe ya es el tuyo— hace falta decir qué hacer. `conCompras
+            // != nil` es para no mostrarlo mientras todavía se está
+            // averiguando: aparecer y desaparecer es peor que tardar.
+            if conCompras != nil, comprables.isEmpty,
                let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
                                      Soporte.contacto(nombre: estado.perfil?.nombre,
                                                       empresa: estado.perfil?.empresa)) {
@@ -223,7 +251,7 @@ struct HojaPlanes: View {
             // que falla con "producto no disponible", y quien la toca se
             // queda sin saber si el problema es la app, su tarjeta o su
             // teléfono. Si hay precio, hay producto.
-            if !esElTuyo, p != .free, deApple[p] != nil {
+            if comprables.contains(p) {
                 Button {
                     Task { await comprar(p) }
                 } label: {
