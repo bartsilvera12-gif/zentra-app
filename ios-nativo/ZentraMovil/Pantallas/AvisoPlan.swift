@@ -90,6 +90,16 @@ struct HojaPlanes: View {
 
                 ForEach(Plan.orden, id: \.self) { tarjeta($0) }
 
+                // Al final de las tarjetas y no clavado al pie.
+                //
+                // Clavado abajo quedaba un enlace solo a media pantalla de
+                // distancia, con un hueco blanco en el medio. El pie se
+                // justificaba cuando llevaba un boton a lo ancho, y ya no lo
+                // lleva: los de comprar estan en cada tarjeta.
+                Button("Ahora no") { cerrar() }
+                    .font(Tipo.barlow(.semibold, 14))
+                    .foregroundStyle(t.ink2)
+                    .padding(.top, 6).padding(.bottom, 2)
             }
             .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
             }
@@ -102,7 +112,12 @@ struct HojaPlanes: View {
             .safeAreaInset(edge: .bottom) { pie }
         }
         .background(t.card)
-        .presentationDetents([.medium, .large])
+        // Entera y no a medias.
+        //
+        // Abria en `.medium` y los tres planes no entran: el ultimo quedaba
+        // cortado detras del pie, y justo el ultimo es Max —el que mas se
+        // quiere mostrar— o el que ya tenes, que aparece con media tarjeta.
+        .presentationDetents([.large])
         // Apagado: el nuestro va arriba, en la franja que no scrollea.
         .presentationDragIndicator(.hidden)
         .task {
@@ -140,39 +155,24 @@ struct HojaPlanes: View {
         }
     }
 
-    /// Lo fijo al pie de la hoja.
+    /// El error, fijo al pie.
+    ///
+    /// Esto si va clavado abajo y no al final del scroll: un error al pie de
+    /// una lista larga no lo ve nadie, y ya nos paso mas de una vez.
+    @ViewBuilder
     private var pie: some View {
-        VStack(spacing: 0) {
-            if !falla.isEmpty {
-                Text(falla)
-                    .font(Tipo.barlow(.regular, 12.5))
-                    .foregroundStyle(Tint.errorInk)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 13).padding(.vertical, 11)
-                    .background(Tint.errorBg, in: .rect(cornerRadius: 10))
-                    .padding(.bottom, 10)
-            }
-
-            // Con la caja de Apple adentro, acá no va ninguna otra salida:
-            // mandar a pagar afuera desde la app está prohibido, y ese "afuera"
-            // incluye un texto con la dirección. Los botones de comprar están
-            // en cada tarjeta.
-            Button("Ahora no") { cerrar() }
-                .font(Tipo.barlow(.semibold, 14))
-                .foregroundStyle(t.ink2)
-                .padding(.top, 10).padding(.bottom, 2)
+        if !falla.isEmpty {
+            Text(falla)
+                .font(Tipo.barlow(.regular, 12.5))
+                .foregroundStyle(Tint.errorInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 13).padding(.vertical, 11)
+                .background(Tint.errorBg, in: .rect(cornerRadius: 10))
+                .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 12)
+                .frame(maxWidth: .infinity)
+                .background(t.card)
         }
-        // A lo ancho, y a propósito.
-        //
-        // Antes acá siempre había un botón que ocupaba todo el ancho y
-        // estiraba la franja de paso. Ahora puede no haber ninguno —cuando se
-        // compra desde las tarjetas y no hay WhatsApp configurado queda sólo
-        // "Ahora no"—, y sin esto el fondo se achica al tamaño del texto: un
-        // rectángulo blanco flotando por encima de la última tarjeta.
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 10)
-        .background(t.card)
     }
 
     /// El precio que se muestra: el de Apple si lo hay, el nuestro si no.
