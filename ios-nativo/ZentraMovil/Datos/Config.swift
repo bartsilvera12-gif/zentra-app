@@ -70,6 +70,25 @@ enum Config {
         return URL(string: "https://wa.me/\(soporteWhatsapp)?text=\(t)")
     }
 
+    /// La version que se muestra en Configuracion.
+    ///
+    /// Sale del propio paquete y no de una constante escrita a mano: cuando
+    /// estaba a mano decia 2.4.1 mientras la tienda publicaba la 0.1.0, y nadie
+    /// se entera de un numero que no falla, solo queda raro si alguien compara
+    /// la pantalla con la ficha de la App Store.
+    ///
+    /// `CFBundleShortVersionString` es la que ve la gente (0.1.0) y
+    /// `CFBundleVersion` la compilacion (8); se muestran juntas porque entre dos
+    /// envios a revision la primera no cambia y la segunda si, y es lo unico
+    /// que distingue un TestFlight de otro.
+    static var version: String {
+        let i = Bundle.main.infoDictionary
+        let corta = i?["CFBundleShortVersionString"] as? String ?? ""
+        let build = i?["CFBundleVersion"] as? String ?? ""
+        if corta.isEmpty { return build }
+        return build.isEmpty ? corta : "\(corta) (\(build))"
+    }
+
     private static func sinBarra(_ s: String) -> String {
         s.hasSuffix("/") ? String(s.dropLast()) : s
     }

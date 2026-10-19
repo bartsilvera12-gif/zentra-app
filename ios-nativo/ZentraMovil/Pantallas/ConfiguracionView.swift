@@ -32,7 +32,7 @@ struct ConfiguracionView: View {
                 soporte
                 cuenta
 
-                Text("Zentra ERP · versión 2.4.1 · \(estado.tenant?.nombre ?? "Zentra")")
+                Text("Zentra ERP · versión \(Config.version) · \(estado.tenant?.nombre ?? "Zentra")")
                     .font(Tipo.barlow(.regular, 11.5))
                     .foregroundStyle(t.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)

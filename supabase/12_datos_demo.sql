@@ -80,7 +80,7 @@ begin
   -- ---------- clientes ----------
   insert into zentra.clientes (empresa_id, nombre, doc, contacto, tel, zona, direccion, lista_precios, credito_limite, credito_plazo_dias)
   values
-    (v_empresa, 'Despensa Doña Lucía',   '80012345-6', 'Lucía Benítez',   '0981 111 222', 'Barrio Obrero',       'Av. Fernando de la Mora 1234', 'Mayorista', 3000000, 30),
+    (v_empresa, 'Despensa Yvoty',        '80012345-6', 'Marta Giménez',   '0981 111 222', 'Barrio Obrero',       'Av. Fernando de la Mora 1234', 'Mayorista', 3000000, 30),
     (v_empresa, 'Almacén San Blas',      '80098765-1', 'Ramón Ortiz',     '0982 333 444', 'Lambaré',             'Calle Last 456',               'Minorista', 1500000, 15),
     (v_empresa, 'Minimercado Ykuá',      '4.521.330',  'Sofía Ayala',     '0983 555 666', 'Fernando de la Mora', 'Ruta Mcal. Estigarribia km 8', 'Minorista', null, null),
     (v_empresa, 'Copetín Doña Ramona',   '80055512-3', 'Ramona Cáceres',  '0984 220 110', 'San Lorenzo',         'Mcal. López 2300',             'Minorista', null, null),
