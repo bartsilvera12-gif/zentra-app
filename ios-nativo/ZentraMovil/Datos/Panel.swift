@@ -98,6 +98,58 @@ final class Panel {
         }
     }
 
+    /// Una barra del gráfico de reportes.
+    ///
+    /// `clave` es con lo que se agrupan las ventas —el día o el mes— y
+    /// `etiqueta` es lo que se escribe abajo de la barra.
+    struct Cubo: Hashable {
+        let clave: String
+        let etiqueta: String
+    }
+
+    /// Las barras que corresponden a un período.
+    ///
+    /// Una por día mientras entren: con más de un mes se amontonan y quedan
+    /// astillas de dos píxeles sin etiqueta legible, así que a partir de ahí
+    /// se agrupa por mes. "Este año" son doce barras y no trescientas sesenta.
+    ///
+    /// Devuelve también `porMes`, que hace falta para agrupar las ventas con
+    /// la misma regla: si una parte corta por día y la otra por mes, el
+    /// gráfico queda en cero.
+    static func cubos(desde: Date, hasta: Date) -> (lista: [Cubo], porMes: Bool) {
+        let cal = Calendar.current
+        let d0 = cal.startOfDay(for: desde)
+        let d1 = cal.startOfDay(for: hasta)
+        guard d0 <= d1 else { return ([], false) }
+
+        let dias = (cal.dateComponents([.day], from: d0, to: d1).day ?? 0) + 1
+        let porMes = dias > 31
+
+        let f = DateFormatter()
+        f.dateFormat = porMes ? "yyyy-MM" : "yyyy-MM-dd"
+        let e = DateFormatter()
+        e.locale = Locale(identifier: "es_PY")
+        e.dateFormat = porMes ? "MMM" : "MM/dd"
+
+        var lista: [Cubo] = []
+        var vistas = Set<String>()
+        var cursor = d0
+        while cursor <= d1 {
+            let clave = f.string(from: cursor)
+            if vistas.insert(clave).inserted {
+                lista.append(Cubo(clave: clave, etiqueta: e.string(from: cursor)))
+            }
+            guard let sig = cal.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = sig
+        }
+        return (lista, porMes)
+    }
+
+    /// En qué barra cae una venta. `iso` viene como "2026-10-13T...".
+    static func cuboDe(_ iso: String, porMes: Bool) -> String {
+        String(iso.prefix(porMes ? 7 : 10))
+    }
+
     /// "₲ 1.250.000", igual que `gs()` en `src/lib/format.ts`.
     static func gs(_ n: Int) -> String {
         let f = NumberFormatter()

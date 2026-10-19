@@ -86,8 +86,29 @@ struct ClienteDetalleView: View {
     let cliente: Cliente
     @Environment(\.tema) private var t
     @State private var fresco: Cliente?
+    @State private var ventas: [Venta] = []
 
     private var c: Cliente { fresco ?? cliente }
+
+    /// Las compras de este cliente, de la más nueva a la más vieja.
+    ///
+    /// Se cruza por id y, si la venta no lo trae —una de mostrador a la que
+    /// después se le puso el nombre—, por documento. Por nombre no: dos
+    /// "Despensa San Miguel" distintas terminarían compartiendo cuenta.
+    private var suyas: [Venta] {
+        ventas.filter {
+            (!$0.cliId.isEmpty && $0.cliId == c.id)
+                || (!c.doc.isEmpty && $0.doc == c.doc)
+        }
+    }
+
+    /// Lo que debe: sus ventas sin cobrar.
+    private var deuda: Int {
+        suyas.filter { !$0.cobrada }.reduce(0) { $0 + $1.total }
+    }
+
+    /// Lo que compró en el período que se mira.
+    private var comprado: Int { suyas.reduce(0) { $0 + $1.total } }
 
     var body: some View {
         ScrollView {
@@ -103,6 +124,39 @@ struct ClienteDetalleView: View {
                         Chip(texto: c.activo ? "Activo" : "Inactivo",
                              bg: c.activo ? Tint.okBg : Tint.errorBg,
                              ink: c.activo ? Tint.okInk : Tint.errorInk)
+                    }
+                }
+
+                // La cuenta corriente antes que los datos de contacto, igual
+                // que en la ficha de proveedor: a un cliente se lo abre para
+                // saber si debe, no para mirarle la ciudad.
+                if !suyas.isEmpty {
+                    Bloque(titulo: "CUENTA CORRIENTE") {
+                        Dato(k: "Debe", v: deuda > 0 ? Panel.gs(deuda) : "Al día")
+                        Dato(k: "Compró", v: Panel.gs(comprado))
+                        Dato(k: "Facturas", v: "\(suyas.count)")
+                        ForEach(suyas.prefix(6)) { v in
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(v.numero).font(Tipo.barlow(.semibold, 12.5))
+                                        .foregroundStyle(t.ink)
+                                    Text(v.iso).font(Tipo.barlow(.regular, 11))
+                                        .foregroundStyle(t.ink3)
+                                }
+                                Spacer(minLength: 0)
+                                Text(Panel.gs(v.total))
+                                    .font(Tipo.barlow(.semibold, 12.5)).foregroundStyle(t.ink)
+                                Chip(texto: v.cobrada ? "Cobrada" : "Pendiente",
+                                     bg: v.cobrada ? Tint.okBg : Tint.avisoBg,
+                                     ink: v.cobrada ? Tint.okInk : Tint.avisoInk)
+                            }
+                        }
+                        // El período va dicho. Un "compró ₲ 400.000" sin decir
+                        // de cuándo se lee como el total de siempre.
+                        Text(suyas.count > 6
+                             ? "Se muestran las 6 últimas de \(suyas.count), de los últimos 90 días."
+                             : "Últimos 90 días.")
+                            .font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink3)
                     }
                 }
 
@@ -137,7 +191,18 @@ struct ClienteDetalleView: View {
         .navigationBarTitleDisplayMode(.inline)
         // La ficha completa trae campos que el listado no selecciona. Si falla,
         // se queda con lo del listado en vez de vaciarse.
-        .task { fresco = (try? await RepoERP.cliente(cliente.id)) ?? nil }
+        .task {
+            fresco = (try? await RepoERP.cliente(cliente.id)) ?? nil
+            // 90 días: suficiente para que la cuenta corriente sirva y poco
+            // como para no traerse un año de facturas a la ficha.
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            f.locale = Locale(identifier: "en_US_POSIX")
+            let hasta = Date()
+            let desde = Calendar.current.date(byAdding: .day, value: -90, to: hasta) ?? hasta
+            ventas = (try? await RepoERP.ventas(desde: f.string(from: desde),
+                                                hasta: f.string(from: hasta))) ?? []
+        }
     }
 }
 
@@ -249,6 +314,30 @@ struct VentaDetalleView: View {
         return Int(crudo.rounded())
     }
 
+    /// El comprobante en texto, para mandar por donde sea.
+    ///
+    /// Es lo que más se hace con una factura después de cobrarla: pasársela al
+    /// cliente. Hasta ahora se podía compartir el listado entero del mes pero
+    /// no una factura sola, que es lo que alguien pide por WhatsApp.
+    ///
+    /// Mismo formato que el del listado: una línea por renglón y los totales
+    /// abajo. Android acá aclara que no genera ningún PDF; en iOS sí, porque
+    /// `Pdf.deTexto` ya existe y lo usa el listado.
+    private var comprobante: String {
+        let cab = """
+        \(v.numero) · \(v.iso)
+        \(v.cliente)\(v.doc.isEmpty ? "" : " · \(v.doc)")
+        \(v.pago) · \(v.cobrada ? "Cobrada" : "Pendiente")
+        """
+        let cuerpo = v.lineas.map { l in
+            let cant = l.qty == l.qty.rounded() ? String(Int(l.qty)) : String(format: "%.3f", l.qty)
+            return "\(cant) × \(l.nombre)  \(Panel.gs(Int((Double(l.precio) * l.qty).rounded())))"
+        }.joined(separator: "\n")
+        return cab + "\n\n" + cuerpo
+            + "\n\nIVA incluido  \(Panel.gs(iva))"
+            + "\nTOTAL  \(Panel.gs(v.total))"
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -293,6 +382,25 @@ struct VentaDetalleView: View {
             .padding(.vertical, 12)
         }
         .background(t.bg)
+        .safeAreaInset(edge: .bottom) {
+            if !v.lineas.isEmpty {
+                HStack(spacing: 10) {
+                    ShareLink(item: Pdf.deTexto(comprobante, titulo: v.numero),
+                              preview: SharePreview(v.numero)) {
+                        Text("Exportar PDF").frame(maxWidth: .infinity)
+                    }
+                    ShareLink(item: comprobante) {
+                        Text("Compartir").frame(maxWidth: .infinity)
+                    }
+                }
+                .font(Tipo.barlow(.semibold, 13.5))
+                .foregroundStyle(t.ink)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14).padding(.top, 11).padding(.bottom, 13)
+                .background(t.card)
+                .overlay(alignment: .top) { Rectangle().fill(t.border).frame(height: 1) }
+            }
+        }
         .navigationTitle("Venta")
         .navigationBarTitleDisplayMode(.inline)
         // El listado de ventas no siempre trae las líneas; la ficha sí.
@@ -309,8 +417,19 @@ struct ProveedorDetalleView: View {
     @State private var fresco: Proveedor?
     @State private var editar = false
     @State private var aviso: String?
+    @State private var compras: [Compra] = []
 
     private var v: Proveedor { fresco ?? p }
+
+    /// Las compras de este proveedor, de la más nueva a la más vieja.
+    private var suyas: [Compra] {
+        compras.filter { $0.provId == v.id }
+    }
+
+    /// Lo que se le debe: sus compras sin pagar, con IVA.
+    private var deuda: Int {
+        suyas.filter { !$0.pagada }.reduce(0) { $0 + $1.total }
+    }
 
     var body: some View {
         ScrollView {
@@ -328,6 +447,36 @@ struct ProveedorDetalleView: View {
                              ink: v.activo ? Tint.okInk : Tint.errorInk)
                     }
                 }
+                // La cuenta corriente antes que los datos de contacto: a un
+                // proveedor se lo abre para saber cuánto se le debe, no para
+                // mirarle el rubro.
+                if !suyas.isEmpty {
+                    Bloque(titulo: "CUENTA CORRIENTE") {
+                        Dato(k: "Deuda", v: deuda > 0 ? Panel.gs(deuda) : "Al día")
+                        Dato(k: "Compras", v: "\(suyas.count)")
+                        ForEach(suyas.prefix(6)) { c in
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.numero).font(Tipo.barlow(.semibold, 12.5))
+                                        .foregroundStyle(t.ink)
+                                    Text(c.fecha).font(Tipo.barlow(.regular, 11))
+                                        .foregroundStyle(t.ink3)
+                                }
+                                Spacer(minLength: 0)
+                                Text(Panel.gs(c.total))
+                                    .font(Tipo.barlow(.semibold, 12.5)).foregroundStyle(t.ink)
+                                Chip(texto: c.pagada ? "Pagada" : "Pendiente",
+                                     bg: c.pagada ? Tint.okBg : Tint.avisoBg,
+                                     ink: c.pagada ? Tint.okInk : Tint.avisoInk)
+                            }
+                        }
+                        if suyas.count > 6 {
+                            Text("Se muestran las 6 últimas de \(suyas.count).")
+                                .font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink3)
+                        }
+                    }
+                }
+
                 Bloque(titulo: "DATOS") {
                     Dato(k: "Condición de pago", v: v.condicion)
                     Dato(k: "Rubro", v: v.rubro)
@@ -367,6 +516,9 @@ struct ProveedorDetalleView: View {
             NuevoProveedorView(editando: v) { fresco = $0 }
         }
         .avisoPlan($aviso)
+        // Si las compras no vienen, la ficha igual se ve: sin cuenta
+        // corriente, pero se ve.
+        .task { compras = (try? await RepoERP.compras()) ?? [] }
         .navigationTitle("Proveedor")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -376,10 +528,41 @@ struct CompraDetalleView: View {
     let c: Compra
     @Environment(\.tema) private var t
 
+    /// Los renglones de la compra.
+    ///
+    /// Si no vienen —el ERP manda una compra por producto— se arma uno solo
+    /// con los campos sueltos, así el resto de la pantalla no necesita saber
+    /// de dónde vino la compra.
+    private var lineas: [CompraLinea] {
+        guard c.lineas.isEmpty else { return c.lineas }
+        return [CompraLinea(prodId: "", nombre: c.producto, unidad: "",
+                            cantidad: c.cantidad, costo: c.costo, iva: c.iva)]
+    }
+
     /// En compras el IVA va POR ENCIMA del costo: el proveedor cotiza neto.
     /// Es al revés que en ventas, y confundirlo cambia el total.
-    private var neto: Int { Int((Double(c.costo) * c.cantidad).rounded()) }
-    private var iva: Int { Int((Double(neto) * RepoERP.tasa(c.iva)).rounded()) }
+    private var neto: Int {
+        Int(lineas.reduce(0.0) { $0 + Double($1.costo) * $1.cantidad }.rounded())
+    }
+
+    /// El IVA de cada tasa por separado.
+    ///
+    /// Una compra puede mezclar 10 % y 5 % —arroz y cerveza en la misma
+    /// factura— y un solo renglón de "IVA" no se puede cruzar con el
+    /// comprobante del proveedor, que los discrimina. Se suma sin redondear y
+    /// se redondea una vez al final.
+    private var ivaPorTasa: [(Iva, Int)] {
+        var por: [Iva: Double] = [:]
+        for l in lineas where RepoERP.tasa(l.iva) > 0 {
+            por[l.iva, default: 0] += Double(l.costo) * l.cantidad * RepoERP.tasa(l.iva)
+        }
+        return [Iva.diez, .cinco].compactMap { i in
+            guard let v = por[i], v > 0 else { return nil }
+            return (i, Int(v.rounded()))
+        }
+    }
+
+    private var iva: Int { ivaPorTasa.reduce(0) { $0 + $1.1 } }
 
     var body: some View {
         ScrollView {
@@ -392,16 +575,36 @@ struct CompraDetalleView: View {
                              bg: c.pagada ? Tint.okBg : Tint.avisoBg,
                              ink: c.pagada ? Tint.okInk : Tint.avisoInk)
                     }
-                    Dato(k: "Producto", v: c.producto)
+                    if !c.proveedor.isEmpty { Dato(k: "Proveedor", v: c.proveedor) }
                     Dato(k: "Fecha", v: c.fecha)
                     Dato(k: "Condición", v: c.pago)
                     Dato(k: "Comprobante", v: c.factura)
                 }
-                Bloque(titulo: "IMPORTES") {
-                    Dato(k: "Cantidad", v: String(Int(c.cantidad)))
-                    Dato(k: "Costo unitario (neto)", v: Panel.gs(c.costo))
+
+                // Todos los renglones, no el primero.
+                //
+                // Acá se veía un solo producto y un TOTAL que era el de ese
+                // renglón: una compra de cuatro productos por 897.480 se abría
+                // y decía 181.440. El listado ya estaba arreglado; esto no.
+                Bloque(titulo: "DETALLE") {
+                    ForEach(Array(lineas.enumerated()), id: \.offset) { _, l in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(l.nombre).font(Tipo.barlow(.regular, 13))
+                                    .foregroundStyle(t.ink).lineLimit(2)
+                                Text("\(l.cantidad == l.cantidad.rounded() ? String(Int(l.cantidad)) : String(format: "%.3f", l.cantidad)) × \(Panel.gs(l.costo)) · IVA \(l.iva.rawValue)")
+                                    .font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink3)
+                            }
+                            Spacer(minLength: 8)
+                            Text(Panel.gs(Int((Double(l.costo) * l.cantidad).rounded())))
+                                .font(Tipo.barlow(.semibold, 13)).foregroundStyle(t.ink)
+                        }
+                    }
+                    Divider()
                     Dato(k: "Neto", v: Panel.gs(neto))
-                    Dato(k: "IVA \(c.iva.rawValue) sobre el costo", v: Panel.gs(iva))
+                    ForEach(ivaPorTasa, id: \.0) { tasa, monto in
+                        Dato(k: "IVA \(tasa.rawValue) sobre el costo", v: Panel.gs(monto))
+                    }
                     HStack {
                         Text("TOTAL").font(Tipo.barlow(.semibold, 12)).tracking(1.2)
                             .foregroundStyle(t.ink2)

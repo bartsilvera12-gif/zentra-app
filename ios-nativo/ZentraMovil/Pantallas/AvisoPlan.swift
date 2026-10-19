@@ -18,6 +18,18 @@ import SwiftUI
 /// aprobar en App Store Connect— queda la hoja informativa con la salida de
 /// escribirnos. Informar qué incluye cada plan no está prohibido; dirigir a
 /// comprar afuera, sí.
+/// Lo que mide el contenido de la hoja.
+///
+/// SwiftUI no tiene una altura "lo que ocupe": o se elige media pantalla, o
+/// entera, o un numero fijo. Con media se cortaba el ultimo plan y con entera
+/// quedaba medio telefono en blanco, asi que se mide y se usa ese numero.
+private struct AltoDelContenido: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct HojaPlanes: View {
     /// El motivo, tal como lo escribió `Planes.motivoBloqueo()`.
     let motivo: String
@@ -35,8 +47,42 @@ struct HojaPlanes: View {
     @State private var conCompras: Bool?
     @State private var comprando: Plan?
     @State private var falla = ""
+    @State private var alto: CGFloat = 0
 
     private var actual: Plan { estado.tenant?.plan ?? .free }
+
+    /// Las alturas que puede tomar la hoja.
+    ///
+    /// Los 44 son el tirador de arriba, que esta fuera del scroll y por lo
+    /// tanto fuera de lo medido. Mientras no se midio nada va entera: abrir
+    /// chica y crecer se ve peor que abrir grande.
+    private var alturas: Set<PresentationDetent> {
+        guard alto > 0 else { return [.large] }
+        return [.height(alto + 44), .large]
+    }
+
+    /// El título, que no siempre es el mismo.
+    ///
+    /// "Esto viene con otro plan" está escrito para cuando alguien toca algo
+    /// con candado. Pero la hoja también se abre desde Configuración, a mirar,
+    /// y a quien ya está en el plan más alto le quedaba un título que le dice
+    /// que lo que quiere viene con otro plan — y no hay otro plan. Estar
+    /// arriba de todo es la señal: no llegaste acá por un candado.
+    private var titulo: String {
+        actual == Plan.orden.last ? "Los planes de Zentra" : "Esto viene con otro plan"
+    }
+
+    /// Los planes que se pueden comprar ahora mismo.
+    ///
+    /// Es una sola lista y la usan las dos partes que tienen que estar de
+    /// acuerdo: los botones de las tarjetas y la salida del pie. Con dos
+    /// condiciones separadas se separan, y se separaron: los botones pasaron a
+    /// pedir que exista ese producto y el pie se quedó pidiendo que exista
+    /// alguno, así que con un solo producto creado y ya comprado la hoja
+    /// quedaba sin botones y sin salida.
+    private var comprables: [Plan] {
+        Plan.orden.filter { $0 != .free && $0 != actual && deApple[$0] != nil }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,7 +103,7 @@ struct HojaPlanes: View {
             ScrollView {
             VStack(spacing: 10) {
                 VStack(spacing: 6) {
-                    Text("Esto viene con otro plan")
+                    Text(titulo)
                         .font(Tipo.barlow(.bold, 20)).foregroundStyle(t.ink)
                     Text("\(motivo) Mirá qué suma cada uno y seguí trabajando sin topes.")
                         .font(Tipo.barlow(.regular, 13.5)).foregroundStyle(t.ink2)
@@ -67,8 +113,21 @@ struct HojaPlanes: View {
 
                 ForEach(Plan.orden, id: \.self) { tarjeta($0) }
 
+                // Al final de las tarjetas y no clavado al pie.
+                //
+                // Clavado abajo quedaba un enlace solo a media pantalla de
+                // distancia, con un hueco blanco en el medio. El pie se
+                // justificaba cuando llevaba un boton a lo ancho, y ya no lo
+                // lleva: los de comprar estan en cada tarjeta.
+                Button("Ahora no") { cerrar() }
+                    .font(Tipo.barlow(.semibold, 14))
+                    .foregroundStyle(t.ink2)
+                    .padding(.top, 6).padding(.bottom, 2)
             }
             .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
+            .background(GeometryReader { g in
+                Color.clear.preference(key: AltoDelContenido.self, value: g.size.height)
+            })
             }
             // Anclado abajo, no a continuación de las tarjetas.
             //
@@ -79,7 +138,18 @@ struct HojaPlanes: View {
             .safeAreaInset(edge: .bottom) { pie }
         }
         .background(t.card)
-        .presentationDetents([.medium, .large])
+        .onPreferenceChange(AltoDelContenido.self) { alto = $0 }
+        // A la medida del contenido.
+        //
+        // Abria en `.medium` y los tres planes no entran: el ultimo quedaba
+        // cortado detras del pie, y justo ese es Max —el que mas se quiere
+        // mostrar— o el que ya tenes. Con `.large` entran, pero en un telefono
+        // grande sobra medio alto en blanco.
+        //
+        // `.height` se recorta solo cuando el contenido no entra, asi que en
+        // un telefono chico se comporta como `.large` sin hacer nada especial.
+        // `.large` queda como segunda altura para poder arrastrarla.
+        .presentationDetents(alturas)
         // Apagado: el nuestro va arriba, en la franja que no scrollea.
         .presentationDragIndicator(.hidden)
         .task {
@@ -117,54 +187,24 @@ struct HojaPlanes: View {
         }
     }
 
-    /// Lo fijo al pie de la hoja.
+    /// El error, fijo al pie.
+    ///
+    /// Esto si va clavado abajo y no al final del scroll: un error al pie de
+    /// una lista larga no lo ve nadie, y ya nos paso mas de una vez.
+    @ViewBuilder
     private var pie: some View {
-        VStack(spacing: 0) {
-            if !falla.isEmpty {
-                Text(falla)
-                    .font(Tipo.barlow(.regular, 12.5))
-                    .foregroundStyle(Tint.errorInk)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 13).padding(.vertical, 11)
-                    .background(Tint.errorBg, in: .rect(cornerRadius: 10))
-                    .padding(.bottom, 10)
-            }
-
-            // Con la caja de Apple adentro, acá no va ninguna otra salida:
-            // mandar a pagar afuera desde la app está prohibido, y ese "afuera"
-            // incluye un texto con la dirección. Los botones de comprar están
-            // en cada tarjeta.
-            if conCompras == false,
-               let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
-                                     Soporte.contacto(nombre: estado.perfil?.nombre,
-                                                      empresa: estado.perfil?.empresa)) {
-                // Sin poder comprar, la salida es escribirnos. Dejar sólo
-                // "Ahora no" sería un callejón: alguien que acaba de ver que su
-                // plan no incluye algo necesita saber qué hacer.
-                Link(destination: wa) {
-                    Text("Escribirnos para cambiar de plan")
-                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(C.cian, in: .rect(cornerRadius: 12))
-                }
-            }
-
-            Button("Ahora no") { cerrar() }
-                .font(Tipo.barlow(.semibold, 14))
-                .foregroundStyle(t.ink2)
-                .padding(.top, 10).padding(.bottom, 2)
+        if !falla.isEmpty {
+            Text(falla)
+                .font(Tipo.barlow(.regular, 12.5))
+                .foregroundStyle(Tint.errorInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 13).padding(.vertical, 11)
+                .background(Tint.errorBg, in: .rect(cornerRadius: 10))
+                .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 12)
+                .frame(maxWidth: .infinity)
+                .background(t.card)
         }
-        // A lo ancho, y a propósito.
-        //
-        // Antes acá siempre había un botón que ocupaba todo el ancho y
-        // estiraba la franja de paso. Ahora puede no haber ninguno —cuando se
-        // compra desde las tarjetas y no hay WhatsApp configurado queda sólo
-        // "Ahora no"—, y sin esto el fondo se achica al tamaño del texto: un
-        // rectángulo blanco flotando por encima de la última tarjeta.
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 10)
-        .background(t.card)
     }
 
     /// El precio que se muestra: el de Apple si lo hay, el nuestro si no.
@@ -215,7 +255,15 @@ struct HojaPlanes: View {
 
             // El botón sólo en los planes que no son el tuyo y que se pueden
             // comprar. En el gratis no hay nada que cobrar.
-            if conCompras == true, !esElTuyo, p != .free {
+            //
+            // `deApple[p]` y no `conCompras` a secas: que la App Store sepa
+            // cobrar no quiere decir que haya algo que comprar. Si Apple
+            // conoce Emprendedor y todavía no Max —porque falta crearlo o
+            // está esperando aprobación—, el botón de Max abriría una compra
+            // que falla con "producto no disponible", y quien la toca se
+            // queda sin saber si el problema es la app, su tarjeta o su
+            // teléfono. Si hay precio, hay producto.
+            if comprables.contains(p) {
                 Button {
                     Task { await comprar(p) }
                 } label: {

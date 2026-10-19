@@ -110,6 +110,11 @@ struct AjusteStockView: View {
     private var n: Double { Double(cantidad.replacingOccurrences(of: ",", with: ".")) ?? 0 }
     private var puede: Bool { n > 0 }
 
+    /// En cuánto queda el stock si se aplica esto.
+    private var quedaria: Double {
+        locales.stock(producto) + (tipo == "SALIDA" ? -n : n)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -126,9 +131,19 @@ struct AjusteStockView: View {
                         Text(producto.nombre).font(Tipo.barlow(.semibold, 15)).foregroundStyle(t.ink)
                         Dato(k: "Stock actual", v: "\(fmt(locales.stock(producto))) \(producto.unidad)")
                         if n > 0 {
-                            Dato(k: "Quedaría en",
-                                 v: "\(fmt(locales.stock(producto) + (tipo == "SALIDA" ? -n : n))) \(producto.unidad)")
+                            Dato(k: "Quedaría en", v: "\(fmt(quedaria)) \(producto.unidad)")
                         }
+                    }
+
+                    // Un stock negativo no es un error de tipeo: casi siempre
+                    // es una entrada que nunca se registró, y el ajuste la
+                    // tapa en vez de arreglarla. Se avisa y se deja seguir,
+                    // porque a veces el depósito de verdad quedó en rojo y hay
+                    // que poder anotarlo. Android avisa lo mismo.
+                    if quedaria < 0 {
+                        Aviso(texto: "La salida deja el stock en negativo. "
+                                   + "Revisá si falta registrar una entrada.",
+                              bg: Tint.avisoBg, ink: Tint.avisoInk)
                     }
 
                     Bloque(titulo: "AJUSTE") {
@@ -292,6 +307,7 @@ struct MovimientosView: View {
 struct NuevoProductoView: View {
     @Environment(\.tema) private var t
     @Environment(\.dismiss) private var cerrar
+    @Environment(Estado.self) private var estado
 
     @State private var nombre = ""
     @State private var sku = ""
@@ -308,6 +324,25 @@ struct NuevoProductoView: View {
     @State private var ubicaciones: [RepoERP.Opcion] = []
     @State private var guardando = false
     @State private var error: String?
+
+    /// Lo que el plan no incluye se esconde, no se muestra con candado.
+    ///
+    /// Estas dos reglas estaban escritas en `Planes.swift` desde el principio
+    /// y no las miraba nadie: en iPhone una cuenta Gratis tenía código de
+    /// barras y stock mínimo, que son de Max. Android las aplica desde
+    /// siempre, así que la misma empresa veía dos cosas distintas segun el
+    /// teléfono, y la de iPhone usaba gratis lo que la otra paga.
+    ///
+    /// Escondidos y no bloqueados, igual que Android: un campo con candado en
+    /// un formulario largo invita a pelearse con él, y no hay nada que pelear.
+    /// Quien quiera saber qué se pierde lo ve en la hoja de planes.
+    private var sinBarras: Bool {
+        Planes.motivoBloqueo(.inventarioBarras, estado.contextoPlan()) != nil
+    }
+
+    private var sinMinimo: Bool {
+        Planes.motivoBloqueo(.inventarioMinimo, estado.contextoPlan()) != nil
+    }
 
     /// El producto que se está corrigiendo. `nil` es un alta.
     ///
@@ -377,7 +412,7 @@ struct NuevoProductoView: View {
                     Bloque(titulo: "PRODUCTO") {
                         campo("Nombre", $nombre)
                         campo("Código / SKU", $sku, codigo: true)
-                        campo("Código de barras", $barras, codigo: true)
+                        if !sinBarras { campo("Código de barras", $barras, codigo: true) }
                         if !categorias.isEmpty {
                             Picker("Categoría", selection: $categoriaId) {
                                 Text("Sin categoría").tag("")
@@ -420,7 +455,7 @@ struct NuevoProductoView: View {
                         if !esEdicion {
                             campo("Inventario inicial", $stockInicial, teclado: .decimalPad)
                         }
-                        campo("Mínimo", $minimo, teclado: .decimalPad)
+                        if !sinMinimo { campo("Mínimo", $minimo, teclado: .decimalPad) }
                         if esEdicion {
                             Text("El stock se cambia desde Ajustar stock, que deja el movimiento anotado.")
                                 .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
@@ -548,12 +583,37 @@ struct NuevoProveedorView: View {
     @State private var rubros: [RepoERP.Opcion] = []
     @State private var guardando = false
     @State private var error: String?
+    @State private var consultando = false
+    @State private var avisoSet: String?
 
     /// El proveedor que se está corrigiendo. `nil` es un alta.
     var editando: Proveedor?
     var alGuardar: (Proveedor) -> Void = { _ in }
 
     private var esEdicion: Bool { editando != nil }
+
+    /// Le pregunta a la SET por ese RUC y completa la razón social.
+    ///
+    /// Un INACTIVO no impide guardar: hay proveedores que facturan con el RUC
+    /// suspendido y el comercio igual tiene que poder anotar la compra. Se
+    /// dice y se sigue.
+    private func consultarSet() async {
+        consultando = true; avisoSet = nil
+        defer { consultando = false }
+        do {
+            if let r = try await RepoERP.consultarSet(ruc.trimmingCharacters(in: .whitespaces)) {
+                nombre = r.razonSocial
+                avisoSet = r.activo
+                    ? "Encontrado en la SET: \(r.razonSocial)"
+                    : "Encontrado, pero figura INACTIVO en la SET."
+            } else {
+                avisoSet = "No se encontró ese documento en la SET. Podés cargarlo a mano."
+            }
+        } catch {
+            avisoSet = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos consultar la SET."
+        }
+    }
 
     /// Carga el formulario con lo que ya tiene.
     private func precargar() {
@@ -596,6 +656,31 @@ struct NuevoProveedorView: View {
                     Bloque(titulo: "PROVEEDOR") {
                         campo("Nombre o razón social", $nombre)
                         campo("RUC", $ruc, codigo: true)
+
+                        // La misma consulta que ya tenía el alta de cliente.
+                        //
+                        // Un proveedor se carga con la factura delante, y la
+                        // razón social de una factura es justo lo que más se
+                        // escribe mal: "S.A." o "SA", con punto o sin punto,
+                        // con el nombre de fantasía en vez del legal. Después
+                        // no coincide con nada y hay dos proveedores que son
+                        // el mismo.
+                        Button { Task { await consultarSet() } } label: {
+                            HStack(spacing: 8) {
+                                if consultando { ProgressView().controlSize(.small) }
+                                Text("Consultar en la SET").font(Tipo.barlow(.semibold, 13.5))
+                            }
+                            .foregroundStyle(C.azulMedio)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(ruc.trimmingCharacters(in: .whitespaces).isEmpty || consultando)
+
+                        if let avisoSet {
+                            Text(avisoSet).font(Tipo.barlow(.regular, 12))
+                                .foregroundStyle(Tint.infoInk)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10).background(Tint.infoBg, in: .rect(cornerRadius: 10))
+                        }
                         // El rubro son las categorías del ERP, no texto libre:
                         // mandarlo escrito a mano no lo clasificaría en nada.
                         if rubros.isEmpty {

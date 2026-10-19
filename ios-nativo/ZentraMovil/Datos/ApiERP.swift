@@ -86,7 +86,7 @@ enum ApiERP {
 
         let (resp, http): (Data, URLResponse)
         do { (resp, http) = try await URLSession.shared.upload(for: req, from: cuerpo) }
-        catch { throw ApiError.sinRed }
+        catch { throw ApiError.deRed(error) }
 
         let code = (http as? HTTPURLResponse)?.statusCode ?? 0
         let json = try? JSONSerialization.jsonObject(with: resp)
@@ -139,7 +139,7 @@ enum ApiERP {
         do {
             (datos, resp) = try await URLSession.shared.data(for: req)
         } catch {
-            throw ApiError.sinRed
+            throw ApiError.deRed(error)
         }
 
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -222,6 +222,8 @@ struct Perfil: Equatable {
 enum ApiError: LocalizedError {
     case sinApi
     case sinRed
+    /// El server esta, pero tardo mas de lo que esperamos.
+    case tardo
     /// El usuario existe pero no está en ninguna cola de atención.
     case sinCola
     /// La instalación no tiene ERP, así que no hay WhatsApp que leer.
@@ -230,12 +232,29 @@ enum ApiError: LocalizedError {
     case sesionVencida
     case http(status: Int, mensaje: String, ruta: String)
 
+    /// Qué fue lo que pasó con la red.
+    ///
+    /// `URLSession` tira el mismo tipo de error para "no hay wifi" y para "el
+    /// server no contesta", y son dos problemas distintos con dos arreglos
+    /// distintos. Hasta acá los dos decían "revisá tu conexión", que a quien
+    /// tiene la conexión bien lo manda a mirar el teléfono mientras el
+    /// problema está del otro lado.
+    static func deRed(_ e: Error) -> ApiError {
+        (e as? URLError)?.code == .timedOut ? .tardo : .sinRed
+    }
+
     var errorDescription: String? {
         switch self {
         case .sinApi:
             "No hay API configurada para esta empresa. Revisá API_URL en Secretos.plist, o el campo apiUrl de esa empresa en el directorio."
         case .sinRed:
             "No pudimos conectar. Revisá tu conexión e intentá de nuevo."
+        case .tardo:
+            // No es lo mismo que no haber llegado, y mandar a revisar la
+            // conexión a alguien cuya conexión anda bien lo hace perder el
+            // rato con el teléfono en vez de avisarnos. Es el mismo caso que
+            // Android separa con "La API no respondió a tiempo".
+            "El sistema de tu empresa no respondió a tiempo. Probá de nuevo en un rato."
         case .sinChat:
             "Las conversaciones salen del WhatsApp de tu ERP. Esta instalación no tiene uno conectado."
         case .sinCola:

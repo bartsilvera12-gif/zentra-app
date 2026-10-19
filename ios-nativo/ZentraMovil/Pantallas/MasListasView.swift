@@ -5,24 +5,78 @@ struct ProveedoresView: View {
     @Environment(\.tema) private var t
     @Environment(Estado.self) private var estado
     @State private var filas: [Proveedor] = []
+    /// Las compras, para saber cuánto se le debe a cada uno.
+    ///
+    /// Un listado de proveedores sin deuda es una agenda de teléfonos. Lo que
+    /// se viene a mirar acá es a quién hay que pagarle.
+    @State private var compras: [Compra] = []
     @State private var q = ""
+    @State private var filtro = "Todos"
     @State private var cargando = true
     @State private var error: String?
     @State private var nuevo = false
     @State private var aviso: String?
 
+    private let filtros = ["Todos", "Con deuda", "Activos", "Inactivos"]
+
+    /// Lo que se le debe a un proveedor: sus compras sin pagar, con IVA.
+    private func deuda(_ id: String) -> Int {
+        compras.filter { !$0.pagada && $0.provId == id }.reduce(0) { $0 + $1.total }
+    }
+
+    private var deudaTotal: Int {
+        compras.filter { !$0.pagada }.reduce(0) { $0 + $1.total }
+    }
+
     private var vistas: [Proveedor] {
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !n.isEmpty else { return filas }
-        return filas.filter {
-            $0.nombre.lowercased().contains(n) || $0.doc.lowercased().contains(n)
-                || $0.rubro.lowercased().contains(n)
+        return filas.filter { p in
+            switch filtro {
+            case "Con deuda": if deuda(p.id) <= 0 { return false }
+            case "Activos": if !p.activo { return false }
+            case "Inactivos": if p.activo { return false }
+            default: break
+            }
+            guard !n.isEmpty else { return true }
+            return p.nombre.lowercased().contains(n) || p.doc.lowercased().contains(n)
+                || p.rubro.lowercased().contains(n)
         }
     }
 
     var body: some View {
-        Lista(titulo: "Proveedores", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay proveedores cargados.") {
+        Lista(titulo: "Proveedores",
+              resumen: filas.isEmpty ? nil
+                : "\(vistas.count) de \(filas.count) · se debe \(Panel.gs(deudaTotal))",
+              cargando: cargando, error: error, vacio: filas.isEmpty,
+              vacioTexto: "Todavía no hay proveedores cargados.",
+              encabezado: {
+                  VStack(spacing: 10) {
+                      HStack(spacing: 10) {
+                          Kpi(rotulo: "DEUDA TOTAL", valor: Panel.gs(deudaTotal),
+                              tinte: deudaTotal > 0 ? Tint.avisoInk : nil)
+                          Kpi(rotulo: "PROVEEDORES", valor: "\(filas.filter(\.activo).count) activos")
+                      }
+                      .padding(.horizontal, 14)
+
+                      ScrollView(.horizontal) {
+                          HStack(spacing: 8) {
+                              ForEach(filtros, id: \.self) { f in
+                                  Button { filtro = f } label: {
+                                      Text(f)
+                                          .font(Tipo.barlow(.semibold, 12.5))
+                                          .foregroundStyle(filtro == f ? .white : t.ink2)
+                                          .padding(.horizontal, 14).frame(height: 32)
+                                          .background(filtro == f ? C.cian : t.card, in: .capsule)
+                                          .overlay { Capsule().stroke(filtro == f ? .clear : t.border) }
+                                  }
+                                  .buttonStyle(.plain)
+                              }
+                          }
+                          .padding(.horizontal, 14)
+                      }
+                      .scrollIndicators(.hidden)
+                  }
+              }) {
             ForEach(vistas) { p in
                 NavigationLink { ProveedorDetalleView(p: p) } label: {
                 FilaCard {
@@ -37,8 +91,18 @@ struct ProveedoresView: View {
                                 .foregroundStyle(p.condicion == "Contado" ? Tint.okInk : Tint.infoInk)
                         }
                         Spacer(minLength: 0)
-                        if !p.activo {
-                            Chip(texto: "Inactivo", bg: Tint.errorBg, ink: Tint.errorInk)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            if !p.activo {
+                                Chip(texto: "Inactivo", bg: Tint.errorBg, ink: Tint.errorInk)
+                            }
+                            // "Al día" y no un cero: un cero en guaraníes al
+                            // lado de un nombre se lee como un importe, y hay
+                            // que mirarlo dos veces para entender que no se
+                            // debe nada.
+                            let d = deuda(p.id)
+                            Text(d > 0 ? Panel.gs(d) : "Al día")
+                                .font(Tipo.barlow(.semibold, 12.5))
+                                .foregroundStyle(d > 0 ? Tint.avisoInk : Tint.okInk)
                         }
                     }
                 }
@@ -64,8 +128,20 @@ struct ProveedoresView: View {
 
     private func cargar() async {
         cargando = filas.isEmpty
-        do { filas = try await RepoERP.proveedores(); error = nil }
-        catch { self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar." }
+        do {
+            // En paralelo: son dos viajes que no dependen uno del otro y
+            // encadenarlos duplica la espera.
+            async let p = RepoERP.proveedores()
+            async let c = RepoERP.compras()
+            filas = try await p
+            // Si las compras no vienen, los proveedores igual se muestran: sin
+            // deuda, pero se muestran. Quedarse con la pantalla en blanco
+            // porque falló el dato de al lado es peor.
+            compras = (try? await c) ?? []
+            error = nil
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar."
+        }
         cargando = false
     }
 }
@@ -78,18 +154,107 @@ struct ComprasView: View {
     @State private var cargando = true
     @State private var error: String?
     @State private var nueva = false
+    @State private var filtro = "Todas"
+
+    private let filtros = ["Todas", "Por pagar", "Pagadas", "Crédito"]
+
+    /// Lo comprado este mes.
+    ///
+    /// Se calcula de verdad. En Android el mismo recuadro dice "Total del mes"
+    /// y suma TODAS las compras del listado, que con un año cargado es otro
+    /// número y nadie lo nota hasta que lo cruza con algo.
+    private var delMes: Int {
+        let cal = Calendar.current
+        let hoy = Date()
+        return filas.filter { c in
+            guard let f = Self.iso.date(from: c.fecha) else { return false }
+            return cal.isDate(f, equalTo: hoy, toGranularity: .month)
+        }
+        .reduce(0) { $0 + $1.total }
+    }
+
+    private var porPagar: Int {
+        filas.filter { !$0.pagada }.reduce(0) { $0 + $1.total }
+    }
+
+    private static let iso: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
     private var vistas: [Compra] {
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !n.isEmpty else { return filas }
         return filas.filter {
-            $0.numero.lowercased().contains(n) || $0.producto.lowercased().contains(n)
+            switch filtro {
+            case "Por pagar": if $0.pagada { return false }
+            case "Pagadas": if !$0.pagada { return false }
+            case "Crédito": if $0.pago != "Crédito" { return false }
+            default: break
+            }
+            guard !n.isEmpty else { return true }
+            return coincide($0, n)
         }
     }
 
+    /// Si una compra entra en lo que se está buscando.
+    ///
+    /// Mira cualquier producto de la compra, no sólo el primero: buscar
+    /// "jabón" tiene que traer la compra que lo incluye aunque venga en el
+    /// tercer renglón.
+    private func coincide(_ c: Compra, _ n: String) -> Bool {
+        c.numero.lowercased().contains(n)
+            || c.proveedor.lowercased().contains(n)
+            || c.producto.lowercased().contains(n)
+            || c.lineas.contains { $0.nombre.lowercased().contains(n) }
+    }
+
+    /// Qué se compró, en un renglón.
+    ///
+    /// Con una sola línea se nombra el producto, como siempre. Con varias no
+    /// entran, así que se dice el primero y cuántos más: nombrar sólo el
+    /// primero —que es lo que hacía— deja creer que la compra fue de eso y
+    /// nada más.
+    private func detalle(_ c: Compra) -> String {
+        guard c.lineas.count > 1 else { return c.producto }
+        return "\(c.producto) y \(c.lineas.count - 1) más"
+    }
+
     var body: some View {
-        Lista(titulo: "Compras", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay compras cargadas.") {
+        Lista(titulo: "Compras",
+              resumen: filas.isEmpty ? nil
+                : "\(vistas.count) de \(filas.count) · \(filas.filter { !$0.pagada }.count) por pagar",
+              cargando: cargando, error: error, vacio: filas.isEmpty,
+              vacioTexto: "Todavía no hay compras cargadas.",
+              encabezado: {
+                  VStack(spacing: 10) {
+                      HStack(spacing: 10) {
+                          Kpi(rotulo: "ESTE MES", valor: Panel.gs(delMes))
+                          Kpi(rotulo: "POR PAGAR", valor: Panel.gs(porPagar),
+                              tinte: porPagar > 0 ? Tint.avisoInk : nil)
+                      }
+                      .padding(.horizontal, 14)
+
+                      ScrollView(.horizontal) {
+                          HStack(spacing: 8) {
+                              ForEach(filtros, id: \.self) { f in
+                                  Button { filtro = f } label: {
+                                      Text(f)
+                                          .font(Tipo.barlow(.semibold, 12.5))
+                                          .foregroundStyle(filtro == f ? .white : t.ink2)
+                                          .padding(.horizontal, 14).frame(height: 32)
+                                          .background(filtro == f ? C.cian : t.card, in: .capsule)
+                                          .overlay { Capsule().stroke(filtro == f ? .clear : t.border) }
+                                  }
+                                  .buttonStyle(.plain)
+                              }
+                          }
+                          .padding(.horizontal, 14)
+                      }
+                      .scrollIndicators(.hidden)
+                  }
+              }) {
             ForEach(vistas) { c in
                 NavigationLink { CompraDetalleView(c: c) } label: {
                 FilaCard {
@@ -101,10 +266,19 @@ struct ComprasView: View {
                                  bg: c.pagada ? Tint.okBg : Tint.avisoBg,
                                  ink: c.pagada ? Tint.okInk : Tint.avisoInk)
                         }
-                        Text(c.producto).font(Tipo.barlow(.regular, 12.5))
+                        // El proveedor primero: una compra se busca por a
+                        // quién se le compró, no por el primer producto.
+                        if !c.proveedor.isEmpty {
+                            Text(c.proveedor).font(Tipo.barlow(.semibold, 12.5))
+                                .foregroundStyle(t.ink).lineLimit(1)
+                        }
+                        Text(detalle(c)).font(Tipo.barlow(.regular, 12.5))
                             .foregroundStyle(t.ink2).lineLimit(1)
                         HStack(spacing: 10) {
-                            Text("\(Int(c.cantidad)) × \(Panel.gs(c.costo))")
+                            // El total de la compra, no el de su primer
+                            // renglón. Con cuatro productos los otros tres no
+                            // aparecían ni en la cuenta.
+                            Text(Panel.gs(c.total))
                                 .font(Tipo.barlow(.semibold, 12)).foregroundStyle(t.ink)
                             Text(c.pago).font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
                             Spacer(minLength: 0)
@@ -116,7 +290,7 @@ struct ComprasView: View {
                 .buttonStyle(.plain)
             }
         }
-        .searchable(text: $q, prompt: "Buscar por número o producto")
+        .searchable(text: $q, prompt: "Buscar por número, proveedor o producto")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { nueva = true } label: { Image(systemName: "plus") }
@@ -148,6 +322,12 @@ struct ConversacionesView: View {
     @State private var cargando = true
     @State private var error: String?
     @State private var nueva = false
+    @State private var trayendo = false
+    /// Si ya no hay más tandas que pedir.
+    ///
+    /// Arranca en `false` y se apaga solo: con el botón visible para siempre,
+    /// quien llega al final queda tocando algo que no trae nada.
+    @State private var finDeLista = false
 
     private static let sinLeer = "No leídas"
     private static let cerradas = "Cerradas"
@@ -262,6 +442,23 @@ struct ConversacionesView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // Traer las más viejas.
+            //
+            // El ERP contesta de a 50. Una empresa con cientos de
+            // conversaciones abiertas veía esas 50 y no había forma de llegar
+            // al resto: la búsqueda tampoco servía, porque filtra lo que ya se
+            // trajo y lo que falta ni siquiera estaba.
+            if !finDeLista, !filas.isEmpty, q.isEmpty {
+                Button { Task { await traerMas() } } label: {
+                    Text(trayendo ? "Trayendo…" : "Cargar más")
+                        .font(Tipo.barlow(.semibold, 13.5))
+                        .foregroundStyle(trayendo ? t.ink3 : C.cian)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                }
+                .buttonStyle(.plain)
+                .disabled(trayendo)
+            }
         }
         .searchable(text: $q, prompt: "Buscar conversación…")
         .toolbar {
@@ -277,6 +474,17 @@ struct ConversacionesView: View {
         }
         .task { await cargar() }
         .refreshable { await cargar() }
+        // Pasar a "Cerradas" —o volver— es otra consulta, no otro filtro: el
+        // ERP no manda las cerradas salvo que se le pidan. Sin esto, tocar
+        // "Cerradas" mostraba una lista vacía por más conversaciones cerradas
+        // que hubiera, y lo que se hubiera traído con "Cargar más" de la otra
+        // lista no pertenece a ésta.
+        .onChange(of: filtro) { viejo, nuevo in
+            guard (viejo == Self.cerradas) != (nuevo == Self.cerradas) else { return }
+            filas = []
+            finDeLista = false
+            Task { await cargar() }
+        }
         // 25s en el listado: no hace falta tan seguido como adentro de un chat.
         .latido(cada: 25, activo: true) {
             if let nuevas = try? await RepoERP.conversaciones(), nuevas != filas {
@@ -308,9 +516,40 @@ struct ConversacionesView: View {
 
     private func cargar() async {
         cargando = filas.isEmpty
-        do { filas = try await RepoERP.conversaciones(); error = nil }
-        catch { self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar." }
+        do {
+            filas = try await RepoERP.conversaciones(incluirCerradas: filtro == Self.cerradas)
+            // Al refrescar vuelve la primera tanda, así que lo que se había
+            // traído con "Cargar más" se va con ella. Si no, quedarían
+            // conversaciones viejas pegadas debajo de una lista recién
+            // actualizada.
+            finDeLista = filas.count < RepoERP.tandaChats
+            error = nil
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar."
+        }
         cargando = false
+    }
+
+    /// La siguiente tanda, pegada abajo.
+    private func traerMas() async {
+        guard !trayendo else { return }
+        trayendo = true
+        defer { trayendo = false }
+        do {
+            let mas = try await RepoERP.conversaciones(desde: filas.count,
+                                                       incluirCerradas: filtro == Self.cerradas)
+            // Un ERP que no entiende `offset` devuelve siempre la misma tanda.
+            // Sin esto el botón quedaría para siempre trayendo lo mismo: si
+            // nada de lo que llegó es nuevo, se terminó.
+            let conocidas = Set(filas.map(\.id))
+            let nuevas = mas.filter { !conocidas.contains($0.id) }
+            if nuevas.isEmpty || mas.count < RepoERP.tandaChats { finDeLista = true }
+            filas.append(contentsOf: nuevas)
+        } catch {
+            // Un fallo acá no rompe lo que ya está en pantalla. Se deja de
+            // ofrecer "Cargar más" en vez de dejar un botón que no hace nada.
+            finDeLista = true
+        }
     }
 }
 

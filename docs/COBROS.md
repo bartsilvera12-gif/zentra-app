@@ -455,6 +455,9 @@ el server lo grita al arrancar y `/apple/health` lo dice.
 
 ### Los productos en App Store Connect
 
+El trámite paso a paso está en `docs/SUSCRIPCIONES-APPLE.md`, con las partes
+que no se pueden deshacer. Acá, lo que hace falta saber desde el código.
+
 Se crean en **Monetizacion → Suscripciones**, con un grupo de suscripcion y los
 mismos ids que en Play:
 

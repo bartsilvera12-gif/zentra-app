@@ -56,6 +56,8 @@ struct Venta: Identifiable, Equatable {
     /// `yyyy-mm-dd`
     var iso: String
     var numero: String
+    /// Quién compró. Vacío en la venta de mostrador, que no lleva cliente.
+    var cliId: String = ""
     var cliente: String
     var doc: String
     var pago: String
@@ -97,6 +99,10 @@ struct Proveedor: Identifiable, Equatable {
 struct Compra: Identifiable, Equatable {
     var id: String
     var numero: String
+    /// A quién se le compró. Vacío cuando la compra no lo trae.
+    var provId: String = ""
+    var proveedor: String = ""
+    /// El primer producto, para la fila del listado de una sola línea.
     var producto: String
     var cantidad: Double
     var costo: Int
@@ -105,6 +111,27 @@ struct Compra: Identifiable, Equatable {
     var pagada: Bool
     var fecha: String
     var factura: String
+    /// Todo lo que se compró.
+    ///
+    /// Antes no estaba y la fila se armaba con los campos sueltos de arriba,
+    /// que son los de la PRIMERA línea. Una compra de cuatro productos se veía
+    /// como uno y por el importe de uno: los otros tres no existían en ningún
+    /// lado de la app, ni en el listado ni en el total.
+    var lineas: [CompraLinea] = []
+
+    /// Lo que costó la compra, con IVA.
+    ///
+    /// En compras el IVA va POR ENCIMA del costo, porque el proveedor cotiza
+    /// neto. Suma las líneas cuando están; si no, cae a los campos sueltos,
+    /// que es lo que devuelve un ERP que manda una compra por producto.
+    var total: Int {
+        guard !lineas.isEmpty else {
+            return Int((Double(costo) * cantidad * (1 + RepoERP.tasa(iva))).rounded())
+        }
+        return lineas.reduce(0) { suma, l in
+            suma + Int((Double(l.costo) * l.cantidad * (1 + RepoERP.tasa(l.iva))).rounded())
+        }
+    }
 }
 
 struct Mensaje: Identifiable, Equatable {
@@ -403,18 +430,38 @@ enum RepoERP {
     /// El respaldo sólo entra si el primero no existe o no está permitido
     /// (401/403/404). Un error de forma no se tapa: si contestó pero con otra
     /// estructura, el problema es ese y hay que verlo.
-    static func conversaciones() async throws -> [Chat] {
+    /// Cuántas conversaciones trae el ERP de una vez.
+    ///
+    /// Es el mismo número que usa Android (`TANDA_CHATS`). Importa saberlo
+    /// acá: si vuelven menos de esto, no hay más y no hace falta ofrecer otra
+    /// tanda.
+    static let tandaChats = 50
+
+    static func conversaciones(desde: Int = 0,
+                               incluirCerradas: Bool = false) async throws -> [Chat] {
         // El chat es de WhatsApp y vive en el ERP. Sin ERP no hay nada que leer,
         // y decirlo es mejor que una lista vacía que parece "no tenés mensajes".
         if await !conErp() { throw ApiError.sinChat }
+        let salto = max(desde, 0)
         do {
-            let crudo = try await ApiERP.get("/chat/mobile-inbox") { $0 }
+            // Sin `offset` el ERP devuelve siempre las 50 más recientes. Una
+            // empresa con cientos de conversaciones abiertas veía esas 50 y no
+            // había forma de llegar al resto — ni buscando, porque la búsqueda
+            // filtra lo que ya se trajo.
+            let crudo = try await ApiERP.get("/chat/mobile-inbox", query: [
+                "offset": String(salto),
+                "limit": String(tandaChats),
+                // El ERP excluye las cerradas salvo que se le pidan.
+                "only_open": incluirCerradas ? "0" : nil,
+            ]) { $0 }
             return try ApiERP.comoLista(crudo, clave: "conversations",
                                         ruta: "/chat/mobile-inbox").map(aChat)
         } catch let e as ApiError {
             if case .http(let status, _, _) = e, ![401, 403, 404].contains(status) { throw e }
         }
 
+        // El endpoint viejo no pagina: con él sólo existe la primera tanda.
+        if salto > 0 { return [] }
         let crudo = try await ApiERP.get("/mobile/asesor/conversations") { $0 }
         // `is_agent: false` no es "no tenés conversaciones": es que este usuario
         // no está en ninguna cola. Son cosas distintas y se dicen distinto.
@@ -504,11 +551,43 @@ enum RepoERP {
                 mensaje: "La consulta a la SET la hace el ERP, y esta instalación no tiene uno. Escribí el nombre a mano.",
                 ruta: "/set")
         }
-        let crudo = try await ApiERP.get("/set/\(esc(doc))") { $0 }
+        // Dos rutas, porque los ERPs no se pusieron de acuerdo.
+        //
+        // `docs/API-ERP.md` documenta `GET /set/:doc`, y es la que la app
+        // viene llamando. Pero el ERP de Amasso —el unico donde encontre la
+        // consulta implementada de verdad— expone
+        // `GET /set/consulta-ruc?ruc=…`, que llama al servicio de la DNIT con
+        // la clave del contribuyente. Contra ese, la documentada da 404, y el
+        // boton de la SET del alta de cliente nunca funciono ahi.
+        //
+        // Se prueba la documentada primero y la otra despues. Un 404 o un 501
+        // no es una respuesta: es "esta ruta no existe aca". Cualquier otro
+        // error se deja pasar, porque si contesto pero mal, el problema es ese.
+        let crudo: Any
+        do {
+            crudo = try await ApiERP.get("/set/\(esc(doc))") { $0 }
+        } catch let e as ApiError {
+            guard case .http(let status, _, _) = e, [404, 405, 501].contains(status) else { throw e }
+            crudo = try await ApiERP.get("/set/consulta-ruc", query: ["ruc": doc]) { $0 }
+        }
+
         guard let o = desenvolver(crudo),
               let razon = primero(o["razonSocial"], o["razon_social"], o["nombre"])
         else { return nil }
-        let activo = (o["activo"] as? Bool) ?? true
+
+        // La forma documentada trae `activo` como booleano; la de la DNIT trae
+        // `estado` como texto: "ACTIVO", "SUSPENSION TEMPORAL", "CANCELADO".
+        // Si no dice nada se asume activo: un proveedor que factura y que
+        // nosotros marcamos suspendido por una respuesta incompleta es peor
+        // que uno suspendido que figura normal.
+        let activo: Bool
+        if let b = o["activo"] as? Bool {
+            activo = b
+        } else if let estado = o["estado"] as? String {
+            activo = estado.uppercased().contains("ACTIVO")
+        } else {
+            activo = true
+        }
         return (razon, activo)
     }
 
@@ -942,9 +1021,14 @@ enum RepoERP {
     private static func aCompra(_ c: [String: Any]) -> Compra {
         let credito = (noVacio(c["tipo_pago"]) ?? "").lowercased().contains("cred")
         let estado = (noVacio(c["estado"]) ?? "").lowercased()
+        // El ERP manda una compra por producto, así que acá no hay líneas que
+        // juntar: `total` cae a los campos sueltos y da lo mismo. Si algún día
+        // las manda, se mapean acá y el resto ya funciona.
         return Compra(
             id: texto(c["id"]),
             numero: noVacio(c["numero_control"]) ?? String(texto(c["id"]).prefix(8)),
+            provId: texto(c["proveedor_id"]),
+            proveedor: noVacio(c["proveedor_nombre"]) ?? noVacio(c["proveedor"]) ?? "",
             producto: noVacio(c["producto_nombre"]) ?? "(sin nombre)",
             cantidad: numero(c["cantidad"]),
             costo: entero(c["costo_unitario"]),
@@ -1179,6 +1263,7 @@ enum RepoERP {
             id: texto(v["id"]),
             iso: fecha,
             numero: noVacio(v["numero_control"]) ?? String(texto(v["id"]).prefix(8)),
+            cliId: texto(v["cliente_id"]),
             cliente: noVacio(v["cliente_nombre"]) ?? "Sin nombre",
             doc: noVacio(v["cliente_doc"]) ?? "Sin documento",
             pago: credito

@@ -4,6 +4,17 @@ out/
 build/
 dist/
 
+# Lo que escribe Xcode al compilar el proyecto nativo. `build/` de arriba ya
+# tapaba `ios-nativo/build/`, pero no `build-device/`, que es el directorio que
+# usa el script de compilacion para el iPhone: por eso estuvo versionado hasta
+# el 2026-10-19 y cada compilacion ensuciaba el `git status` con cientos de
+# archivos. Van sin prefijo de ruta, igual que `build/`, para que tambien valgan
+# si manana se compila desde otra carpeta.
+build-device/
+build-archive/
+DerivedData/
+*.noindex/
+
 # Los proyectos nativos los genera Capacitor, así que no se versionan...
 #
 # Van con `/*` y no como `android/`: git no puede volver a incluir un archivo si

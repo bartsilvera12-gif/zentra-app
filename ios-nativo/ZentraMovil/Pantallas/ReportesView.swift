@@ -287,7 +287,11 @@ struct ReportesView: View {
             tarjeta("VENTAS DEL PERÍODO") {
                 Text(Panel.gs(total))
                     .font(Tipo.barlow(.bold, 24)).foregroundStyle(t.ink)
-                Text("Un punto por día del período elegido.")
+                // Lo que dice tiene que ser lo que se ve: con más de un mes
+                // las barras se agrupan, y "por día" dejaría de ser cierto.
+                Text(Panel.cubos(desde: desde, hasta: hasta).porMes
+                     ? "Una barra por mes del período elegido."
+                     : "Una barra por día del período elegido.")
                     .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
                 grafico
             }
@@ -337,17 +341,28 @@ struct ReportesView: View {
     }
 
     private var grafico: some View {
-        let dias = Panel.ultimos7()
-        var porDia = [String: Int]()
-        for d in dias { porDia[d] = 0 }
-        for v in ventas where porDia[String(v.iso.prefix(10))] != nil {
-            porDia[String(v.iso.prefix(10)), default: 0] += v.total
+        // Las barras salen del período elegido, no de una ventana fija.
+        //
+        // Acá había un `Panel.ultimos7()`, que es el ayudante del panel de
+        // Inicio —donde sí corresponde— y se coló en el reporte. El resultado
+        // era que al elegir "Este mes" todos los números de la pantalla
+        // cambiaban menos el gráfico, que seguía dibujando la última semana
+        // abajo del texto "Un punto por día del período elegido". Con la
+        // cuenta de prueba de dos ventas no se notaba: una semana y un mes
+        // mostraban lo mismo.
+        let (cubos, porMes) = Panel.cubos(desde: desde, hasta: hasta)
+        var suma = [String: Int]()
+        for c in cubos { suma[c.clave] = 0 }
+        for v in ventas {
+            let k = Panel.cuboDe(v.iso, porMes: porMes)
+            if suma[k] != nil { suma[k, default: 0] += v.total }
         }
-        let serie = dias.map { porDia[$0] ?? 0 }
+        let serie = cubos.map { suma[$0.clave] ?? 0 }
         let tope = max(1, serie.max() ?? 1)
 
-        return HStack(alignment: .bottom, spacing: 6) {
-            ForEach(Array(serie.enumerated()), id: \.offset) { i, v in
+        return HStack(alignment: .bottom, spacing: cubos.count > 14 ? 2 : 6) {
+            ForEach(Array(cubos.enumerated()), id: \.offset) { i, c in
+                let v = serie[i]
                 VStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 3)
                         // Un solo tono de claro a oscuro: el color dice cuánto,
@@ -357,12 +372,23 @@ struct ReportesView: View {
                                                           oscuro: esquema == .dark)
                               : t.border)
                         .frame(height: max(3, CGFloat(v) / CGFloat(tope) * 70))
-                    Text(String(dias[i].suffix(5)).replacingOccurrences(of: "-", with: "/"))
+                    // Con muchas barras las etiquetas no entran y se pisan.
+                    // Se escribe una de cada tantas, siempre la primera y la
+                    // última, que son las que ubican el período.
+                    Text(etiquetaVisible(i, de: cubos) ? c.etiqueta : " ")
                         .font(Tipo.barlow(.regular, 9)).foregroundStyle(t.ink3)
+                        .lineLimit(1).fixedSize()
                 }
             }
         }
         .frame(height: 92, alignment: .bottom)
+    }
+
+    /// Si abajo de esta barra va su etiqueta.
+    private func etiquetaVisible(_ i: Int, de cubos: [Panel.Cubo]) -> Bool {
+        guard cubos.count > 10 else { return true }
+        let paso = (cubos.count + 6) / 7
+        return i == 0 || i == cubos.count - 1 || i % paso == 0
     }
 
     // MARK: inventario
