@@ -15,6 +15,17 @@ build-archive/
 DerivedData/
 *.noindex/
 
+# El estado de TU ventana de Xcode: que archivo tenias abierto, donde estaba
+# el cursor, que carpetas del navegador estaban desplegadas. Cambia cada vez
+# que alguien abre el proyecto, no lo lee nadie y ensucia el `git status` —
+# mas de una vez hubo que guardarlo aparte para poder hacer un pull—.
+#
+# Va `xcuserdata/` y no la ruta entera porque ese directorio aparece tanto
+# dentro del `.xcodeproj` como del `.xcworkspace`. Los schemes compartidos
+# NO caen acá: viven en `xcshareddata/` y esos sí se versionan, porque son
+# los que hacen que el proyecto compile igual en otra maquina.
+xcuserdata/
+
 # Los proyectos nativos los genera Capacitor, así que no se versionan...
 #
 # Van con `/*` y no como `android/`: git no puede volver a incluir un archivo si
