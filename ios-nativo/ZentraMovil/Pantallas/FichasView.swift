@@ -309,8 +309,19 @@ struct ProveedorDetalleView: View {
     @State private var fresco: Proveedor?
     @State private var editar = false
     @State private var aviso: String?
+    @State private var compras: [Compra] = []
 
     private var v: Proveedor { fresco ?? p }
+
+    /// Las compras de este proveedor, de la más nueva a la más vieja.
+    private var suyas: [Compra] {
+        compras.filter { $0.provId == v.id }
+    }
+
+    /// Lo que se le debe: sus compras sin pagar, con IVA.
+    private var deuda: Int {
+        suyas.filter { !$0.pagada }.reduce(0) { $0 + $1.total }
+    }
 
     var body: some View {
         ScrollView {
@@ -328,6 +339,36 @@ struct ProveedorDetalleView: View {
                              ink: v.activo ? Tint.okInk : Tint.errorInk)
                     }
                 }
+                // La cuenta corriente antes que los datos de contacto: a un
+                // proveedor se lo abre para saber cuánto se le debe, no para
+                // mirarle el rubro.
+                if !suyas.isEmpty {
+                    Bloque(titulo: "CUENTA CORRIENTE") {
+                        Dato(k: "Deuda", v: deuda > 0 ? Panel.gs(deuda) : "Al día")
+                        Dato(k: "Compras", v: "\(suyas.count)")
+                        ForEach(suyas.prefix(6)) { c in
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.numero).font(Tipo.barlow(.semibold, 12.5))
+                                        .foregroundStyle(t.ink)
+                                    Text(c.fecha).font(Tipo.barlow(.regular, 11))
+                                        .foregroundStyle(t.ink3)
+                                }
+                                Spacer(minLength: 0)
+                                Text(Panel.gs(c.total))
+                                    .font(Tipo.barlow(.semibold, 12.5)).foregroundStyle(t.ink)
+                                Chip(texto: c.pagada ? "Pagada" : "Pendiente",
+                                     bg: c.pagada ? Tint.okBg : Tint.avisoBg,
+                                     ink: c.pagada ? Tint.okInk : Tint.avisoInk)
+                            }
+                        }
+                        if suyas.count > 6 {
+                            Text("Se muestran las 6 últimas de \(suyas.count).")
+                                .font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink3)
+                        }
+                    }
+                }
+
                 Bloque(titulo: "DATOS") {
                     Dato(k: "Condición de pago", v: v.condicion)
                     Dato(k: "Rubro", v: v.rubro)
@@ -367,6 +408,9 @@ struct ProveedorDetalleView: View {
             NuevoProveedorView(editando: v) { fresco = $0 }
         }
         .avisoPlan($aviso)
+        // Si las compras no vienen, la ficha igual se ve: sin cuenta
+        // corriente, pero se ve.
+        .task { compras = (try? await RepoERP.compras()) ?? [] }
         .navigationTitle("Proveedor")
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -5,24 +5,78 @@ struct ProveedoresView: View {
     @Environment(\.tema) private var t
     @Environment(Estado.self) private var estado
     @State private var filas: [Proveedor] = []
+    /// Las compras, para saber cuánto se le debe a cada uno.
+    ///
+    /// Un listado de proveedores sin deuda es una agenda de teléfonos. Lo que
+    /// se viene a mirar acá es a quién hay que pagarle.
+    @State private var compras: [Compra] = []
     @State private var q = ""
+    @State private var filtro = "Todos"
     @State private var cargando = true
     @State private var error: String?
     @State private var nuevo = false
     @State private var aviso: String?
 
+    private let filtros = ["Todos", "Con deuda", "Activos", "Inactivos"]
+
+    /// Lo que se le debe a un proveedor: sus compras sin pagar, con IVA.
+    private func deuda(_ id: String) -> Int {
+        compras.filter { !$0.pagada && $0.provId == id }.reduce(0) { $0 + $1.total }
+    }
+
+    private var deudaTotal: Int {
+        compras.filter { !$0.pagada }.reduce(0) { $0 + $1.total }
+    }
+
     private var vistas: [Proveedor] {
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !n.isEmpty else { return filas }
-        return filas.filter {
-            $0.nombre.lowercased().contains(n) || $0.doc.lowercased().contains(n)
-                || $0.rubro.lowercased().contains(n)
+        return filas.filter { p in
+            switch filtro {
+            case "Con deuda": if deuda(p.id) <= 0 { return false }
+            case "Activos": if !p.activo { return false }
+            case "Inactivos": if p.activo { return false }
+            default: break
+            }
+            guard !n.isEmpty else { return true }
+            return p.nombre.lowercased().contains(n) || p.doc.lowercased().contains(n)
+                || p.rubro.lowercased().contains(n)
         }
     }
 
     var body: some View {
-        Lista(titulo: "Proveedores", cargando: cargando, error: error, vacio: filas.isEmpty,
-              vacioTexto: "Todavía no hay proveedores cargados.") {
+        Lista(titulo: "Proveedores",
+              resumen: filas.isEmpty ? nil
+                : "\(vistas.count) de \(filas.count) · se debe \(Panel.gs(deudaTotal))",
+              cargando: cargando, error: error, vacio: filas.isEmpty,
+              vacioTexto: "Todavía no hay proveedores cargados.",
+              encabezado: {
+                  VStack(spacing: 10) {
+                      HStack(spacing: 10) {
+                          Kpi(rotulo: "DEUDA TOTAL", valor: Panel.gs(deudaTotal),
+                              tinte: deudaTotal > 0 ? Tint.avisoInk : nil)
+                          Kpi(rotulo: "PROVEEDORES", valor: "\(filas.filter(\.activo).count) activos")
+                      }
+                      .padding(.horizontal, 14)
+
+                      ScrollView(.horizontal) {
+                          HStack(spacing: 8) {
+                              ForEach(filtros, id: \.self) { f in
+                                  Button { filtro = f } label: {
+                                      Text(f)
+                                          .font(Tipo.barlow(.semibold, 12.5))
+                                          .foregroundStyle(filtro == f ? .white : t.ink2)
+                                          .padding(.horizontal, 14).frame(height: 32)
+                                          .background(filtro == f ? C.cian : t.card, in: .capsule)
+                                          .overlay { Capsule().stroke(filtro == f ? .clear : t.border) }
+                                  }
+                                  .buttonStyle(.plain)
+                              }
+                          }
+                          .padding(.horizontal, 14)
+                      }
+                      .scrollIndicators(.hidden)
+                  }
+              }) {
             ForEach(vistas) { p in
                 NavigationLink { ProveedorDetalleView(p: p) } label: {
                 FilaCard {
@@ -37,8 +91,18 @@ struct ProveedoresView: View {
                                 .foregroundStyle(p.condicion == "Contado" ? Tint.okInk : Tint.infoInk)
                         }
                         Spacer(minLength: 0)
-                        if !p.activo {
-                            Chip(texto: "Inactivo", bg: Tint.errorBg, ink: Tint.errorInk)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            if !p.activo {
+                                Chip(texto: "Inactivo", bg: Tint.errorBg, ink: Tint.errorInk)
+                            }
+                            // "Al día" y no un cero: un cero en guaraníes al
+                            // lado de un nombre se lee como un importe, y hay
+                            // que mirarlo dos veces para entender que no se
+                            // debe nada.
+                            let d = deuda(p.id)
+                            Text(d > 0 ? Panel.gs(d) : "Al día")
+                                .font(Tipo.barlow(.semibold, 12.5))
+                                .foregroundStyle(d > 0 ? Tint.avisoInk : Tint.okInk)
                         }
                     }
                 }
@@ -64,8 +128,20 @@ struct ProveedoresView: View {
 
     private func cargar() async {
         cargando = filas.isEmpty
-        do { filas = try await RepoERP.proveedores(); error = nil }
-        catch { self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar." }
+        do {
+            // En paralelo: son dos viajes que no dependen uno del otro y
+            // encadenarlos duplica la espera.
+            async let p = RepoERP.proveedores()
+            async let c = RepoERP.compras()
+            filas = try await p
+            // Si las compras no vienen, los proveedores igual se muestran: sin
+            // deuda, pero se muestran. Quedarse con la pantalla en blanco
+            // porque falló el dato de al lado es peor.
+            compras = (try? await c) ?? []
+            error = nil
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar."
+        }
         cargando = false
     }
 }
