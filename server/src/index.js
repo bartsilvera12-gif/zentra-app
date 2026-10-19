@@ -67,7 +67,13 @@ import {
   registrarPago,
   usuarioDelToken,
 } from "./db.js";
-import { paginaEliminarCuenta, paginaPagar, paginaPrivacidad, paginaResultado } from "./pagina.js";
+import {
+  paginaEliminarCuenta,
+  paginaPagar,
+  paginaPrivacidad,
+  paginaResultado,
+  paginaSoporte,
+} from "./pagina.js";
 import { esCobroDePrueba } from "./cobro-prueba.js";
 
 const PORT = Number(process.env.PORT || 8790);
@@ -406,6 +412,22 @@ app.get("/privacidad", (_req, res) => {
 app.get("/eliminar-cuenta", (_req, res) => {
   res.type("html").send(
     paginaEliminarCuenta({
+      whatsapp: process.env.SOPORTE_WHATSAPP || "595973989068",
+      email: process.env.CONTACTO_EMAIL || "",
+    }),
+  );
+});
+
+/**
+ * La pagina de soporte.
+ *
+ * Apple la pide obligatoria para la ficha y la abre durante la revision. Va
+ * al lado de las otras dos por la misma razon: son las tres direcciones que
+ * mira la tienda y conviene que vivan juntas.
+ */
+app.get("/soporte", (_req, res) => {
+  res.type("html").send(
+    paginaSoporte({
       whatsapp: process.env.SOPORTE_WHATSAPP || "595973989068",
       email: process.env.CONTACTO_EMAIL || "",
     }),
