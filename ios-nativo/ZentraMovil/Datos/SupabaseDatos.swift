@@ -96,7 +96,7 @@ enum SupabaseDatos {
         let datos: Data
         let resp: URLResponse
         do { (datos, resp) = try await URLSession.shared.data(for: req) }
-        catch { throw ApiError.sinRed }
+        catch { throw ApiError.deRed(error) }
 
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         // `.fragmentsAllowed` porque una función que devuelve texto contesta un
