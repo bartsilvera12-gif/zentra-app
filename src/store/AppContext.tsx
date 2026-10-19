@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { alVolver } from "@/lib/alVolver";
+import { esNativo } from "@/lib/nativo";
 import { IVAS } from "@/lib/data";
 import { desactivarPush, escucharAvisos, pushPreferido, reanudarPush } from "@/lib/push";
 import { MODULES, THEME } from "@/lib/theme";
@@ -183,6 +184,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * El token de avisos se vuelve a registrar acá por el mismo motivo que al
    * entrar: cambia al reinstalar, y la fila de la base está atada al usuario.
    */
+  /**
+   * Marcar que esto es la app y no la maqueta.
+   *
+   * Los estilos necesitan saberlo para sacar el marco del teléfono dibujado.
+   * No se puede preguntar por el ancho: una tablet es ancha y sigue siendo la
+   * app. Va en el `<html>` para que valga desde el primer pintado de cada
+   * pantalla.
+   */
+  useEffect(() => {
+    if (esNativo()) document.documentElement.classList.add("zt-nativo");
+  }, []);
+
   useEffect(() => {
     let vigente = true;
     void restaurarSesion({
