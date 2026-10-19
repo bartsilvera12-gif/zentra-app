@@ -551,11 +551,43 @@ enum RepoERP {
                 mensaje: "La consulta a la SET la hace el ERP, y esta instalación no tiene uno. Escribí el nombre a mano.",
                 ruta: "/set")
         }
-        let crudo = try await ApiERP.get("/set/\(esc(doc))") { $0 }
+        // Dos rutas, porque los ERPs no se pusieron de acuerdo.
+        //
+        // `docs/API-ERP.md` documenta `GET /set/:doc`, y es la que la app
+        // viene llamando. Pero el ERP de Amasso —el unico donde encontre la
+        // consulta implementada de verdad— expone
+        // `GET /set/consulta-ruc?ruc=…`, que llama al servicio de la DNIT con
+        // la clave del contribuyente. Contra ese, la documentada da 404, y el
+        // boton de la SET del alta de cliente nunca funciono ahi.
+        //
+        // Se prueba la documentada primero y la otra despues. Un 404 o un 501
+        // no es una respuesta: es "esta ruta no existe aca". Cualquier otro
+        // error se deja pasar, porque si contesto pero mal, el problema es ese.
+        let crudo: Any
+        do {
+            crudo = try await ApiERP.get("/set/\(esc(doc))") { $0 }
+        } catch let e as ApiError {
+            guard case .http(let status, _, _) = e, [404, 405, 501].contains(status) else { throw e }
+            crudo = try await ApiERP.get("/set/consulta-ruc", query: ["ruc": doc]) { $0 }
+        }
+
         guard let o = desenvolver(crudo),
               let razon = primero(o["razonSocial"], o["razon_social"], o["nombre"])
         else { return nil }
-        let activo = (o["activo"] as? Bool) ?? true
+
+        // La forma documentada trae `activo` como booleano; la de la DNIT trae
+        // `estado` como texto: "ACTIVO", "SUSPENSION TEMPORAL", "CANCELADO".
+        // Si no dice nada se asume activo: un proveedor que factura y que
+        // nosotros marcamos suspendido por una respuesta incompleta es peor
+        // que uno suspendido que figura normal.
+        let activo: Bool
+        if let b = o["activo"] as? Bool {
+            activo = b
+        } else if let estado = o["estado"] as? String {
+            activo = estado.uppercased().contains("ACTIVO")
+        } else {
+            activo = true
+        }
         return (razon, activo)
     }
 

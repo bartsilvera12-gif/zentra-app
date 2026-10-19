@@ -583,12 +583,37 @@ struct NuevoProveedorView: View {
     @State private var rubros: [RepoERP.Opcion] = []
     @State private var guardando = false
     @State private var error: String?
+    @State private var consultando = false
+    @State private var avisoSet: String?
 
     /// El proveedor que se está corrigiendo. `nil` es un alta.
     var editando: Proveedor?
     var alGuardar: (Proveedor) -> Void = { _ in }
 
     private var esEdicion: Bool { editando != nil }
+
+    /// Le pregunta a la SET por ese RUC y completa la razón social.
+    ///
+    /// Un INACTIVO no impide guardar: hay proveedores que facturan con el RUC
+    /// suspendido y el comercio igual tiene que poder anotar la compra. Se
+    /// dice y se sigue.
+    private func consultarSet() async {
+        consultando = true; avisoSet = nil
+        defer { consultando = false }
+        do {
+            if let r = try await RepoERP.consultarSet(ruc.trimmingCharacters(in: .whitespaces)) {
+                nombre = r.razonSocial
+                avisoSet = r.activo
+                    ? "Encontrado en la SET: \(r.razonSocial)"
+                    : "Encontrado, pero figura INACTIVO en la SET."
+            } else {
+                avisoSet = "No se encontró ese documento en la SET. Podés cargarlo a mano."
+            }
+        } catch {
+            avisoSet = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos consultar la SET."
+        }
+    }
 
     /// Carga el formulario con lo que ya tiene.
     private func precargar() {
@@ -631,6 +656,31 @@ struct NuevoProveedorView: View {
                     Bloque(titulo: "PROVEEDOR") {
                         campo("Nombre o razón social", $nombre)
                         campo("RUC", $ruc, codigo: true)
+
+                        // La misma consulta que ya tenía el alta de cliente.
+                        //
+                        // Un proveedor se carga con la factura delante, y la
+                        // razón social de una factura es justo lo que más se
+                        // escribe mal: "S.A." o "SA", con punto o sin punto,
+                        // con el nombre de fantasía en vez del legal. Después
+                        // no coincide con nada y hay dos proveedores que son
+                        // el mismo.
+                        Button { Task { await consultarSet() } } label: {
+                            HStack(spacing: 8) {
+                                if consultando { ProgressView().controlSize(.small) }
+                                Text("Consultar en la SET").font(Tipo.barlow(.semibold, 13.5))
+                            }
+                            .foregroundStyle(C.azulMedio)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(ruc.trimmingCharacters(in: .whitespaces).isEmpty || consultando)
+
+                        if let avisoSet {
+                            Text(avisoSet).font(Tipo.barlow(.regular, 12))
+                                .foregroundStyle(Tint.infoInk)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10).background(Tint.infoBg, in: .rect(cornerRadius: 10))
+                        }
                         // El rubro son las categorías del ERP, no texto libre:
                         // mandarlo escrito a mano no lo clasificaría en nada.
                         if rubros.isEmpty {

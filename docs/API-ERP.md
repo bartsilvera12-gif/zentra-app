@@ -463,6 +463,26 @@ Consulta de RUC en la SET. `null` si no existe.
 { "razonSocial": "SUPERMERCADO AURORA SA", "activo": true }
 ```
 
+**Ojo: hay ERPs que la exponen en otra ruta.** El de Amasso —el único donde
+encontré la consulta implementada de verdad— usa:
+
+```
+GET /set/consulta-ruc?ruc=80012345-6
+```
+
+y devuelve lo que manda la DNIT, con `razon_social` y `estado` como texto
+(`"ACTIVO"`, `"SUSPENSION TEMPORAL"`, `"CANCELADO"`) en vez de `activo` como
+booleano. Contra ese ERP, la ruta documentada arriba da 404, así que el botón
+de la SET del alta de cliente nunca funcionó ahí.
+
+La app iOS prueba las dos: primero la documentada, y si contesta 404, 405 o
+501, la otra. Android todavía llama sólo a la documentada, y en proveedores ni
+eso: `proveedores.consultarSet` es un `pendiente()` que tira "falta definir el
+endpoint real".
+
+La clave de la SET es del contribuyente y tiene cupo de consultas, por eso la
+llamada la hace el ERP y nunca la app.
+
 ### `GET /productos?q=&filtro=&vendibles=`
 
 ```json
