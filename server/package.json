@@ -8,11 +8,12 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "prueba": "node src/prueba.js",
-    "test": "node test.mjs && node test-pagina.mjs && node test-play.mjs",
+    "test": "node test.mjs && node test-pagina.mjs && node test-play.mjs && node test-apple.mjs",
     "test:cuentas": "node test.mjs",
     "test:pagina": "node test-pagina.mjs",
     "test:play": "node test-play.mjs",
-    "consulta": "node src/consulta.js"
+    "consulta": "node src/consulta.js",
+    "test:apple": "node test-apple.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
