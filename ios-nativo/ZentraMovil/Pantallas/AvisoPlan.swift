@@ -215,7 +215,15 @@ struct HojaPlanes: View {
 
             // El botón sólo en los planes que no son el tuyo y que se pueden
             // comprar. En el gratis no hay nada que cobrar.
-            if conCompras == true, !esElTuyo, p != .free {
+            //
+            // `deApple[p]` y no `conCompras` a secas: que la App Store sepa
+            // cobrar no quiere decir que haya algo que comprar. Si Apple
+            // conoce Emprendedor y todavía no Max —porque falta crearlo o
+            // está esperando aprobación—, el botón de Max abriría una compra
+            // que falla con "producto no disponible", y quien la toca se
+            // queda sin saber si el problema es la app, su tarjeta o su
+            // teléfono. Si hay precio, hay producto.
+            if !esElTuyo, p != .free, deApple[p] != nil {
                 Button {
                     Task { await comprar(p) }
                 } label: {
