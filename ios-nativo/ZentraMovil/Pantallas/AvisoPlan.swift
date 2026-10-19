@@ -18,6 +18,18 @@ import SwiftUI
 /// aprobar en App Store Connect— queda la hoja informativa con la salida de
 /// escribirnos. Informar qué incluye cada plan no está prohibido; dirigir a
 /// comprar afuera, sí.
+/// Lo que mide el contenido de la hoja.
+///
+/// SwiftUI no tiene una altura "lo que ocupe": o se elige media pantalla, o
+/// entera, o un numero fijo. Con media se cortaba el ultimo plan y con entera
+/// quedaba medio telefono en blanco, asi que se mide y se usa ese numero.
+private struct AltoDelContenido: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct HojaPlanes: View {
     /// El motivo, tal como lo escribió `Planes.motivoBloqueo()`.
     let motivo: String
@@ -35,8 +47,19 @@ struct HojaPlanes: View {
     @State private var conCompras: Bool?
     @State private var comprando: Plan?
     @State private var falla = ""
+    @State private var alto: CGFloat = 0
 
     private var actual: Plan { estado.tenant?.plan ?? .free }
+
+    /// Las alturas que puede tomar la hoja.
+    ///
+    /// Los 44 son el tirador de arriba, que esta fuera del scroll y por lo
+    /// tanto fuera de lo medido. Mientras no se midio nada va entera: abrir
+    /// chica y crecer se ve peor que abrir grande.
+    private var alturas: Set<PresentationDetent> {
+        guard alto > 0 else { return [.large] }
+        return [.height(alto + 44), .large]
+    }
 
     /// El título, que no siempre es el mismo.
     ///
@@ -102,6 +125,9 @@ struct HojaPlanes: View {
                     .padding(.top, 6).padding(.bottom, 2)
             }
             .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
+            .background(GeometryReader { g in
+                Color.clear.preference(key: AltoDelContenido.self, value: g.size.height)
+            })
             }
             // Anclado abajo, no a continuación de las tarjetas.
             //
@@ -112,12 +138,18 @@ struct HojaPlanes: View {
             .safeAreaInset(edge: .bottom) { pie }
         }
         .background(t.card)
-        // Entera y no a medias.
+        .onPreferenceChange(AltoDelContenido.self) { alto = $0 }
+        // A la medida del contenido.
         //
         // Abria en `.medium` y los tres planes no entran: el ultimo quedaba
-        // cortado detras del pie, y justo el ultimo es Max —el que mas se
-        // quiere mostrar— o el que ya tenes, que aparece con media tarjeta.
-        .presentationDetents([.large])
+        // cortado detras del pie, y justo ese es Max —el que mas se quiere
+        // mostrar— o el que ya tenes. Con `.large` entran, pero en un telefono
+        // grande sobra medio alto en blanco.
+        //
+        // `.height` se recorta solo cuando el contenido no entra, asi que en
+        // un telefono chico se comporta como `.large` sin hacer nada especial.
+        // `.large` queda como segunda altura para poder arrastrarla.
+        .presentationDetents(alturas)
         // Apagado: el nuestro va arriba, en la franja que no scrollea.
         .presentationDragIndicator(.hidden)
         .task {
