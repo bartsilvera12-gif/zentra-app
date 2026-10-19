@@ -420,10 +420,41 @@ struct CompraDetalleView: View {
     let c: Compra
     @Environment(\.tema) private var t
 
+    /// Los renglones de la compra.
+    ///
+    /// Si no vienen —el ERP manda una compra por producto— se arma uno solo
+    /// con los campos sueltos, así el resto de la pantalla no necesita saber
+    /// de dónde vino la compra.
+    private var lineas: [CompraLinea] {
+        guard c.lineas.isEmpty else { return c.lineas }
+        return [CompraLinea(prodId: "", nombre: c.producto, unidad: "",
+                            cantidad: c.cantidad, costo: c.costo, iva: c.iva)]
+    }
+
     /// En compras el IVA va POR ENCIMA del costo: el proveedor cotiza neto.
     /// Es al revés que en ventas, y confundirlo cambia el total.
-    private var neto: Int { Int((Double(c.costo) * c.cantidad).rounded()) }
-    private var iva: Int { Int((Double(neto) * RepoERP.tasa(c.iva)).rounded()) }
+    private var neto: Int {
+        Int(lineas.reduce(0.0) { $0 + Double($1.costo) * $1.cantidad }.rounded())
+    }
+
+    /// El IVA de cada tasa por separado.
+    ///
+    /// Una compra puede mezclar 10 % y 5 % —arroz y cerveza en la misma
+    /// factura— y un solo renglón de "IVA" no se puede cruzar con el
+    /// comprobante del proveedor, que los discrimina. Se suma sin redondear y
+    /// se redondea una vez al final.
+    private var ivaPorTasa: [(Iva, Int)] {
+        var por: [Iva: Double] = [:]
+        for l in lineas where RepoERP.tasa(l.iva) > 0 {
+            por[l.iva, default: 0] += Double(l.costo) * l.cantidad * RepoERP.tasa(l.iva)
+        }
+        return [Iva.diez, .cinco].compactMap { i in
+            guard let v = por[i], v > 0 else { return nil }
+            return (i, Int(v.rounded()))
+        }
+    }
+
+    private var iva: Int { ivaPorTasa.reduce(0) { $0 + $1.1 } }
 
     var body: some View {
         ScrollView {
@@ -436,16 +467,36 @@ struct CompraDetalleView: View {
                              bg: c.pagada ? Tint.okBg : Tint.avisoBg,
                              ink: c.pagada ? Tint.okInk : Tint.avisoInk)
                     }
-                    Dato(k: "Producto", v: c.producto)
+                    if !c.proveedor.isEmpty { Dato(k: "Proveedor", v: c.proveedor) }
                     Dato(k: "Fecha", v: c.fecha)
                     Dato(k: "Condición", v: c.pago)
                     Dato(k: "Comprobante", v: c.factura)
                 }
-                Bloque(titulo: "IMPORTES") {
-                    Dato(k: "Cantidad", v: String(Int(c.cantidad)))
-                    Dato(k: "Costo unitario (neto)", v: Panel.gs(c.costo))
+
+                // Todos los renglones, no el primero.
+                //
+                // Acá se veía un solo producto y un TOTAL que era el de ese
+                // renglón: una compra de cuatro productos por 897.480 se abría
+                // y decía 181.440. El listado ya estaba arreglado; esto no.
+                Bloque(titulo: "DETALLE") {
+                    ForEach(Array(lineas.enumerated()), id: \.offset) { _, l in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(l.nombre).font(Tipo.barlow(.regular, 13))
+                                    .foregroundStyle(t.ink).lineLimit(2)
+                                Text("\(l.cantidad == l.cantidad.rounded() ? String(Int(l.cantidad)) : String(format: "%.3f", l.cantidad)) × \(Panel.gs(l.costo)) · IVA \(l.iva.rawValue)")
+                                    .font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink3)
+                            }
+                            Spacer(minLength: 8)
+                            Text(Panel.gs(Int((Double(l.costo) * l.cantidad).rounded())))
+                                .font(Tipo.barlow(.semibold, 13)).foregroundStyle(t.ink)
+                        }
+                    }
+                    Divider()
                     Dato(k: "Neto", v: Panel.gs(neto))
-                    Dato(k: "IVA \(c.iva.rawValue) sobre el costo", v: Panel.gs(iva))
+                    ForEach(ivaPorTasa, id: \.0) { tasa, monto in
+                        Dato(k: "IVA \(tasa.rawValue) sobre el costo", v: Panel.gs(monto))
+                    }
                     HStack {
                         Text("TOTAL").font(Tipo.barlow(.semibold, 12)).tracking(1.2)
                             .foregroundStyle(t.ink2)
