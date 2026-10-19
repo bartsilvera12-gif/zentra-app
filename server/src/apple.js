@@ -334,3 +334,118 @@ export function revisarTransaccion(tx, { productId, bundle = BUNDLE, ahora = Dat
     prueba: String(tx.environment || "") !== "Production",
   };
 }
+
+/* ───────────────── los avisos que manda Apple sola ───────────────── */
+
+/**
+ * Los avisos ante los que hay algo que hacer.
+ *
+ * `SUBSCRIBED` es la primera compra y la resuscripción de alguien que se
+ * había ido; `DID_RENEW`, el mes que se renovó solo. Los dos traen plata
+ * nueva y una fecha de vencimiento más lejos, que es lo único que mueve el
+ * acceso.
+ */
+export const AVISOS_QUE_RENUEVAN = Object.freeze(["SUBSCRIBED", "DID_RENEW"]);
+
+/**
+ * Los avisos que piden que un humano mire.
+ *
+ * Son los que sacan plata que ya se contó: Apple devolvió el mes, o le quitó
+ * el acceso a alguien de un grupo familiar. No se arreglan solos acá porque
+ * acortar un vencimiento no es empujarlo —`registrar_pago_pasarela` sólo sabe
+ * sumar— y bajarle el plan a una empresa por un mensaje mal leído es peor que
+ * regalarle los días que faltan. Quedan gritados en el registro.
+ */
+export const AVISOS_PARA_MIRAR = Object.freeze(["REFUND", "REVOKE"]);
+
+/**
+ * Abre el aviso firmado que manda Apple y devuelve lo de adentro.
+ *
+ * Son tres JWS, uno dentro del otro: el sobre trae el tipo de aviso, y adentro
+ * viajan la transacción y el estado de la renovación, cada una firmada por
+ * separado. Las tres firmas se revisan contra la misma raíz, porque verificar
+ * sólo el sobre dejaría que cualquiera cambie la transacción de adentro.
+ *
+ * No hay secreto compartido ni token que mirar: **la firma es la
+ * autenticación**. Si cierra contra la raíz de Apple, lo mandó Apple.
+ */
+export function verificarAviso(signedPayload, { raiz = raizDeApple() } = {}) {
+  const sobre = verificarJws(signedPayload, { raiz });
+  const datos = sobre?.data && typeof sobre.data === "object" ? sobre.data : {};
+
+  // Las dos de adentro pueden faltar según el tipo de aviso (el de prueba no
+  // trae ninguna), así que se abren sólo si están.
+  const transaccion = datos.signedTransactionInfo
+    ? verificarJws(String(datos.signedTransactionInfo), { raiz })
+    : null;
+  const renovacion = datos.signedRenewalInfo ? verificarJws(String(datos.signedRenewalInfo), { raiz }) : null;
+
+  return {
+    tipo: String(sobre?.notificationType || ""),
+    subtipo: String(sobre?.subtype || ""),
+    // Apple reenvía el mismo aviso hasta que le contesten 200, y el uuid es el
+    // mismo en cada reintento: sirve para encontrar los repetidos en el log.
+    uuid: String(sobre?.notificationUUID || ""),
+    bundle: String(datos.bundleId || ""),
+    entorno: String(datos.environment || ""),
+    transaccion,
+    renovacion,
+  };
+}
+
+/**
+ * Qué corresponde hacer con un aviso ya abierto.
+ *
+ * Aparte y sin red adentro por lo mismo que `revisarTransaccion`: es la parte
+ * que decide, y se prueba armando un objeto a mano.
+ *
+ * Devuelve `renovar` cuando hay que empujar la fecha, `mirar` cuando hace
+ * falta un humano y `nada` para todo lo demás. Ese "todo lo demás" es la
+ * mayoría y es a propósito: que alguien apague la renovación automática
+ * (`DID_CHANGE_RENEWAL_STATUS`) o que una suscripción venza (`EXPIRED`) no
+ * pide ninguna acción, porque el plan ya se cae solo a `free` cuando la fecha
+ * pasa. Actuar ahí sería adelantarse a cortarle el acceso a alguien que pagó
+ * hasta fin de mes.
+ */
+export function quePideElAviso(aviso, { bundle = BUNDLE } = {}) {
+  const nada = (motivo) => ({ accion: "nada", motivo });
+  if (!aviso || typeof aviso !== "object") return nada("Aviso ilegible.");
+
+  if (String(aviso.bundle || "") !== String(bundle)) {
+    // No es de esta app. Puede ser otra app de la misma cuenta apuntando por
+    // error a esta URL; se ignora en vez de activarle el plan a alguien.
+    return { accion: "ajeno", motivo: `El aviso es de otra app (${aviso.bundle || "sin bundle"}).` };
+  }
+
+  const tipo = String(aviso.tipo || "");
+  if (tipo === "TEST") return nada("Aviso de prueba de App Store Connect.");
+  if (AVISOS_PARA_MIRAR.includes(tipo)) return { accion: "mirar", motivo: `${tipo}${aviso.subtipo ? ` · ${aviso.subtipo}` : ""}` };
+  if (!AVISOS_QUE_RENUEVAN.includes(tipo)) return nada(`${tipo || "sin tipo"} no mueve la fecha.`);
+
+  const tx = aviso.transaccion;
+  if (!tx) return nada(`${tipo} llegó sin transacción adentro.`);
+
+  // La transacción se revisa con las mismas reglas que una compra que manda la
+  // app: mismo bundle, suscripción de verdad, no devuelta y con fecha por
+  // delante. El `productId` sale de la propia transacción porque acá no hay
+  // nadie pidiendo un plan: Apple avisa lo que cobró.
+  const revision = revisarTransaccion(tx, { productId: String(tx.productId || ""), bundle });
+  if (!revision.ok) return nada(revision.motivo);
+
+  // El primero de la cadena. Es por donde se encuentra a quién pertenece esta
+  // renovación: el cobro inicial se guardó con esa referencia, porque en la
+  // primera compra el `transactionId` y el `originalTransactionId` son el
+  // mismo número.
+  const original = String(tx.originalTransactionId || "").trim();
+  if (!original) return nada(`${tipo} no trae la transacción original.`);
+
+  return {
+    accion: "renovar",
+    motivo: null,
+    productId: String(tx.productId || ""),
+    referencia: revision.referencia,
+    original,
+    vence: revision.vence,
+    prueba: revision.prueba,
+  };
+}

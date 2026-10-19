@@ -10,6 +10,7 @@
  *   POST /pagopar/webhook       PagoPar avisa que pagó  → empuja el vencimiento
  *   POST /play/verificar        la app compró en Android → empuja el vencimiento
  *   POST /apple/verificar       la app compró en iOS     → empuja el vencimiento
+ *   POST /apple/avisos          Apple avisa que renovó   → empuja el vencimiento
  *
  * La diferencia con la tienda es qué se vende: allá un pedido de ropa, acá un
  * mes de suscripción. Por eso lo que hace el webhook no es marcar un pedido
@@ -50,7 +51,9 @@ import {
   faltaConfigApple,
   PLANES_POR_PRODUCTO as PRODUCTOS_DE_APPLE,
   planDeProducto as planDeProductoApple,
+  quePideElAviso,
   revisarTransaccion,
+  verificarAviso,
   verificarJws,
 } from "./apple.js";
 import {
@@ -919,6 +922,150 @@ app.post("/apple/verificar", async (req, res) => {
     // plata ya salió; lo que no puede pasar es que se pierda.
     console.error("[apple/verificar] error:", e?.message || e);
     return res.status(502).json({ error: "No pudimos confirmar la compra. Probá de nuevo en un rato." });
+  }
+});
+
+/**
+ * Los avisos que manda Apple sola, sin que nadie abra la app.
+ *
+ * Sin esto, el server se entera de una renovación **sólo cuando el cliente
+ * vuelve a abrir la app**: alguien que paga puntual y no entra en una semana
+ * ve su plan vencido, y la app tiene que ir a verificar para destrabarlo. Con
+ * esto, el mes que Apple cobra el 3 se anota el 3.
+ *
+ * La URL se carga en App Store Connect → Información de la app →
+ * "Notificaciones del servidor de App Store", versión 2. Hay una casilla para
+ * producción y otra para sandbox, y conviene poner la misma: los avisos del
+ * entorno de pruebas llegan marcados y se registran aparte, igual que las
+ * compras de prueba.
+ *
+ * No lleva token ni clave: Apple firma el aviso y la firma es la credencial.
+ * Lo que sí importa son los códigos de respuesta, porque Apple reintenta
+ * durante días mientras no reciba un 200: 200 cuando el aviso quedó atendido
+ * (aunque no hubiera nada que hacer), 400 cuando el aviso no sirve —reintentar
+ * no lo va a mejorar— y 500 cuando el que falló fue este server, que es el
+ * único caso en el que el reintento ayuda.
+ */
+app.post("/apple/avisos", async (req, res) => {
+  const problema = faltaApple();
+  if (problema) {
+    // 500 a propósito: que Apple reintente. El aviso es bueno, el que no está
+    // listo es este server, y perderlo sería perder un mes pago.
+    console.error("[apple/avisos]", problema);
+    return res.status(500).json({ error: "Los cobros por la App Store no están configurados todavía." });
+  }
+
+  const firmado = String(req.body?.signedPayload || "").trim();
+  if (!firmado) return res.status(400).json({ error: "Falta signedPayload." });
+
+  let aviso;
+  try {
+    aviso = verificarAviso(firmado);
+  } catch (e) {
+    // Una firma que no cierra no se reintenta: o es un aviso roto o es alguien
+    // probando la puerta. Va entero al registro para poder mirarlo después.
+    console.warn("[apple/avisos] firma rechazada · %s", e?.message || e);
+    return res.status(400).json({ error: "Ese aviso no es válido." });
+  }
+
+  const pide = quePideElAviso(aviso);
+  const marca = `${aviso.tipo}${aviso.subtipo ? `/${aviso.subtipo}` : ""} · uuid ${aviso.uuid || "?"}`;
+
+  if (pide.accion === "ajeno") {
+    console.warn("[apple/avisos] %s · %s", marca, pide.motivo);
+    return res.status(400).json({ error: pide.motivo });
+  }
+
+  if (pide.accion === "mirar") {
+    // Plata que vuelve. No se toca la fecha desde acá —ver AVISOS_PARA_MIRAR—,
+    // pero tiene que quedar a la vista de alguien.
+    console.error(
+      "[apple/avisos] REVISAR A MANO · %s · original %s · producto %s",
+      marca,
+      aviso.transaccion?.originalTransactionId || "?",
+      aviso.transaccion?.productId || "?",
+    );
+    return res.json({ ok: true, accion: "mirar" });
+  }
+
+  if (pide.accion !== "renovar") {
+    console.info("[apple/avisos] %s · %s", marca, pide.motivo);
+    return res.json({ ok: true, accion: "nada" });
+  }
+
+  try {
+    const plan = planDeProductoApple(pide.productId);
+    if (!plan) {
+      // Un producto que este server no conoce. 200 igual: reintentar no lo va
+      // a volver conocido, y lo que falta es cargarlo acá.
+      console.error("[apple/avisos] producto desconocido: %s · %s", pide.productId, marca);
+      return res.json({ ok: true, accion: "nada" });
+    }
+
+    // De quién es esta renovación. El aviso no trae usuario ni empresa —Apple
+    // no los conoce—, así que se llega por la cadena: el cobro de la primera
+    // compra se guardó con el `originalTransactionId` como referencia.
+    const raiz = await cobroPorReferencia("apple", pide.original);
+    if (!raiz?.empresa_id) {
+      // Pasa de verdad y no es un error: una compra hecha antes de que
+      // existiera este endpoint no dejó ese cobro. La app la va a verificar
+      // sola la próxima vez que alguien la abra.
+      console.warn("[apple/avisos] sin cobro previo para la original %s · %s", pide.original, marca);
+      return res.json({ ok: true, accion: "nada" });
+    }
+
+    const def = await planVendible(plan);
+    if (!def) {
+      console.error("[apple/avisos] el plan %s no está a la venta · %s", plan, marca);
+      return res.json({ ok: true, accion: "nada" });
+    }
+
+    if (pide.prueba) {
+      console.warn("[apple/avisos] renovación del entorno de pruebas · plan=%s empresa=%s", plan, raiz.empresa_id);
+    }
+
+    // Mismo camino que una compra que manda la app: cobro y después
+    // `registrar_pago_pasarela`. La idempotencia es la de siempre, la clave
+    // única `(pasarela, referencia)`, y acá hace más falta que nunca: Apple
+    // reenvía el mismo aviso hasta que le contesten 200.
+    const previo = await cobroPorReferencia("apple", pide.referencia);
+    if (!previo) {
+      try {
+        await crearCobro({
+          empresaId: raiz.empresa_id,
+          plan,
+          monto: def.precio_mensual,
+          referencia: pide.referencia,
+          pasarela: "apple",
+          hash: pide.referencia,
+        });
+      } catch (e) {
+        if (!esDuplicado(e)) throw e;
+        console.info("[apple/avisos] el cobro ya existía (aviso repetido)");
+      }
+    } else if (!previo.hash_pedido) {
+      await guardarHash(previo.id, pide.referencia);
+    }
+
+    const r = await registrarPago(pide.referencia, def.precio_mensual, "apple");
+    if (!r || r.resultado === "desconocido") {
+      // Acá sí conviene el reintento: el cobro está y el pago no se registró.
+      console.error("[apple/avisos] registrar_pago_pasarela dijo desconocido para %s", pide.referencia);
+      return res.status(500).json({ error: "No pudimos registrar la renovación." });
+    }
+
+    console.info(
+      "[apple/avisos] %s · %s · empresa %s · %s · vence %s",
+      marca,
+      r.resultado,
+      raiz.empresa_id,
+      plan,
+      r.vence,
+    );
+    return res.json({ ok: true, accion: "renovar", resultado: r.resultado });
+  } catch (e) {
+    console.error("[apple/avisos] error: %s · %s", e?.message || e, marca);
+    return res.status(500).json({ error: "No pudimos procesar el aviso." });
   }
 });
 

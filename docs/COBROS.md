@@ -549,19 +549,57 @@ Hasta que eso exista, la recomendación para el frente de la app es **verificar
 la compra en cada arranque**: es idempotente y es lo que mantiene la fecha al
 día entre renovaciones.
 
-### Lo mismo, del lado de Apple
+### Del lado de Apple esto SÍ está hecho
 
-Apple tiene su equivalente —**App Store Server Notifications V2**— y está
-igual de pendiente, con las mismas cuatro decisiones. La diferencia es que su
-aviso llega firmado, como el comprobante, así que verificarlo es el mismo
-código que ya está en `server/src/apple.js`.
+Apple tiene su equivalente —**App Store Server Notifications V2**— y desde el
+2026-10-19 está escrito: `POST /apple/avisos`. Las cuatro decisiones de arriba
+se resolvieron así:
 
-En iOS el parche de mientras tanto es mejor que una recomendación: ya está
-hecho. `Compras.escuchar()` se engancha a `Transaction.updates`, que es por
-donde Apple entrega las renovaciones, las compras que quedaron esperando
-aprobación y las hechas en otro dispositivo de la misma cuenta. Mientras la
-persona abra la app alguna vez durante el mes, la renovación se registra sola.
-Lo que no tapa, igual que en Android, es el mes en que no la abre nunca.
+1. **Cómo llega.** Un POST a este mismo server, con el aviso firmado en
+   `signedPayload`. No hay token ni secreto compartido: **la firma es la
+   credencial**, y se verifica con el mismo `verificarJws()` que ya validaba
+   los comprobantes. Son tres JWS anidados —el sobre, la transacción y el
+   estado de renovación— y los tres se revisan contra la raíz de Apple;
+   verificar sólo el sobre dejaría cambiar la transacción de adentro.
+2. **De quién es.** El aviso no trae empresa ni usuario, porque Apple no los
+   conoce: trae el `originalTransactionId`. Por eso se llega por la cadena, y
+   funciona porque en la primera compra el `transactionId` y el
+   `originalTransactionId` son el mismo número, que es con el que se guardó
+   aquel cobro. Si ese cobro no existe —una compra anterior a este endpoint—
+   se contesta 200 y no se activa nada: no hay a quién atribuirle el mes.
+3. **Qué hace una renovación.** Lo mismo que una compra que manda la app:
+   `crearCobro` con el `transactionId` **de esta renovación** y después
+   `registrar_pago_pasarela`. Con el original, el segundo mes chocaría contra
+   la clave única `(pasarela, referencia)` y la fecha no se movería.
+4. **Qué hace una cancelación.** Nada, por la razón de siempre. `EXPIRED`,
+   `DID_FAIL_TO_RENEW` y `DID_CHANGE_RENEWAL_STATUS` se contestan y se
+   ignoran: el plan ya se cae solo a `free` cuando pasa la fecha, y adelantarse
+   sería cortarle el acceso a alguien que pagó hasta fin de mes. `REFUND` y
+   `REVOKE` —la plata que vuelve— quedan gritados en el registro con
+   `REVISAR A MANO` y los resuelve una persona, igual que una reversión de
+   PagoPar.
+
+Los códigos de respuesta importan más de lo que parece, porque Apple reintenta
+durante días mientras no reciba un 200: **200** cuando el aviso quedó atendido
+aunque no hubiera nada que hacer, **400** cuando el aviso no sirve y
+reintentarlo no lo va a mejorar (firma que no cierra, otra app), y **500** sólo
+cuando el que falló fue este server —el único caso donde el reintento ayuda—.
+Por eso un aviso que llega con los cobros de Apple sin configurar devuelve 500
+y no 200: perderlo sería perder un mes pago.
+
+**Falta cargar la URL en App Store Connect** → Información de la app →
+"Notificaciones del servidor de App Store", versión 2:
+
+    https://cobros.neura.com.py/apple/avisos
+
+Va en la casilla de producción y en la de sandbox: los avisos del entorno de
+pruebas llegan marcados y se registran aparte, igual que las compras de prueba.
+
+El parche de mientras tanto sigue estando y no sobra: `Compras.escuchar()` se
+engancha a `Transaction.updates`, que es por donde Apple entrega las
+renovaciones, las compras que quedaron esperando aprobación y las hechas en
+otro dispositivo de la misma cuenta. Ahora son dos caminos a la misma fecha, y
+los dos son idempotentes.
 
 ## Lo que no hace sola
 
