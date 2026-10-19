@@ -11,6 +11,7 @@ dist/
 # archivos. Van sin prefijo de ruta, igual que `build/`, para que tambien valgan
 # si manana se compila desde otra carpeta.
 build-device/
+build-archive/
 DerivedData/
 *.noindex/
 
