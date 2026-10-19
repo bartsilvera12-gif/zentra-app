@@ -384,6 +384,121 @@ después y en la plata: un token falsificado que activa un plan, una compra que
 nunca se reconoce, un comprobante de Emprendedor que se lleva un Max, el mismo
 token mandado dos veces.
 
+## Cobrar en iOS con la App Store
+
+Apple pide lo mismo que Google: vender una suscripcion adentro de una app de la
+App Store obliga a cobrar con su sistema, y mandar a pagar afuera —con un boton,
+un enlace o hasta un texto con la direccion— esta prohibido. Paraguay tampoco
+entra en las excepciones. Asi que la app iOS vende con la caja de Apple.
+
+La estructura es la misma que la de Play y las reglas son identicas, asi que lo
+de arriba vale entero. Lo que cambia es **como se comprueba la compra**, y es la
+unica diferencia que importa:
+
+| | Google Play | App Store |
+|---|---|---|
+| Lo que recibe la app | un `purchaseToken` opaco | la transaccion firmada por Apple (un JWS) |
+| Como se comprueba | preguntandole a Google por HTTP | verificando la firma, sin red |
+| Que hace falta guardar | cuenta de servicio + su clave privada | nada |
+| Donde vive | `server/src/play.js` | `server/src/apple.js` |
+
+Un `purchaseToken` es un numero de guardarropa: no dice nada, hay que ir a
+preguntar. Apple, en cambio, entrega la transaccion ya firmada, con la cadena de
+certificados adentro. Comprobarla es verificar esa firma contra el certificado
+raiz de Apple, que es publico y esta en `server/src/apple-root-ca-g3.pem`.
+Resultado: **no hay ninguna credencial de Apple que guardar ni que rotar**.
+Falsificar un comprobante es falsificar una firma de Apple.
+
+### El recorrido de una compra
+
+1. La persona toca "Suscribirme a Max" en la hoja de planes.
+2. StoreKit abre la caja de Apple y cobra.
+3. Apple le devuelve a la app la transaccion firmada.
+4. La app llama a `POST /apple/verificar` con el `productId` y el comprobante.
+5. El server comprueba la firma, el bundle, el producto, que no este devuelta y
+   que no este vencida.
+6. Si todo cierra: `registrar_pago_pasarela` con `pasarela = 'apple'`, que es lo
+   unico que mueve `empresas.vence`.
+7. **Recien ahi** la app termina la transaccion (`finish()`).
+
+Ese orden del paso 7 es el equivalente del `acknowledge` de Google, y es igual
+de importante. Una transaccion sin terminar Apple la vuelve a ofrecer cada vez
+que arranca la app, asi que una compra que se cobro y no se pudo registrar se
+recupera sola en el proximo arranque (`Compras.reclamarPendientes()`). Una que
+se termina antes de que el server confirme desaparece para siempre, con la plata
+ya cobrada.
+
+La referencia que se guarda es el `transactionId`, no el comprobante entero: el
+JWS son miles de caracteres y cambia de forma cuando Apple rota sus
+certificados. El `transactionId` es unico por cobro y **nuevo en cada
+renovacion**, que es justo lo que hace falta para que el mes que viene se pueda
+volver a empujar la fecha. Con el `originalTransactionId` la segunda renovacion
+chocaria contra la clave unica `(pasarela, referencia)` de `zentra.pagos` y se
+tratarian como repetida: el cliente pagaria el mes y la fecha no se moveria.
+
+### La configuracion
+
+```
+APPLE_BUNDLE_ID=py.com.zentra.movil.nativo
+```
+
+Y nada mas. **OJO con el bundle**: no es el mismo que el paquete de Android ni
+que el de la otra app iOS (la del WebView, que es `py.com.zentra.movil`). Si
+esta mal, *todas* las compras se rechazan con "esa compra no es de esta app" y
+no hay ninguna otra pista.
+
+Hay un `APPLE_ROOT_CA_PEM` que reemplaza el certificado raiz. **Nunca va en
+produccion**: con eso los comprobantes se comprueban contra una firma que no es
+de Apple, y cualquiera se arma una cadena propia y se activa Max gratis. Existe
+solo para que las pruebas puedan firmar comprobantes de mentira. Si esta puesta,
+el server lo grita al arrancar y `/apple/health` lo dice.
+
+### Los productos en App Store Connect
+
+Se crean en **Monetizacion → Suscripciones**, con un grupo de suscripcion y los
+mismos ids que en Play:
+
+| Producto | Plan |
+|---|---|
+| `zentra_emprendedor_mensual` | `emprendedor` |
+| `zentra_max_mensual` | `max` |
+
+Que coincidan con los de Google es por comodidad, no por obligacion: son dos
+catalogos separados. La ventaja es que una sola linea de un registro alcanza
+para saber que se compro.
+
+El precio se carga aparte del de `zentra.planes` y, igual que con Play, **los
+dos hay que mantenerlos a mano**. La app muestra el de Apple cuando lo tiene,
+porque es el que se va a cobrar (Apple cobra en la moneda de la cuenta y le suma
+sus impuestos); el que se anota en el libro sale siempre de la base.
+
+### Probarlo
+
+Sin productos aprobados no hay compra que probar. Hay dos formas, y conviene las
+dos:
+
+```bash
+cd server && npm run test:apple
+```
+
+Levanta un Supabase local, firma comprobantes con una cadena de certificados de
+mentira (`server/test-apple-cadena.mjs`) y recorre lo que, cuando esta mal, se
+nota meses despues y en la plata: una firma falsificada que activa un plan, un
+comprobante de Emprendedor que se lleva un Max, la misma compra mandada dos
+veces, una renovacion tratada como repetida. La prueba que mas importa es la que
+comprueba que esa misma cadena, contra la raiz de Apple de verdad, **se
+rechaza**.
+
+Del lado de la app hay un catalogo local en
+`ios-nativo/ZentraMovil/Recursos/Zentra.storekit`, ya enganchado al esquema. Al
+correr desde Xcode, StoreKit usa esa tienda de mentira: aparecen los botones de
+comprar y se puede recorrer la compra entera sin pagar ni tener nada aprobado.
+**Antes de probar contra el sandbox de Apple hay que destildarlo** en Product →
+Scheme → Edit Scheme → Run → Options → StoreKit Configuration, porque mientras
+este puesto la app no habla con Apple. Las compras de la tienda local estan
+firmadas por un certificado local, asi que el server las rechaza —como debe—: lo
+que se prueba ahi es la app, no el circuito entero.
+
 ## Lo que todavía NO está hecho: las notificaciones de Google
 
 **El plan se activa al comprar y nada más.** Hoy el server se entera de una
@@ -431,6 +546,20 @@ Hasta que eso exista, la recomendación para el frente de la app es **verificar
 la compra en cada arranque**: es idempotente y es lo que mantiene la fecha al
 día entre renovaciones.
 
+### Lo mismo, del lado de Apple
+
+Apple tiene su equivalente —**App Store Server Notifications V2**— y está
+igual de pendiente, con las mismas cuatro decisiones. La diferencia es que su
+aviso llega firmado, como el comprobante, así que verificarlo es el mismo
+código que ya está en `server/src/apple.js`.
+
+En iOS el parche de mientras tanto es mejor que una recomendación: ya está
+hecho. `Compras.escuchar()` se engancha a `Transaction.updates`, que es por
+donde Apple entrega las renovaciones, las compras que quedaron esperando
+aprobación y las hechas en otro dispositivo de la misma cuenta. Mientras la
+persona abra la app alguna vez durante el mes, la renovación se registra sola.
+Lo que no tapa, igual que en Android, es el mes en que no la abre nunca.
+
 ## Lo que no hace sola
 
 **Una reversión no quita el mes.** Llega como `pagado: false` sobre un pedido
@@ -466,12 +595,13 @@ externos de 2026 llega a Estados Unidos, el Reino Unido y el EEE — Paraguay no
 está.
 
 Eso no cambió. Lo que cambió es la respuesta: en vez de no cobrar en Android, se
-cobra **con la caja de Google**, que es lo que la política pide. Así que ahora
-hay dos:
+cobra **con la caja de cada tienda**, que es lo que la política pide. Así que
+ahora hay tres:
 
 | Dónde compra | Quién cobra | Cómo se entera el server |
 |---|---|---|
 | App Android | Google Play | La app llama a `POST /play/verificar` y el server le pregunta a Google |
+| App iOS | App Store | La app llama a `POST /apple/verificar` y el server comprueba la firma de Apple |
 | Navegador | Pagopar | Pagopar le pega a `POST /pagopar/webhook` |
 
 Pagopar no se va a ningún lado, y no es por nostalgia: es el único camino que
@@ -479,7 +609,10 @@ toma pago por QR y transferencia, que es cómo paga mucha gente acá, y el únic
 que sirve para quien usa Zentra desde la computadora. Google cobra su comisión y
 sólo funciona en Android.
 
+Pagopar sigue siendo mejor negocio que las dos tiendas —no hay comisión—, pero
+las apps no pueden nombrarlo.
+
 Lo que **no** hay que hacer nunca es ofrecer el link de la página web adentro de
-la app Android: eso es exactamente lo que la política prohíbe, y se paga con la
+las apps: eso es exactamente lo que las políticas prohíben, y se paga con la
 baja de la app. El link de `/pagar` se comparte por fuera —WhatsApp, el correo,
-la web— y adentro de la app el botón es el de Google.
+la web— y adentro de cada app el botón es el de su tienda.

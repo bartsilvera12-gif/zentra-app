@@ -9,17 +9,18 @@
  *   POST /pagopar/crear-cobro   la persona quiere pagar → devuelve a dónde ir
  *   POST /pagopar/webhook       PagoPar avisa que pagó  → empuja el vencimiento
  *   POST /play/verificar        la app compró en Android → empuja el vencimiento
+ *   POST /apple/verificar       la app compró en iOS     → empuja el vencimiento
  *
  * La diferencia con la tienda es qué se vende: allá un pedido de ropa, acá un
  * mes de suscripción. Por eso lo que hace el webhook no es marcar un pedido
  * como pagado sino empujar una fecha.
  *
- * Son dos cajas y una sola fecha. En la web cobra PagoPar y en Android cobra
- * Google, porque adentro de la app Google no deja cobrar por otro lado; pero
- * las dos terminan en `registrar_pago_pasarela`, que es lo único que mueve
- * `empresas.vence`. Si cada caja activara a su manera, el día que se arregle
- * una la otra va a quedar vieja y la fecha va a depender de por dónde pagó
- * cada cliente.
+ * Son tres cajas y una sola fecha. En la web cobra PagoPar, en Android cobra
+ * Google y en iOS cobra Apple, porque adentro de la app ni Google ni Apple
+ * dejan cobrar por otro lado; pero las tres terminan en
+ * `registrar_pago_pasarela`, que es lo único que mueve `empresas.vence`. Si
+ * cada caja activara a su manera, el día que se arregle una las otras van a
+ * quedar viejas y la fecha va a depender de por dónde pagó cada cliente.
  */
 import "dotenv/config";
 import express from "express";
@@ -44,6 +45,14 @@ import {
   revisarSuscripcion,
   traerSuscripcion,
 } from "./play.js";
+import {
+  configAppleALaVista,
+  faltaConfigApple,
+  PLANES_POR_PRODUCTO as PRODUCTOS_DE_APPLE,
+  planDeProducto as planDeProductoApple,
+  revisarTransaccion,
+  verificarJws,
+} from "./apple.js";
 import {
   cobroPendiente,
   cobroPorHash,
@@ -709,6 +718,188 @@ app.post("/play/verificar", async (req, res) => {
   }
 });
 
+/* ──────────────────────────── los cobros de iOS ──────────────────────────── */
+
+/**
+ * Lo que falta para poder cobrar en iOS.
+ *
+ * Separado de `faltaPlay()` por lo mismo que ése está separado de PagoPar: un
+ * despliegue sin el bundle de iOS no tiene por qué apagar los cobros de
+ * Android. La lista es corta porque acá no hay credenciales —la firma de Apple
+ * se comprueba contra un certificado público que está en el repositorio—, pero
+ * la base sigue sin ser opcional.
+ */
+function faltaApple() {
+  const problema = faltaConfigApple();
+  if (problema) return problema;
+  if (!configurada()) return "falta la configuración de Supabase";
+  return null;
+}
+
+/** Para ver de un vistazo si los cobros de iOS están en pie. */
+app.get("/apple/health", (_req, res) => {
+  const problema = faltaApple();
+  res.json({
+    ok: !problema,
+    servicio: "zentra-cobros",
+    apple: configAppleALaVista(),
+    // Los productos que la app puede mandar. Cuando App Store Connect y el
+    // código no coinciden, esto se ve de un vistazo en vez de deducirse de un
+    // 400 que dice "ese producto no existe" sin decir cuáles sí.
+    productos: PRODUCTOS_DE_APPLE,
+    base: configurada() ? "configurada" : "FALTA SUPABASE_URL / SERVICE_ROLE_KEY",
+    ...(problema ? { problema } : {}),
+  });
+});
+
+/**
+ * Verifica la compra de iOS y activa el plan.
+ *
+ * El orden es el mismo que en Android, con un paso menos:
+ *
+ *   1. Se comprueba la firma de Apple. Hasta acá no se toca la base: un
+ *      comprobante inventado no deja ni rastro, y no hay viaje de red que
+ *      alguien pueda hacer esperar.
+ *   2. El cobro y el pago, con el monto de `zentra.planes`.
+ *
+ * El paso que falta es el `acknowledge` de Google, y no falta porque no haga
+ * falta: en iOS el equivalente lo hace la app, llamando a `finish()` en la
+ * transacción. Lo que importa es cuándo: la app tiene que esperar a que este
+ * endpoint conteste bien. Una transacción sin terminar Apple la sigue
+ * ofreciendo cada vez que arranca la app —así que un reintento recupera la
+ * compra—, y una que se termina antes de que nosotros la hayamos registrado
+ * desaparece para siempre con la plata ya cobrada.
+ */
+async function activarPorApple({ usuarioId, productId, comprobante }) {
+  if (!productId || !comprobante) throw new ErrorDeCobro(400, "Falta el producto o el comprobante.");
+
+  const plan = planDeProductoApple(productId);
+  // Un id que no conocemos se rechaza y no se cae a ningún plan: inventar uno
+  // por defecto es activar Max porque alguien escribió mal un identificador.
+  if (!plan) {
+    console.warn("[apple] producto desconocido: %s", productId);
+    throw new ErrorDeCobro(400, "Ese producto no existe.");
+  }
+
+  const perfil = await perfilDe(usuarioId);
+  if (!perfil?.empresa?.id) throw new ErrorDeCobro(400, "Tu usuario no tiene empresa asignada.");
+
+  // El precio sale de la base, igual que en la web. Apple cobra lo suyo en el
+  // teléfono —en la moneda de la cuenta y con sus impuestos— y nosotros no
+  // vemos ese monto; lo que se anota en el libro es lo que vale el plan, nunca
+  // un número que venga en el cuerpo del pedido.
+  const def = await planVendible(plan);
+  if (!def) throw new ErrorDeCobro(400, "Ese plan no está a la venta.");
+
+  // Nunca le creemos al cliente que la compra existe. La diferencia con Play
+  // es de dónde sale la certeza: allá de preguntarle a Google, acá de la firma
+  // de Apple que el comprobante trae adentro.
+  let transaccion;
+  try {
+    transaccion = verificarJws(comprobante);
+  } catch (e) {
+    // Una firma que no cierra no es "una compra que no sirve": es alguien
+    // intentando algo, y va al registro entera para poder mirarla después.
+    console.warn("[apple] comprobante rechazado · empresa %s · %s", perfil.empresa.id, e?.message || e);
+    throw new ErrorDeCobro(402, "Ese comprobante no es válido.");
+  }
+
+  const revision = revisarTransaccion(transaccion, { productId });
+  if (!revision.ok) {
+    console.warn("[apple] rechazada · empresa %s · %s · %s", perfil.empresa.id, productId, revision.motivo);
+    throw new ErrorDeCobro(402, revision.motivo);
+  }
+  if (revision.prueba) {
+    console.warn(
+      "[apple] compra del entorno de pruebas · plan=%s empresa=%s usuario=%s",
+      plan,
+      perfil.empresa.id,
+      usuarioId,
+    );
+  }
+
+  // La referencia es el `transactionId`, no el comprobante entero: el JWS son
+  // miles de caracteres y cambia de forma cuando Apple rota sus certificados,
+  // así que como identificador no sirve. El `transactionId` es único por cobro
+  // y nuevo en cada renovación, que es exactamente lo que hace falta para que
+  // el mes que viene se pueda volver a empujar la fecha.
+  const referencia = revision.referencia;
+  const previo = await cobroPorReferencia("apple", referencia);
+  if (!previo) {
+    try {
+      await crearCobro({
+        empresaId: perfil.empresa.id,
+        plan,
+        monto: def.precio_mensual,
+        referencia,
+        pasarela: "apple",
+        hash: referencia,
+      });
+    } catch (e) {
+      // Dos pedidos de la misma compra al mismo tiempo: uno de los dos choca
+      // con la clave única y está bien que choque. El cobro ya existe, así que
+      // se sigue como si lo hubiéramos encontrado.
+      if (!esDuplicado(e)) throw e;
+      console.info("[apple] el cobro ya existía (dos pedidos a la vez)");
+    }
+  } else if (!previo.hash_pedido) {
+    await guardarHash(previo.id, referencia);
+  }
+
+  // La idempotencia de verdad vive acá: la clave única `(pasarela, referencia)`
+  // de `zentra.pagos`. Mandar dos veces la misma compra devuelve `repetido` y
+  // no empuja la fecha otra vez. Y hace falta de verdad: la app reintenta
+  // sola, porque Apple le vuelve a ofrecer la transacción sin terminar cada
+  // vez que arranca.
+  const r = await registrarPago(referencia, def.precio_mensual, "apple");
+  if (!r || r.resultado === "desconocido") {
+    console.error("[apple] registrar_pago_pasarela dijo desconocido para %s", referencia);
+    throw new ErrorDeCobro(500, "No pudimos registrar la compra. Ya estamos viendo.");
+  }
+
+  console.info(
+    "[apple] %s · empresa %s · %s · %s · vence %s",
+    r.resultado,
+    perfil.empresa.id,
+    plan,
+    def.precio_mensual,
+    r.vence,
+  );
+  return { ok: true, plan, vence: r.vence, repetido: r.resultado === "repetido" };
+}
+
+app.post("/apple/verificar", async (req, res) => {
+  const problema = faltaApple();
+  if (problema) {
+    // No se activa nada. Un camino de pago que "funciona" sin poder verificar
+    // es peor que uno apagado: activa planes contra comprobantes que nadie
+    // miró.
+    console.error("[apple/verificar]", problema);
+    return res.status(500).json({ error: "Los cobros por la App Store no están configurados todavía." });
+  }
+
+  try {
+    // Quién es sale del token, igual que en los otros dos. Si saliera del
+    // cuerpo, con una compra propia se le activaría el plan a cualquiera.
+    const auth = String(req.headers.authorization || "");
+    const usuario = auth.startsWith("Bearer ") ? await usuarioDelToken(auth.slice(7)) : null;
+    if (!usuario) return res.status(401).json({ error: "Iniciá sesión." });
+
+    const r = await activarPorApple({
+      usuarioId: usuario.id,
+      productId: String(req.body?.productId || "").trim(),
+      comprobante: String(req.body?.comprobante || "").trim(),
+    });
+    return res.json(r);
+  } catch (e) {
+    if (e instanceof ErrorDeCobro) return res.status(e.status).json({ error: e.message });
+    // Error nuestro: 502 y que la app reintente. La compra ya se hizo y la
+    // plata ya salió; lo que no puede pasar es que se pierda.
+    console.error("[apple/verificar] error:", e?.message || e);
+    return res.status(502).json({ error: "No pudimos confirmar la compra. Probá de nuevo en un rato." });
+  }
+});
+
 app.listen(PORT, HOST, () => {
   console.info(`[zentra-cobros] escuchando en ${HOST}:${PORT}`);
   if (HOST === "0.0.0.0") {
@@ -722,6 +913,9 @@ app.listen(PORT, HOST, () => {
   const problemaPlay = faltaPlay();
   if (problemaPlay) console.warn(`[zentra-cobros] Google Play apagado: ${problemaPlay}`);
   else console.info("[zentra-cobros] Google Play listo · paquete %s", configPlayALaVista().paquete);
+  const problemaApple = faltaApple();
+  if (problemaApple) console.warn(`[zentra-cobros] App Store apagada: ${problemaApple}`);
+  else console.info("[zentra-cobros] App Store lista · bundle %s", configAppleALaVista().bundle);
   try {
     const ep = getPagoparEndpoints();
     console.info("[zentra-cobros] pagopar env=%s api=%s", ep.env, ep.apiBase);

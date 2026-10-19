@@ -1,0 +1,87 @@
+{
+  "identifier" : "A1B2C3D4",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_billingIssuesEnabled" : false,
+    "_failTransactionsEnabled" : false,
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "20982913",
+      "localizations" : [
+
+      ],
+      "name" : "Zentra",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "49000",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "63192841",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Para quien recien arranca y necesita vender, cobrar y controlar el stock.",
+              "displayName" : "Emprendedor",
+              "locale" : "es_PY"
+            }
+          ],
+          "productID" : "zentra_emprendedor_mensual",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Emprendedor mensual",
+          "subscriptionGroupID" : "20982913",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "89000",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "63192842",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Todo lo de Emprendedor, sin topes, con reportes y varios usuarios.",
+              "displayName" : "Max",
+              "locale" : "es_PY"
+            }
+          ],
+          "productID" : "zentra_max_mensual",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Max mensual",
+          "subscriptionGroupID" : "20982913",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

@@ -8,17 +8,33 @@ import SwiftUI
 /// saber qué plan sí lo incluye, cuánto sale ni dónde se paga. Un "no" sin
 /// salida.
 ///
-/// Ahora es una hoja con los tres planes, el que se tiene marcado, y el botón
-/// para pagar. El precio se lee de la base —el mismo que cobra el server— y si
-/// no se puede leer, se muestran los planes sin precio: mejor eso que un
-/// número inventado.
+/// Después fue una hoja con los tres planes y un enlace a pagar por la web.
+/// Eso tampoco podía quedar: Apple prohíbe que una app dirija a pagar afuera
+/// —ni botón, ni enlace, ni nombrar la dirección— y Paraguay no entra en la
+/// excepción que abrieron para EE.UU. Ahora el plan se compra acá, con la caja
+/// de Apple, y la hoja tiene un botón por plan.
+///
+/// Cuando no se puede comprar —sin red, o con los productos todavía sin
+/// aprobar en App Store Connect— queda la hoja informativa con la salida de
+/// escribirnos. Informar qué incluye cada plan no está prohibido; dirigir a
+/// comprar afuera, sí.
 struct HojaPlanes: View {
     /// El motivo, tal como lo escribió `Planes.motivoBloqueo()`.
     let motivo: String
     @Environment(\.tema) private var t
     @Environment(Estado.self) private var estado
     @Environment(\.dismiss) private var cerrar
+
+    /// El precio de `zentra.planes`, que es el que cobra el server por la web.
     @State private var precios: [Plan: Int] = [:]
+    /// El precio que dice Apple. Cuando está, gana: es el que se va a cobrar.
+    @State private var deApple: [Plan: String] = [:]
+    /// Si en este teléfono se puede comprar. Arranca en `nil` —todavía no
+    /// sabemos— y no en `false`: mostrar la hoja sin botones y un segundo
+    /// después llenarla de botones es peor que esperar.
+    @State private var conCompras: Bool?
+    @State private var comprando: Plan?
+    @State private var falla = ""
 
     private var actual: Plan { estado.tenant?.plan ?? .free }
 
@@ -66,28 +82,66 @@ struct HojaPlanes: View {
         .presentationDetents([.medium, .large])
         // Apagado: el nuestro va arriba, en la franja que no scrollea.
         .presentationDragIndicator(.hidden)
-        .task { precios = await SupabaseDatos.preciosDePlanes() }
+        .task {
+            precios = await SupabaseDatos.preciosDePlanes()
+            let sePuede = await Compras.sePuedeComprar()
+            conCompras = sePuede
+            // El precio de Apple sólo si se va a comprar ahí: Apple cobra en la
+            // moneda de la cuenta y le suma sus impuestos, así que el número
+            // que ve la persona tiene que ser el que se le va a cobrar.
+            if sePuede { deApple = await Compras.precios() }
+        }
     }
 
-    /// El botón de pagar y la salida, fijos al pie de la hoja.
+    /// Comprar desde la app.
+    ///
+    /// Al final se relee el plan, que es de donde sale todo lo que esta hoja
+    /// bloquea. Sin eso habría que cerrar y abrir la app para ver lo que se
+    /// acaba de pagar.
+    private func comprar(_ p: Plan) async {
+        falla = ""
+        comprando = p
+        defer { comprando = nil }
+
+        switch await Compras.comprar(p) {
+        case .cancelado:
+            break
+        case .pendiente:
+            falla = "La compra quedó esperando aprobación. "
+                  + "Cuando se apruebe, el plan se activa solo."
+        case .error(let que):
+            falla = que
+        case .listo:
+            await estado.refrescarPlan()
+            cerrar()
+        }
+    }
+
+    /// Lo fijo al pie de la hoja.
     private var pie: some View {
         VStack(spacing: 0) {
-            if let link = Config.linkDePago {
-                Link(destination: link) {
-                    Text("Ver planes y pagar")
-                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(C.cian, in: .rect(cornerRadius: 12))
-                }
-            } else if let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
-                                            Soporte.contacto(nombre: estado.perfil?.nombre,
-                                                             empresa: estado.perfil?.empresa)) {
-                // Sin el botón de pagar, la salida es escribirnos. Las tiendas
-                // prohíben dirigir a pagar afuera, y nombrar la dirección de
-                // cobro cuenta igual que enlazarla.
-                //
-                // Dejar sólo "Ahora no" sería un callejón: alguien que acaba
-                // de ver que su plan no incluye algo necesita saber qué hacer.
+            if !falla.isEmpty {
+                Text(falla)
+                    .font(Tipo.barlow(.regular, 12.5))
+                    .foregroundStyle(Tint.errorInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 13).padding(.vertical, 11)
+                    .background(Tint.errorBg, in: .rect(cornerRadius: 10))
+                    .padding(.bottom, 10)
+            }
+
+            // Con la caja de Apple adentro, acá no va ninguna otra salida:
+            // mandar a pagar afuera desde la app está prohibido, y ese "afuera"
+            // incluye un texto con la dirección. Los botones de comprar están
+            // en cada tarjeta.
+            if conCompras == false,
+               let wa = Soporte.link(Config.soporteWhatsapp, .ayuda,
+                                     Soporte.contacto(nombre: estado.perfil?.nombre,
+                                                      empresa: estado.perfil?.empresa)) {
+                // Sin poder comprar, la salida es escribirnos. Dejar sólo
+                // "Ahora no" sería un callejón: alguien que acaba de ver que su
+                // plan no incluye algo necesita saber qué hacer.
                 Link(destination: wa) {
                     Text("Escribirnos para cambiar de plan")
                         .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
@@ -101,8 +155,27 @@ struct HojaPlanes: View {
                 .foregroundStyle(t.ink2)
                 .padding(.top, 10).padding(.bottom, 2)
         }
+        // A lo ancho, y a propósito.
+        //
+        // Antes acá siempre había un botón que ocupaba todo el ancho y
+        // estiraba la franja de paso. Ahora puede no haber ninguno —cuando se
+        // compra desde las tarjetas y no hay WhatsApp configurado queda sólo
+        // "Ahora no"—, y sin esto el fondo se achica al tamaño del texto: un
+        // rectángulo blanco flotando por encima de la última tarjeta.
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 10)
         .background(t.card)
+    }
+
+    /// El precio que se muestra: el de Apple si lo hay, el nuestro si no.
+    ///
+    /// En el plan gratis no va nada: el nombre ya lo dice, y repetir "Gratis"
+    /// al lado de "Gratis" se lee como un error. Sin precio tampoco se escribe
+    /// nada: el plan se entiende por lo que incluye.
+    private func precio(_ p: Plan) -> String? {
+        if let deApple = deApple[p] { return deApple }
+        if let n = precios[p], n > 0 { return Panel.gs(n) + " /mes" }
+        return nil
     }
 
     private func tarjeta(_ p: Plan) -> some View {
@@ -120,11 +193,8 @@ struct HojaPlanes: View {
                         .background(C.cian, in: .capsule)
                 }
                 Spacer(minLength: 0)
-                // En el plan gratis no va nada: el nombre ya lo dice, y repetir
-                // "Gratis" al lado de "Gratis" se lee como un error. Sin precio
-                // tampoco se escribe nada: el plan se entiende por lo que incluye.
-                if let n = precios[p], n > 0 {
-                    Text("\(Panel.gs(n)) /mes")
+                if let texto = precio(p) {
+                    Text(texto)
                         .font(Tipo.barlow(.bold, 15))
                         .foregroundStyle(esElTuyo ? C.azul : t.ink)
                         .lineLimit(1)
@@ -141,6 +211,23 @@ struct HojaPlanes: View {
                         .foregroundStyle(esElTuyo ? C.azul : t.ink2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            // El botón sólo en los planes que no son el tuyo y que se pueden
+            // comprar. En el gratis no hay nada que cobrar.
+            if conCompras == true, !esElTuyo, p != .free {
+                Button {
+                    Task { await comprar(p) }
+                } label: {
+                    Text(comprando == p ? "Abriendo la App Store…" : "Suscribirme a \(p.nombre)")
+                        .font(Tipo.barlow(.semibold, 14)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(C.cian, in: .rect(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .disabled(comprando != nil)
+                .opacity(comprando != nil && comprando != p ? 0.5 : 1)
+                .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

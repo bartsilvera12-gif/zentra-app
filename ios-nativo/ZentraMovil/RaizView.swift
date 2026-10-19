@@ -43,6 +43,14 @@ struct RaizView: View {
             await estado.reanudar()
             await estado.engancharPush()
             revisando = false
+            // Las compras de la App Store que llegan sin que nadie apriete
+            // nada: la renovación de cada mes, la que quedó esperando
+            // aprobación, la hecha en otro dispositivo de la misma cuenta.
+            Compras.escuchar()
+            // Y las que se cobraron y no llegaron a registrarse —server caído,
+            // red cortada en el peor momento—. Apple las vuelve a ofrecer
+            // hasta que se terminen, así que acá se recuperan solas.
+            if await Compras.reclamarPendientes() { await estado.refrescarPlan() }
         }
         // Y al volver del segundo plano, releer el plan. `.task` corre una sola
         // vez —cuando la pantalla aparece—, y volver del fondo no la hace
