@@ -89,6 +89,41 @@ body {
  * aparece y desaparece al hacer scroll, y `vh` no la tiene en cuenta — la parte
  * de abajo de la app, que es donde está la barra de navegación, queda tapada.
  */
+/*
+ * Adentro de la app instalada, el marco se va SIEMPRE, sea cual sea el ancho.
+ *
+ * La media query de abajo mira el ancho, y eso alcanzaba mientras la app
+ * viviera sólo en celulares. En una tablet —que es más ancha que 440 px— el
+ * APK mostraba un teléfono dibujado en el medio de la pantalla, con la mitad
+ * del espacio desperdiciado y, abajo, el texto de ayuda de la maqueta
+ * diciendo "Tocá Entrar" a alguien que ya entró.
+ *
+ * El ancho no era la pregunta correcta. La pregunta es si esto es la app o la
+ * demostración de la app, y eso lo sabe `esNativo()`, no una media query: la
+ * clase la pone el `AppContext` al arrancar.
+ */
+.zt-nativo .zt-maqueta { display: none; }
+
+.zt-nativo .zt-pagina {
+  min-height: 100dvh;
+  padding: 0;
+  gap: 0;
+}
+
+.zt-nativo .zt-marco {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--zt-fondo);
+}
+
+.zt-nativo .zt-pantalla {
+  height: 100dvh;
+  border-radius: 0;
+}
+
 @media (max-width: 440px), (display-mode: standalone) {
   /* El encabezado y el texto de ayuda son la presentación de la maqueta: en el
      celular la app es la app, no una demostración de la app. */
