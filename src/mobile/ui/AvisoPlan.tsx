@@ -219,7 +219,13 @@ export function AvisoPlan() {
 
                 {/* El botón sólo en los planes que no son el tuyo y que se
                     pueden comprar. En el gratis no hay nada que cobrar. */}
-                {conPlay && !esElTuyo && codigo !== "free" && (
+                {/* Sólo si Google devolvió precio para este producto. Que el
+                    teléfono sepa cobrar no quiere decir que el producto
+                    exista: mientras no esté creado en Play Console, el botón
+                    abriría una compra que falla con "producto no
+                    disponible". Un botón que no puede funcionar es peor que
+                    no tener botón. */}
+                {conPlay && dePlay[codigo] && !esElTuyo && codigo !== "free" && (
                   <button
                     onClick={() => void comprar(codigo)}
                     disabled={comprando !== null}
@@ -262,7 +268,11 @@ export function AvisoPlan() {
         {/* Con la facturación de Google adentro, acá no va nada más: mandar a
             pagar afuera desde la app está prohibido por la política de pagos
             de Play, y ese "afuera" incluye un texto con la dirección. */}
-        {conPlay ? null : config.linkDePago && config.cobrosUrl ? (
+        {/* Si hay algo comprable adentro, afuera no se manda a nadie: la
+            política de pagos de Play lo prohíbe. Si no hay nada comprable
+            —productos sin crear, teléfono sin Play Store, navegador— vale lo
+            de siempre. */}
+        {conPlay && Object.keys(dePlay).length > 0 ? null : config.linkDePago && config.cobrosUrl ? (
           <a
             href={`${config.cobrosUrl}/pagar`}
             target="_blank"
