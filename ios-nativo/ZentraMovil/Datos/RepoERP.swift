@@ -430,18 +430,38 @@ enum RepoERP {
     /// El respaldo sólo entra si el primero no existe o no está permitido
     /// (401/403/404). Un error de forma no se tapa: si contestó pero con otra
     /// estructura, el problema es ese y hay que verlo.
-    static func conversaciones() async throws -> [Chat] {
+    /// Cuántas conversaciones trae el ERP de una vez.
+    ///
+    /// Es el mismo número que usa Android (`TANDA_CHATS`). Importa saberlo
+    /// acá: si vuelven menos de esto, no hay más y no hace falta ofrecer otra
+    /// tanda.
+    static let tandaChats = 50
+
+    static func conversaciones(desde: Int = 0,
+                               incluirCerradas: Bool = false) async throws -> [Chat] {
         // El chat es de WhatsApp y vive en el ERP. Sin ERP no hay nada que leer,
         // y decirlo es mejor que una lista vacía que parece "no tenés mensajes".
         if await !conErp() { throw ApiError.sinChat }
+        let salto = max(desde, 0)
         do {
-            let crudo = try await ApiERP.get("/chat/mobile-inbox") { $0 }
+            // Sin `offset` el ERP devuelve siempre las 50 más recientes. Una
+            // empresa con cientos de conversaciones abiertas veía esas 50 y no
+            // había forma de llegar al resto — ni buscando, porque la búsqueda
+            // filtra lo que ya se trajo.
+            let crudo = try await ApiERP.get("/chat/mobile-inbox", query: [
+                "offset": String(salto),
+                "limit": String(tandaChats),
+                // El ERP excluye las cerradas salvo que se le pidan.
+                "only_open": incluirCerradas ? "0" : nil,
+            ]) { $0 }
             return try ApiERP.comoLista(crudo, clave: "conversations",
                                         ruta: "/chat/mobile-inbox").map(aChat)
         } catch let e as ApiError {
             if case .http(let status, _, _) = e, ![401, 403, 404].contains(status) { throw e }
         }
 
+        // El endpoint viejo no pagina: con él sólo existe la primera tanda.
+        if salto > 0 { return [] }
         let crudo = try await ApiERP.get("/mobile/asesor/conversations") { $0 }
         // `is_agent: false` no es "no tenés conversaciones": es que este usuario
         // no está en ninguna cola. Son cosas distintas y se dicen distinto.
