@@ -10,6 +10,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { avisarCompra, PRODUCTO_DE_PLAN, productoDe } from "../src/lib/compras-play.ts";
 
 test("cada plan pago tiene su producto, y el gratis no", () => {
@@ -48,4 +49,18 @@ test("si el servidor no confirma, se levanta el error que mando", async () => {
 test("un 200 sin ok tampoco es una compra confirmada", async () => {
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ plan: "max" }) });
   await assert.rejects(() => avisarCompra("https://cobros.test", "t", "zentra_max_mensual", "x"));
+});
+
+test("se pide el tipo suscripcion, no compra de una vez", () => {
+  // El plugin, si no se lo dicen, pregunta por productos `inapp`. Nuestros
+  // planes existen como `subs`, asi que Google contestaba "no hay ninguno" y
+  // la app mostraba que no habia nada para comprar, con todo bien
+  // configurado en Play Console. El sintoma no apunta a ningun lado.
+  const fuente = readFileSync("src/lib/compras-play.ts", "utf8");
+  const llamadas = fuente.match(/NativePurchases\.(getProducts|purchaseProduct)\(\{[^}]*\}/gs) || [];
+  assert.equal(llamadas.length, 2, "cambiaron las llamadas al plugin: revisá esta prueba");
+  for (const l of llamadas) {
+    assert.match(l, /productType:\s*TIPO_SUSCRIPCION/, "falta el tipo en: " + l.slice(0, 60));
+  }
+  assert.match(fuente, /TIPO_SUSCRIPCION\s*=\s*"subs"/);
 });

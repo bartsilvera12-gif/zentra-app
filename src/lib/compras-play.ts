@@ -14,8 +14,23 @@
  * desarrollo abiertas puede inventar uno y, si la app activara el plan por su
  * cuenta, se compraría Max gratis.
  */
+import type { PURCHASE_TYPE } from "@capgo/native-purchases";
 import { esNativo } from "./nativo";
 import type { Plan } from "./planes";
+
+/**
+ * Que lo que vendemos son suscripciones y no compras de una vez.
+ *
+ * Hay que decirlo en cada llamada. El plugin, cuando no se lo dicen, pregunta
+ * por productos de pago único, y Google contesta que no existe ninguno con
+ * nuestros ids —porque no existen: existen como suscripciones—. El síntoma es
+ * el peor posible: todo bien configurado en Play Console, y la app mostrando
+ * que no hay nada para comprar.
+ */
+// El tipo se importa como tipo y el valor va escrito: un `import` normal del
+// plugin acá arriba lo cargaría también en el navegador, donde no existe, y
+// todo este archivo está escrito para no tocarlo salvo adentro del APK.
+const TIPO_SUSCRIPCION = "subs" as PURCHASE_TYPE;
 
 /**
  * Los identificadores de los productos, tal cual están creados en Play
@@ -71,7 +86,15 @@ export async function preciosDePlay(): Promise<Partial<Record<Plan, string>>> {
   try {
     const { NativePurchases } = await import("@capgo/native-purchases");
     const ids = Object.values(PRODUCTO_DE_PLAN).filter(Boolean) as string[];
-    const r = await NativePurchases.getProducts({ productIdentifiers: ids });
+    // `productType` no es opcional en la práctica: el plugin, si no se lo
+    // decís, pregunta por productos de pago único (`inapp`). Nuestros planes
+    // son suscripciones, así que Google contestaba que no existe ninguno y la
+    // app se caía —bien— al camino de la web. Una hora de buscar el error en
+    // Play Console por una palabra que no estaba acá.
+    const r = await NativePurchases.getProducts({
+      productIdentifiers: ids,
+      productType: TIPO_SUSCRIPCION,
+    });
     const porId = new Map((r?.products ?? []).map((p) => [p.identifier, p.priceString]));
     const salida: Partial<Record<Plan, string>> = {};
     for (const [plan, id] of Object.entries(PRODUCTO_DE_PLAN)) {
@@ -108,6 +131,7 @@ export async function comprarPlan(
     const { NativePurchases } = await import("@capgo/native-purchases");
     const t = await NativePurchases.purchaseProduct({
       productIdentifier: producto,
+      productType: TIPO_SUSCRIPCION,
       autoAcknowledgePurchases: false,
     });
     token = String(t?.purchaseToken || t?.transactionId || "");
