@@ -213,6 +213,14 @@ const rutas = () => pedidos.map((p) => p.ruta);
 const pagados = new Set();
 /** Los cobros creados, para ver que la referencia es el `transactionId`. */
 const cobros = [];
+/**
+ * Cobros que ya estaban en la base antes de la prueba, por referencia.
+ *
+ * Hace falta para los avisos: una renovación sólo se puede atribuir a una
+ * empresa si el cobro de la primera compra existe. Arranca vacío para no
+ * cambiarle la respuesta a ninguna prueba vieja.
+ */
+const sembrados = new Map();
 
 const falso = createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
@@ -252,7 +260,10 @@ const falso = createServer(async (req, res) => {
       cobros.push(JSON.parse(cuerpo || "{}"));
       return json([{ id: "c-" + cobros.length }], 201);
     }
-    return json([]); // todavía no hay cobro para esa referencia
+    if (req.method === "PATCH") return json([]);
+    const m = /referencia=eq\.([^&]+)/.exec(url.search);
+    const fila = sembrados.get(m ? decodeURIComponent(m[1]) : "");
+    return json(fila ? [fila] : []); // si no está sembrado, no hay cobro previo
   }
   if (url.pathname === "/rest/v1/rpc/registrar_pago_pasarela") {
     const d = JSON.parse(cuerpo || "{}");
@@ -468,6 +479,140 @@ t("el health dice de qué app son las compras y avisa de la raíz cambiada", asy
   // La prueba corre con la raíz cambiada, y eso no puede pasar desapercibido.
   if (!h.apple.ojo) throw new Error("no avisa que la raíz no es la de Apple");
   if (!/APPLE_ROOT_CA_PEM/.test(salida)) throw new Error("no lo avisó al arrancar");
+});
+
+/* ──────────────────── los avisos que manda Apple ──────────────────── */
+
+/** Un aviso firmado, con la transacción firmada adentro. */
+const aviso = ({ tipo = "DID_RENEW", subtipo = "", tx = compra(), bundle = BUNDLE, entorno } = {}) =>
+  firmar({
+    notificationType: tipo,
+    ...(subtipo ? { subtype: subtipo } : {}),
+    notificationUUID: "uuid-" + Math.random().toString(16).slice(2),
+    version: "2.0",
+    signedDate: Date.now(),
+    data: {
+      bundleId: bundle,
+      environment: entorno || (tx?.environment ?? "Production"),
+      ...(tx ? { signedTransactionInfo: firmar(tx) } : {}),
+    },
+  });
+
+const avisar = (firmado, { puerto = PUERTO_SERVER } = {}) =>
+  fetch(`http://127.0.0.1:${puerto}/apple/avisos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signedPayload: firmado }),
+  });
+
+t("un aviso sin firma de Apple no mueve nada", async () => {
+  const otra = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const falsificado = firmar({ notificationType: "DID_RENEW", data: { bundleId: BUNDLE } }, { clave: otra.privateKey });
+  const antes = cobros.length;
+  const r = await avisar(falsificado);
+  // 400 y no 500: reintentarlo no lo va a volver legítimo.
+  if (r.status !== 400) throw new Error("status " + r.status);
+  if (cobros.length !== antes) throw new Error("creó un cobro con una firma ajena");
+});
+
+t("un aviso de otra app se rechaza sin tocar la base", async () => {
+  const antes = cobros.length;
+  const r = await avisar(aviso({ tx: compra({ bundleId: "com.otra.app" }), bundle: "com.otra.app" }));
+  if (r.status !== 400) throw new Error("status " + r.status);
+  if (cobros.length !== antes) throw new Error("creó un cobro para otra app");
+});
+
+t("una renovación empuja la fecha de la empresa del cobro original", async () => {
+  sembrados.set("2000000777", { id: "c-viejo", empresa_id: "e-1", plan: "emprendedor", estado: "pagado", hash_pedido: "2000000777" });
+  const tx = compra({ transactionId: "3000000777", originalTransactionId: "2000000777" });
+  const r = await avisar(aviso({ tx }));
+  const j = await r.json();
+  if (r.status !== 200 || j.accion !== "renovar") throw new Error("status " + r.status + " " + JSON.stringify(j));
+  if (j.resultado !== "pagado") throw new Error("resultado " + j.resultado);
+  // La referencia del cobro nuevo es el `transactionId` de ESTA renovación, no
+  // el original: con el original, el segundo mes chocaría contra la clave
+  // única y la fecha no se movería.
+  const ultimo = cobros.at(-1);
+  if (ultimo?.referencia !== "3000000777") throw new Error("referencia " + ultimo?.referencia);
+  if (ultimo?.empresa_id !== "e-1") throw new Error("empresa " + ultimo?.empresa_id);
+});
+
+t("el mismo aviso dos veces no cobra dos meses", async () => {
+  sembrados.set("2000000888", { id: "c-viejo-2", empresa_id: "e-1", plan: "emprendedor", estado: "pagado", hash_pedido: "2000000888" });
+  const tx = compra({ transactionId: "3000000888", originalTransactionId: "2000000888" });
+  const firmado = aviso({ tx });
+  const uno = await (await avisar(firmado)).json();
+  const dos = await (await avisar(firmado)).json();
+  if (uno.resultado !== "pagado") throw new Error("la primera no pagó: " + uno.resultado);
+  // Apple reenvía el mismo aviso hasta que le contesten 200, así que esto pasa
+  // siempre, no es un caso raro.
+  if (dos.resultado !== "repetido") throw new Error("la segunda no es repetido: " + dos.resultado);
+});
+
+t("una renovación sin cobro original no inventa una empresa, y avisa", async () => {
+  const antes = cobros.length;
+  const tx = compra({ transactionId: "3000000999", originalTransactionId: "2000000999" });
+  const r = await avisar(aviso({ tx }));
+  const j = await r.json();
+  // 200 porque reintentar no va a hacer aparecer el cobro, pero sin activar
+  // nada: no hay a quién atribuirle el mes.
+  if (r.status !== 200 || j.accion !== "nada") throw new Error(JSON.stringify(j));
+  if (cobros.length !== antes) throw new Error("creó un cobro sin saber de quién era");
+  // Una RENOVACION sin cobro previo si es un problema: esa suscripción se
+  // renueva sin que nadie empuje la fecha.
+  await esperar(150);
+  if (!/OJO: una renovación sin cobro previo/.test(salida)) throw new Error("no lo marcó como problema");
+});
+
+t("el alta sin cobro previo no grita: la app verifica unos segundos despues", async () => {
+  // Apple avisa ANTES de que la app mande el comprobante, asi que en toda
+  // compra nueva este aviso llega sin cobro. Si gritara, cada alta dejaria
+  // una alarma por algo que funciona.
+  const tx = compra({ transactionId: "3000000ccc", originalTransactionId: "2000000ccc" });
+  const j = await (await avisar(aviso({ tipo: "SUBSCRIBED", subtipo: "INITIAL_BUY", tx }))).json();
+  if (j.accion !== "nada") throw new Error("accion " + j.accion);
+  await esperar(150);
+  if (!/normal en el alta/.test(salida)) throw new Error("no lo explicó en el registro");
+});
+
+t("una devolución no se arregla sola pero queda gritada", async () => {
+  sembrados.set("2000000aaa", { id: "c-viejo-3", empresa_id: "e-1", plan: "max", estado: "pagado", hash_pedido: "2000000aaa" });
+  const antes = cobros.length;
+  const tx = compra({ transactionId: "3000000aaa", originalTransactionId: "2000000aaa", revocationDate: Date.now() });
+  const j = await (await avisar(aviso({ tipo: "REFUND", tx }))).json();
+  if (j.accion !== "mirar") throw new Error("accion " + j.accion);
+  if (cobros.length !== antes) throw new Error("tocó la plata");
+  if (!/REVISAR A MANO/.test(salida)) throw new Error("no quedó en el registro");
+});
+
+t("los avisos que no mueven plata se contestan y se ignoran", async () => {
+  const antes = cobros.length;
+  for (const tipo of ["DID_CHANGE_RENEWAL_STATUS", "EXPIRED", "DID_FAIL_TO_RENEW", "TEST"]) {
+    const r = await avisar(aviso({ tipo, tx: tipo === "TEST" ? null : compra() }));
+    const j = await r.json();
+    // 200 siempre: si no, Apple reintenta durante días un aviso que está bien.
+    if (r.status !== 200 || j.accion !== "nada") throw new Error(tipo + " → " + r.status + " " + JSON.stringify(j));
+  }
+  // Que alguien apague la renovación o que una suscripción venza no le corta
+  // el acceso a nadie: el plan se cae solo a `free` cuando pasa la fecha.
+  if (cobros.length !== antes) throw new Error("alguno movió la plata");
+});
+
+t("una renovación vencida o devuelta no empuja la fecha", async () => {
+  sembrados.set("2000000bbb", { id: "c-viejo-4", empresa_id: "e-1", plan: "emprendedor", estado: "pagado", hash_pedido: "2000000bbb" });
+  const antes = cobros.length;
+  for (const extra of [{ expiresDate: Date.now() - DIA }, { revocationDate: Date.now() }, { type: "Consumable" }]) {
+    const tx = compra({ transactionId: "4" + Math.random().toString().slice(2, 11), originalTransactionId: "2000000bbb", ...extra });
+    const j = await (await avisar(aviso({ tx }))).json();
+    if (j.accion !== "nada") throw new Error(JSON.stringify(extra) + " → " + j.accion);
+  }
+  if (cobros.length !== antes) throw new Error("activó algo que no correspondía");
+});
+
+t("sin configurar, el aviso se guarda para después en vez de perderse", async () => {
+  const r = await avisar(aviso(), { puerto: PUERTO_SIN_CONFIG });
+  // 500 a propósito: Apple reintenta. Un 200 acá perdería un mes pago.
+  if (r.status !== 500) throw new Error("status " + r.status);
 });
 
 let malas = 0;

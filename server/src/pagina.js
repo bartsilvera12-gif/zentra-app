@@ -498,6 +498,69 @@ export function paginaPrivacidad({ whatsapp = "", email = "", actualizada = "" }
  * factura emitida tiene plazos legales de conservación, y prometer lo
  * contrario en una página pública es peor que aclararlo.
  */
+/**
+ * La pagina de soporte.
+ *
+ * Apple pide una "URL de soporte" obligatoria para la ficha y la abre durante
+ * la revision: si da 404, rechaza. Vive aca y no en un sitio aparte por lo
+ * mismo que la de privacidad —este server ya esta publicado y andando— y
+ * porque las tres direcciones que mira la tienda conviene que caigan juntas:
+ * si un dia se muda el dominio, se mudan las tres de una vez.
+ *
+ * Dice como escribirnos y que esperar, no como usar la app: quien llega aca
+ * normalmente ya tiene un problema y quiere hablar con alguien.
+ */
+export function paginaSoporte({ whatsapp = "", email = "" } = {}) {
+  const tel = String(whatsapp || "").replace(/\D/g, "");
+  const contacto = [
+    tel ? `<li>WhatsApp: <a href="https://wa.me/${esc(tel)}">+${esc(tel)}</a></li>` : "",
+    email ? `<li>Correo: <a href="mailto:${esc(email)}">${esc(email)}</a></li>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return marco(
+    "Soporte",
+    `<h1>Soporte de Zentra</h1>
+    <p class="sub">Escribinos y te contestamos.</p>
+
+    <div class="tarjeta datos">
+      <h2>Cómo contactarnos</h2>
+      <ul>${contacto || "<li>Usá el contacto que figura en la ficha de la tienda.</li>"}</ul>
+      <p>Atendemos de <strong>lunes a sábado, de 8 a 18 h</strong> (hora de
+      Paraguay). Fuera de ese horario podés escribir igual: queda en la cola y
+      lo vemos al abrir.</p>
+
+      <h2>Qué nos ayuda a resolverlo más rápido</h2>
+      <ul>
+        <li>El correo con el que entrás a la app.</li>
+        <li>En qué pantalla estabas.</li>
+        <li>Qué esperabas que pasara y qué pasó.</li>
+      </ul>
+      <p>Desde la app, <strong>Configuración → Escribir a soporte</strong> ya
+      arma el mensaje con tu nombre, tu empresa y la versión que tenés
+      instalada, así no hay que preguntarlo.</p>
+
+      <h2>Suscripciones</h2>
+      <p>Las suscripciones compradas en la app las cobra y administra Apple.
+      Para cancelar o pedir un reembolso se hace desde
+      <strong>Ajustes → tu nombre → Suscripciones</strong> en el iPhone, o en
+      <a href="https://support.apple.com/es-lamr/billing">el soporte de
+      Apple</a>. Nosotros no podemos cancelar ni devolver un cobro de Apple,
+      pero si algo no se activó como correspondía, escribinos y lo
+      resolvemos.</p>
+
+      <h2>Tu cuenta y tus datos</h2>
+      <ul>
+        <li><a href="/privacidad">Política de privacidad</a></li>
+        <li><a href="/eliminar-cuenta">Cómo eliminar tu cuenta</a></li>
+      </ul>
+    </div>`,
+    false,
+    true,
+  );
+}
+
 export function paginaEliminarCuenta({ whatsapp = "", email = "" } = {}) {
   const tel = String(whatsapp || "").replace(/\D/g, "");
   const contacto = [
