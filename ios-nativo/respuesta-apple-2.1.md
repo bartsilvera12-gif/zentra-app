@@ -131,6 +131,12 @@ app. Grabá con la grabación de pantalla de iOS. Dura 2 o 3 minutos.
 7. **Reportes**: la pestaña del medio.
 8. **Chat**: abrí una conversación. Esto es lo que Apple llama contenido
    generado por usuarios, así que tiene que verse.
+
+   OJO, el orden importa: el chat **sólo viene con el plan Max**. Con
+   Emprendedor la tarjeta Conversaciones esta con candado y abre la hoja de
+   planes. Por eso conviene comprar Max (paso 9) ANTES de grabar esta parte:
+   la compra se desbloquea sola y seguis grabando el chat a continuacion. Dos
+   requisitos de Apple con una sola toma.
 9. **Contenido pago**: Configuración → el plan → que se vea la hoja con los
    planes y el botón de compra. **Hacé la compra completa y mostrá que el plan
    queda activado.** Esto es lo que más les interesa.

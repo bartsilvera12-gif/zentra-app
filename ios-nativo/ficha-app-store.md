@@ -1,7 +1,10 @@
 # Ficha de la App Store — Zentra Móvil 1.0 (es-MX)
 
 Textos para pegar en App Store Connect → Distribution → versión 1.0.
-Revisá los precios contra los que cargaste en Monetización antes de enviar.
+Los precios son los que están cargados en Monetización → Suscripciones, en
+dólares (verificado en la app el 2026-10-21: USD 9,49 y USD 16,49). NO van en
+guaraníes: el `Zentra.storekit` tiene 49000 y 89000 porque es el archivo de
+pruebas del simulador, y esos números no son los que cobra Apple.
 
 ---
 
@@ -34,8 +37,10 @@ PLANES Y SUSCRIPCIONES
 
 Zentra Móvil se usa con una suscripción mensual que se renueva sola:
 
-• Emprendedor — Gs 49.000 por mes
-• Max — Gs 89.000 por mes
+• Emprendedor — USD 9,49 por mes
+• Max — USD 16,49 por mes
+
+El precio se te muestra en la moneda de tu cuenta de Apple antes de confirmar.
 
 El pago se cobra a tu cuenta de Apple al confirmar la compra. La suscripción se
 renueva automáticamente salvo que la canceles al menos 24 horas antes de que
