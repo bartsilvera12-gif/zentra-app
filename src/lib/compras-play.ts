@@ -191,3 +191,43 @@ export async function avisarCompra(
   }
   return { plan: d.plan, vence: d.vence ?? null };
 }
+
+/**
+ * Por qué no se puede comprar acá.
+ *
+ * Cuando el botón no aparece, desde afuera se ven todos los casos iguales: la
+ * app muestra la dirección de la web y no dice nada. Pero las causas son
+ * distintas y se arreglan en lugares distintos —el teléfono, Play Console, o
+ * nuestro código— y sin esto hay que adivinar cuál es, con una persona del
+ * otro lado probando a ciegas.
+ *
+ * Devuelve una frase corta, para mostrar en Configuración. No es para el
+ * cliente final: es para poder contestar "¿por qué no me sale?" sin pedirle
+ * capturas de pantalla durante media hora.
+ */
+export async function diagnosticoDeCompras(): Promise<string> {
+  if (!esNativo()) return "En el navegador no se compra: sólo adentro de la app.";
+  try {
+    const { NativePurchases } = await import("@capgo/native-purchases");
+    const soporta = await NativePurchases.isBillingSupported();
+    if (!soporta?.isBillingSupported) {
+      return "Este teléfono no tiene la facturación de Google disponible.";
+    }
+    const ids = Object.values(PRODUCTO_DE_PLAN).filter(Boolean) as string[];
+    const r = await NativePurchases.getProducts({
+      productIdentifiers: ids,
+      productType: TIPO_SUSCRIPCION,
+    });
+    const encontrados = (r?.products ?? []).length;
+    if (!encontrados) {
+      return (
+        "Google no devolvió ningún plan. Suele ser que la app no se instaló " +
+        "desde Play, que los productos no están publicados, o que recién se " +
+        "publicaron y todavía no llegaron."
+      );
+    }
+    return `Listo: Google devolvió ${encontrados} plan${encontrados === 1 ? "" : "es"}.`;
+  } catch (e) {
+    return "No se pudo consultar a Google: " + String((e as Error)?.message || e).slice(0, 120);
+  }
+}

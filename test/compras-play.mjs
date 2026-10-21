@@ -58,7 +58,10 @@ test("se pide el tipo suscripcion, no compra de una vez", () => {
   // configurado en Play Console. El sintoma no apunta a ningun lado.
   const fuente = readFileSync("src/lib/compras-play.ts", "utf8");
   const llamadas = fuente.match(/NativePurchases\.(getProducts|purchaseProduct)\(\{[^}]*\}/gs) || [];
-  assert.equal(llamadas.length, 2, "cambiaron las llamadas al plugin: revisá esta prueba");
+  // No se fija un número: se fija que TODAS lo lleven. Cuando se agregó la
+  // tercera llamada (el diagnóstico), esta prueba la cazó — por eso está
+  // escrita así y no contando.
+  assert.ok(llamadas.length >= 2, "no encontré las llamadas al plugin: revisá esta prueba");
   for (const l of llamadas) {
     assert.match(l, /productType:\s*TIPO_SUSCRIPCION/, "falta el tipo en: " + l.slice(0, 60));
   }

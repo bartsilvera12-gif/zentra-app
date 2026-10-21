@@ -4,7 +4,7 @@ import { config } from "@/lib/config";
 import { MARCA } from "@/lib/theme";
 import { guardarPreferencia, temaDelSistema } from "@/lib/tema";
 import type { ThemeName } from "@/lib/types";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EMPRESA, SOPORTE, VERSION } from "@/lib/data";
 import { activarPush, desactivarPush, guardarPreferenciaPush, pushDisponible } from "@/lib/push";
 import {
@@ -21,6 +21,8 @@ import {
 } from "@/lib/impresora";
 import type { AnchoPapel } from "@/lib/ticket";
 import { estadoDeSuscripcion, motivoBloqueo } from "@/lib/planes";
+import { numeroDeCompilacion } from "@/lib/compilacion";
+import { diagnosticoDeCompras } from "@/lib/compras-play";
 import { linkDeSoporte, type MotivoSoporte } from "@/lib/soporte";
 import { repo } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
@@ -47,6 +49,23 @@ function IconLuna({ stroke }: { stroke: string }) {
 }
 
 export function ConfigScreen() {
+  // El número de compilación, que es el que cambia en cada subida a Play.
+  // Vive al lado de la versión porque la pregunta que resuelve siempre
+  // aparece junta con ella: "¿ya tenés la última?".
+  const [build, setBuild] = useState("");
+  // Por qué no aparece el botón de comprar, cuando no aparece. Se consulta al
+  // abrir Configuración, que es donde alguien va a buscar cuando algo de la
+  // suscripción no cierra.
+  const [porQue, setPorQue] = useState("");
+  useEffect(() => {
+    let vivo = true;
+    void numeroDeCompilacion().then((b) => vivo && setBuild(b));
+    void diagnosticoDeCompras().then((d) => vivo && setPorQue(d));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
   const { s, t, set, cerrarSesion, plan } = useApp();
 
   /**
@@ -452,6 +471,11 @@ export function ConfigScreen() {
                 <div style={{ font: "400 12px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
                   Se paga en {config.cobrosUrl.replace(/^https?:\/\//, "")}/pagar, desde el navegador.
                 </div>
+                {porQue && (
+                  <div style={{ font: "400 11.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                    {porQue}
+                  </div>
+                )}
               </div>
             )}
           </Card>
@@ -732,7 +756,7 @@ export function ConfigScreen() {
               paddingTop: 12,
             }}
           >
-            Zentra ERP · versión {VERSION.replace("v ", "")}
+            Zentra ERP · versión {VERSION.replace("v ", "")}{build ? ` (${build})` : ""}
             {config.build && ` · build ${config.build}`} ·{" "}
             {s.sesion?.empresa || s.tenant?.nombre || EMPRESA}
           </div>
