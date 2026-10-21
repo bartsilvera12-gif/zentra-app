@@ -1,0 +1,81 @@
+1. SCREEN RECORDINGS (two files attached, both on a physical iPhone)
+
+Video 1 - main flow (1:34). Launches the app from the home screen, then: home
+dashboard, inventory, customers, new sale, reports, settings, the in-app
+purchase of the "Max" subscription (sandbox account, nothing charged), and the
+account deletion screen, shown but not confirmed so the demo account survives.
+
+Video 2 - registration and sign-in (0:18). Sign out, sign-in screen, "Create
+account" form, sign back in. It uses a personal test account, which is why it
+ends on a different, nearly empty company on the free plan with some modules
+locked. Use the demo credentials below for the review.
+
+Note on the messaging screen: at 1:24 of video 1 it reads "0 abiertas. Las
+conversaciones salen del WhatsApp de tu ERP. Esta instalacion no tiene uno
+conectado" (no conversations; they come from the business's own WhatsApp, and
+the demo company has none connected). See section 4.
+
+2. PURPOSE AND AUDIENCE
+
+Zentra Movil is the mobile client of Zentra, a business management system
+(ERP) used by small and medium retail businesses in Paraguay: grocery stores,
+hardware stores, bakeries and similar.
+
+These businesses keep sales, stock and customer accounts on a computer in the
+back office, while the owner or clerk is on the shop floor or at a customer's
+home. The app gives them the same data on the phone: record a sale in front of
+the customer, check real stock before promising a delivery, look up what a
+customer owes.
+
+The audience is the business owner and their employees. It is not a consumer
+app, and not an internal app for one company: Zentra is sold as a subscription
+to any business, and anyone can sign up from the app itself.
+
+3. ACCESS AND MAIN FEATURES
+
+Demo account: revision@neura.com.py (password in App Review Information). It
+is a demonstration company with sample data, not a real customer's.
+
+Inicio (tab 1): dashboard. Reportes (tab 2): sales reports. Configuracion
+(tab 3): settings, subscription plan, account deletion.
+
+Paid features: Configuracion > the plan row opens a sheet with the three
+plans. The demo account already has a paid plan; the sheet puts the purchase
+button on the other paid plan, so the purchase can be tested as is.
+
+Account deletion: Configuracion > bottom > "Eliminar mi cuenta". Done inside
+the app.
+
+4. EXTERNAL SERVICES
+
+- Supabase, self-hosted at api.neura.com.py: authentication and database (our
+  own server, not supabase.com).
+- Zentra ERP API at sistemas.neura.com.py: our own backend; business data and
+  the WhatsApp relay below.
+- Zentra billing server at cobros.neura.com.py: our own server; verifies App
+  Store receipts and activates the subscription.
+- Apple StoreKit 2: all in-app purchases. No other payment channel on iOS.
+- Firebase Cloud Messaging: push notifications only.
+- WhatsApp Business Platform (Meta): each business connects its OWN WhatsApp
+  Business account; we do not provide it.
+
+No AI services, no ad networks, no analytics SDKs, no data providers.
+
+User-generated content: the messaging screen is not a social feature. It shows
+the WhatsApp conversations between a business and its own customers, through
+that business's own WhatsApp Business account. There is no feed, no public
+profiles, no discovery, and no way for one app user to contact another. A
+clerk only sees conversations of the shop they work for. There is therefore no
+community to moderate and no in-app reporting or blocking: blocking a number
+is done in WhatsApp by the business that owns it. If App Review still requires
+a reporting mechanism here, we will add it - please let us know.
+
+5. REGIONAL DIFFERENCES
+
+None. Same features and content in every region, Spanish only. Prices are set
+per region by App Store Connect; everything else is identical.
+
+6. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
+
+Neither applies. General-purpose business software. All content is data
+entered by the business that uses it, plus their own WhatsApp conversations.

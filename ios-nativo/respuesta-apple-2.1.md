@@ -10,7 +10,34 @@ Va en inglés porque es el idioma en que revisan.
 
 ## 1. Screen recording
 
-(Adjuntar el video. El guion está al final de este archivo.)
+Two recordings are attached, both captured on a physical iPhone running the
+latest iOS.
+
+**Video 1 — main flow (1:34).** Starts by launching the app from the iPhone
+home screen, then: home dashboard, inventory, customers, new sale, reports,
+settings, **the in-app purchase of the "Max" subscription** (completed with a
+sandbox account, so nothing is charged), and finally the **account deletion**
+screen, which is shown but not confirmed so the demo account survives.
+
+**Video 2 — registration and sign-in (0:18).** Signing out, the sign-in
+screen, the "Create account" form, and signing back in. For this short clip a
+separate personal test account was used rather than the demo one, which is why
+it ends on a different, nearly empty company: the account shown there is on
+the free plan, so several modules appear locked. The demo credentials provided
+below are the ones to use for the review.
+
+### About the messaging screen in Video 1
+
+At 1:24 the app opens "Conversaciones" and the screen reads: *"0 abiertas. Las
+conversaciones salen del WhatsApp de tu ERP. Esta instalación no tiene uno
+conectado."* ("No open conversations. Conversations come from your ERP's
+WhatsApp. This installation does not have one connected.")
+
+That is the expected state and it illustrates the point made in section 4
+below: the app does not host a messaging network of its own. It displays the
+WhatsApp conversations of the business that uses it, through that business's
+own WhatsApp Business account. The demo company has no WhatsApp account
+connected, so there are no conversations to show.
 
 ## 2. Purpose and target audience
 
