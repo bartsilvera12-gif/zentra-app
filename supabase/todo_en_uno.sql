@@ -1400,3 +1400,65 @@ select column_name, data_type
    and column_name in ('precio_mayorista', 'vencimiento', 'ultimo_ajuste')
  order by column_name;
 
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 14_nombres_demo.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- Los nombres que se ven en las capturas de la App Store.
+--
+-- La cuenta demo se creó con el nombre "Revision" (que era lo que hacía falta
+-- para que Apple pudiera entrar) y con la empresa sin nombre de negocio. Las
+-- dos cosas salen en la pantalla de Inicio: el saludo usa el nombre de la
+-- persona y el encabezado el de la empresa, asi que las capturas mostraban
+-- "Hola, Revision" sobre un comercio sin nombre. Nada de eso es un error de
+-- la app, pero en la ficha de la tienda se lee como una app a medio hacer.
+--
+-- Va por el nombre y no por el id porque el id de la cuenta demo cambia en
+-- cada instalacion; el `where` igual acota a la empresa de ese usuario, para
+-- no tocar a nadie mas si alguna vez hubiera otro "Revision".
+
+update zentra.empresas e
+   set nombre = 'Despensa Doña Lucía'
+  from zentra.usuarios u
+ where u.empresa_id = e.id
+   and u.nombre = 'Revision';
+
+update zentra.usuarios
+   set nombre = 'Lucía Benítez'
+ where nombre = 'Revision';
+
+-- Para ver que quedo: deberia devolver una fila con los dos nombres nuevos.
+select u.nombre as usuario, e.nombre as empresa
+  from zentra.usuarios u
+  join zentra.empresas e on e.id = u.empresa_id
+ where u.nombre = 'Lucía Benítez';
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>> 15_cliente_sin_choque.sql <<<<<<<<<<<<<<<<<<<<<<<<
+
+-- Un cliente que se llamaba igual que el negocio.
+--
+-- El seed le ponia "Despensa Doña Lucía" a la empresa y tambien a uno de sus
+-- quince clientes, con "Lucía Benítez" de contacto —la misma persona que
+-- ahora es la usuaria de la cuenta—. En la pantalla de Clientes eso se lee
+-- como que el negocio se tiene a si mismo de cliente, y es una de las
+-- capturas que miran en la revision de la App Store.
+--
+-- Cambia el cliente y no la empresa porque la empresa es la identidad de la
+-- cuenta demo: es el nombre que sale en las facturas.
+--
+-- El documento alcanza para identificarlo y no cambia; el `where` lo acota
+-- igual a la empresa de la demo para no tocar otra cuenta que use ese RUC.
+
+update zentra.clientes c
+   set nombre   = 'Despensa Yvoty',
+       contacto = 'Marta Giménez'
+  from zentra.usuarios u
+ where u.empresa_id = c.empresa_id
+   and u.nombre = 'Lucía Benítez'
+   and c.doc = '80012345-6';
+
+-- Deberia devolver una fila con el nombre nuevo, y ninguna con el viejo.
+select nombre, doc, contacto
+  from zentra.clientes
+ where doc = '80012345-6';
+

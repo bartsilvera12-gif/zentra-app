@@ -40,7 +40,7 @@ const numerados = readdirSync(DIR)
  * clientes de la empresa que elija. En la instalación de un cliente eso no es
  * "datos de ejemplo de más": es borrarle el negocio.
  */
-const FUERA_DEL_INSTALADOR = ["12_datos_demo.sql"];
+const FUERA_DEL_INSTALADOR = ["12_datos_demo.sql", "13_repartir_ventas_demo.sql"];
 
 /** Los que sí tienen que estar en el pegado único. */
 const delInstalador = numerados.filter((f) => !FUERA_DEL_INSTALADOR.includes(f));

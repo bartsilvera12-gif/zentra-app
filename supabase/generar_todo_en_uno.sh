@@ -22,7 +22,7 @@ out=todo_en_uno.sql
   for f in [0-9]*.sql; do
     [ "$f" = "$out" ] && continue
     case "$f" in
-      12_datos_demo.sql) continue ;;
+      12_datos_demo.sql|13_repartir_ventas_demo.sql) continue ;;
     esac
     echo
     echo "-- >>>>>>>>>>>>>>>>>>>>>>>> $f <<<<<<<<<<<<<<<<<<<<<<<<"
