@@ -551,6 +551,35 @@ function versionDeLaApp() {
   }
 }
 
+/**
+ * Subir el Android mínimo a 8.0.
+ *
+ * Capacitor genera el proyecto con `minSdkVersion = 24`, que es Android 7.
+ * El SDK de impresoras Star que trae el plugin de la térmica exige 26, y el
+ * build falla con un error de fusión de manifiestos que no dice "falta subir
+ * el mínimo" sino que nombra una biblioteca que nadie agregó a mano.
+ *
+ * Se puede forzar con `tools:overrideLibrary`, y es peor: compila y después
+ * revienta en el teléfono de alguien, que es exactamente donde no queremos
+ * que aparezca.
+ *
+ * Lo que cuesta: los teléfonos con Android 7 o anterior dejan de poder
+ * instalar la app. Son de 2016 para atrás; Play simplemente no se las ofrece.
+ *
+ * Va acá y no a mano porque `android/` lo regenera Capacitor.
+ */
+function minimoDeAndroid() {
+  const RUTA = "android/variables.gradle";
+  if (!existsSync(RUTA)) return;
+  const antes = readFileSync(RUTA, "utf8");
+  const despues = antes.replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26");
+  if (despues === antes) return;
+  writeFileSync(RUTA, despues);
+  console.log("\nAndroid mínimo: 26 (lo pide el SDK de impresoras térmicas).");
+}
+
+minimoDeAndroid();
+
 firmaEstable();
 
 /**
