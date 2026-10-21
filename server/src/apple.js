@@ -442,6 +442,10 @@ export function quePideElAviso(aviso, { bundle = BUNDLE } = {}) {
   return {
     accion: "renovar",
     motivo: null,
+    // Para distinguir el alta de la renovación. Las dos empujan la fecha
+    // igual, pero no se registran igual cuando no se encuentra al dueño: en
+    // el alta es lo esperado y en una renovación es un problema.
+    tipo,
     productId: String(tx.productId || ""),
     referencia: revision.referencia,
     original,

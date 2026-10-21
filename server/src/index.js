@@ -1007,10 +1007,30 @@ app.post("/apple/avisos", async (req, res) => {
     // compra se guardó con el `originalTransactionId` como referencia.
     const raiz = await cobroPorReferencia("apple", pide.original);
     if (!raiz?.empresa_id) {
-      // Pasa de verdad y no es un error: una compra hecha antes de que
-      // existiera este endpoint no dejó ese cobro. La app la va a verificar
-      // sola la próxima vez que alguien la abra.
-      console.warn("[apple/avisos] sin cobro previo para la original %s · %s", pide.original, marca);
+      // No es un error, y en el alta es lo normal.
+      //
+      // En una compra nueva Apple avisa ANTES de que la app alcance a mandar
+      // el comprobante —medido el 2026-10-21 en una compra de sandbox: el
+      // aviso a las 12:57:59 y la verificación a las 12:58:08—, así que
+      // cuando este aviso llega todavía no hay ningún cobro con esa
+      // referencia. No hace falta hacer nada: quien acaba de comprar tiene la
+      // app abierta, y `/apple/verificar` activa el plan unos segundos
+      // después. Lo mismo vale para una compra anterior a este endpoint.
+      //
+      // Por eso el alta va como info y no como warn: si gritara, cada compra
+      // nueva dejaria una linea de alarma por algo que funciona bien, y las
+      // alarmas que siempre suenan dejan de mirarse. Lo que si tiene que
+      // llamar la atencion es una RENOVACION sin cobro previo: ahi el cobro
+      // de la primera compra deberia existir, y que falte significa que esa
+      // suscripcion se esta renovando sin que nadie le empuje la fecha.
+      const alta = pide.tipo === "SUBSCRIBED";
+      const avisar = alta ? console.info : console.warn;
+      avisar(
+        "[apple/avisos] sin cobro previo para la original %s · %s%s",
+        pide.original,
+        marca,
+        alta ? " (normal en el alta: la app verifica enseguida)" : " · OJO: una renovación sin cobro previo",
+      );
       return res.json({ ok: true, accion: "nada" });
     }
 

@@ -549,7 +549,7 @@ t("el mismo aviso dos veces no cobra dos meses", async () => {
   if (dos.resultado !== "repetido") throw new Error("la segunda no es repetido: " + dos.resultado);
 });
 
-t("una renovación sin cobro original no inventa una empresa", async () => {
+t("una renovación sin cobro original no inventa una empresa, y avisa", async () => {
   const antes = cobros.length;
   const tx = compra({ transactionId: "3000000999", originalTransactionId: "2000000999" });
   const r = await avisar(aviso({ tx }));
@@ -558,6 +558,21 @@ t("una renovación sin cobro original no inventa una empresa", async () => {
   // nada: no hay a quién atribuirle el mes.
   if (r.status !== 200 || j.accion !== "nada") throw new Error(JSON.stringify(j));
   if (cobros.length !== antes) throw new Error("creó un cobro sin saber de quién era");
+  // Una RENOVACION sin cobro previo si es un problema: esa suscripción se
+  // renueva sin que nadie empuje la fecha.
+  await esperar(150);
+  if (!/OJO: una renovación sin cobro previo/.test(salida)) throw new Error("no lo marcó como problema");
+});
+
+t("el alta sin cobro previo no grita: la app verifica unos segundos despues", async () => {
+  // Apple avisa ANTES de que la app mande el comprobante, asi que en toda
+  // compra nueva este aviso llega sin cobro. Si gritara, cada alta dejaria
+  // una alarma por algo que funciona.
+  const tx = compra({ transactionId: "3000000ccc", originalTransactionId: "2000000ccc" });
+  const j = await (await avisar(aviso({ tipo: "SUBSCRIBED", subtipo: "INITIAL_BUY", tx }))).json();
+  if (j.accion !== "nada") throw new Error("accion " + j.accion);
+  await esperar(150);
+  if (!/normal en el alta/.test(salida)) throw new Error("no lo explicó en el registro");
 });
 
 t("una devolución no se arregla sola pero queda gritada", async () => {
