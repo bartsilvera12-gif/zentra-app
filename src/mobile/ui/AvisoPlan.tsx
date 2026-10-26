@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { config } from "@/lib/config";
-import { avisarCompra, comprarPlan, planesDePlay, sePuedeComprar } from "@/lib/compras-play";
+import { avisarCompra, comprarPlan, diagnosticoDeCompras, planesDePlay, sePuedeComprar } from "@/lib/compras-play";
+import { esNativo } from "@/lib/nativo";
 import { repo } from "@/lib/repo";
 import { gs } from "@/lib/format";
 import { ORDEN_PLANES, PLANES, type Plan } from "@/lib/planes";
@@ -37,12 +38,25 @@ export function AvisoPlan() {
   const [dePlay, setDePlay] = useState<Partial<Record<Plan, { precio: string }>>>({});
   const [comprando, setComprando] = useState<Plan | null>(null);
   const [falla, setFalla] = useState("");
+  // Por qué no hay nada para comprar, cuando no hay. Sólo se usa adentro del
+  // APK: ahí no hay camino alternativo que ofrecer, así que lo único honesto
+  // es decir qué falta.
+  const [porQue, setPorQue] = useState("");
+  // Adentro del APK la dirección de la web no aparece nunca. Antes dependía de
+  // que Google contestara con los productos, y mientras no contestaba —o si
+  // fallaba— la hoja volvía a mandar afuera, que es lo que la política de
+  // pagos de Play prohíbe y lo que se veía en el teléfono.
+  const enApk = esNativo();
   const abierto = !!s.avisoPlan;
 
   useEffect(() => {
     if (!abierto) return;
     let vivo = true;
     void preciosDePlanes().then((p) => vivo && setPrecios(p));
+    // La razón se pide siempre que estemos en el APK, no sólo cuando la
+    // facturación no responde: también falta cuando responde pero los
+    // productos todavía no están, y ése fue el caso real.
+    if (esNativo()) void diagnosticoDeCompras().then((d) => vivo && setPorQue(d));
     void sePuedeComprar().then((ok) => {
       if (!vivo) return;
       setConPlay(ok);
@@ -149,14 +163,37 @@ export function AvisoPlan() {
             const def = PLANES[codigo];
             const esElTuyo = codigo === actual;
             const precio = precios[codigo];
+            // Si tocar esta tarjeta compra. El botón de abajo sigue estando
+            // —es lo que dice qué va a pasar— pero la tarjeta entera también
+            // responde: nadie mira una lista de planes y entiende que hay que
+            // apuntarle a un rectángulo de 40 píxeles para elegir.
+            const comprable = !!(conPlay && dePlay[codigo] && !esElTuyo && codigo !== "free");
             return (
               <div
                 key={codigo}
+                role={comprable ? "button" : undefined}
+                tabIndex={comprable ? 0 : undefined}
+                onClick={comprable ? () => void comprar(codigo) : undefined}
+                onKeyDown={
+                  comprable
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void comprar(codigo);
+                        }
+                      }
+                    : undefined
+                }
                 style={{
                   borderRadius: 14,
                   padding: "13px 14px",
                   background: esElTuyo ? MARCA.suave : t.bg,
                   border: `1.5px solid ${esElTuyo ? MARCA.acento : t.border}`,
+                  cursor: comprable ? (comprando ? "default" : "pointer") : "default",
+                  // Que se sienta el toque. Sin esto, tocar la tarjeta compra
+                  // pero no parece haber hecho nada hasta que abre Google.
+                  WebkitTapHighlightColor: comprable ? "rgba(0,0,0,.06)" : "transparent",
+                  opacity: comprando && comprando !== codigo ? 0.55 : 1,
                 }}
               >
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -229,9 +266,14 @@ export function AvisoPlan() {
                     abriría una compra que falla con "producto no
                     disponible". Un botón que no puede funcionar es peor que
                     no tener botón. */}
-                {conPlay && dePlay[codigo] && !esElTuyo && codigo !== "free" && (
+                {comprable && (
                   <button
-                    onClick={() => void comprar(codigo)}
+                    onClick={(e) => {
+                      // La tarjeta de afuera también compra: sin esto, un toque
+                      // en el botón dispararía la compra dos veces.
+                      e.stopPropagation();
+                      void comprar(codigo);
+                    }}
                     disabled={comprando !== null}
                     style={{
                       width: "100%",
@@ -272,11 +314,13 @@ export function AvisoPlan() {
         {/* Con la facturación de Google adentro, acá no va nada más: mandar a
             pagar afuera desde la app está prohibido por la política de pagos
             de Play, y ese "afuera" incluye un texto con la dirección. */}
-        {/* Si hay algo comprable adentro, afuera no se manda a nadie: la
-            política de pagos de Play lo prohíbe. Si no hay nada comprable
-            —productos sin crear, teléfono sin Play Store, navegador— vale lo
-            de siempre. */}
-        {conPlay && Object.keys(dePlay).length > 0 ? null : config.linkDePago && config.cobrosUrl ? (
+        {/* Adentro del APK, nada: ni botón ni dirección escrita. Antes esto
+            preguntaba si Google había devuelto productos, y mientras la
+            respuesta no llegaba —o cuando fallaba— la hoja mostraba el botón
+            que lleva a la web. Era el error que se veía en el teléfono: "ver
+            planes me manda al otro lado". En el navegador, donde la política
+            de Play no rige y no hay compra adentro, vale lo de siempre. */}
+        {enApk ? null : config.linkDePago && config.cobrosUrl ? (
           <a
             href={`${config.cobrosUrl}/pagar`}
             target="_blank"
@@ -309,6 +353,21 @@ export function AvisoPlan() {
               Se paga en {config.cobrosUrl.replace(/^https?:\/\//, "")}/pagar, desde el navegador.
             </div>
           )
+        )}
+
+        {/* En el APK sin productos no queda nada que ofrecer. La razón
+            escrita es lo único que permite arreglarlo sin adivinar. */}
+        {enApk && Object.keys(dePlay).length === 0 && porQue && (
+          <div
+            style={{
+              marginTop: 16,
+              textAlign: "center",
+              font: "400 12px/1.5 var(--font-barlow),Barlow,sans-serif",
+              color: t.ink3,
+            }}
+          >
+            {porQue}
+          </div>
         )}
 
         <button

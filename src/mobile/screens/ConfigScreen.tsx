@@ -22,7 +22,8 @@ import {
 import type { AnchoPapel } from "@/lib/ticket";
 import { estadoDeSuscripcion, motivoBloqueo } from "@/lib/planes";
 import { numeroDeCompilacion } from "@/lib/compilacion";
-import { diagnosticoDeCompras } from "@/lib/compras-play";
+import { diagnosticoDeCompras, planesDePlay } from "@/lib/compras-play";
+import { esNativo } from "@/lib/nativo";
 import { linkDeSoporte, type MotivoSoporte } from "@/lib/soporte";
 import { repo } from "@/lib/repo";
 import { useApp } from "@/store/AppContext";
@@ -57,10 +58,21 @@ export function ConfigScreen() {
   // abrir Configuración, que es donde alguien va a buscar cuando algo de la
   // suscripción no cierra.
   const [porQue, setPorQue] = useState("");
+  // Si los planes se pueden comprar acá adentro. Mientras no se sepa, no se
+  // muestra ninguno de los dos caminos: mostrar la dirección de la web y
+  // reemplazarla un segundo después por un botón se ve como un parpadeo.
+  const [hayCompra, setHayCompra] = useState<boolean | null>(null);
+  // Adentro del APK la dirección de la web no se muestra nunca, conteste lo
+  // que conteste Google. No es un detalle de diseño: la política de pagos de
+  // Play prohíbe mandar a pagar afuera desde la app, y además dependía de una
+  // consulta que puede tardar o fallar —y cuando fallaba, la app volvía a
+  // ofrecer el link, que es exactamente lo que no puede hacer.
+  const enApk = esNativo();
   useEffect(() => {
     let vivo = true;
     void numeroDeCompilacion().then((b) => vivo && setBuild(b));
     void diagnosticoDeCompras().then((d) => vivo && setPorQue(d));
+    void planesDePlay().then((p) => vivo && setHayCompra(Object.keys(p).length > 0));
     return () => {
       vivo = false;
     };
@@ -443,7 +455,30 @@ export function ConfigScreen() {
                 compilación que va a Google Play, que no permite mandar a pagar
                 afuera. Apagado queda la dirección sola, que es informar — eso
                 sí se puede. Está en docs/COBROS.md. */}
-            {config.cobrosUrl && (
+            {/* Si se puede comprar adentro, acá va el botón que abre la hoja
+                de planes y nada más: con la compra disponible en la app,
+                mandar a pagar afuera lo prohíbe la política de pagos de Play.
+                La dirección de la web queda sólo para cuando no hay compra
+                adentro. */}
+            {(enApk || hayCompra) && (
+              <button
+                onClick={() => set({ avisoPlan: "Elegí el plan que te sirve." })}
+                style={{
+                  marginTop: 4,
+                  padding: "13px",
+                  border: 0,
+                  borderRadius: 10,
+                  background: MARCA.acento,
+                  color: "#fff",
+                  cursor: "pointer",
+                  font: "600 15px/1 var(--font-barlow),Barlow,sans-serif",
+                }}
+              >
+                Ver planes
+              </button>
+            )}
+
+            {!enApk && config.cobrosUrl && (
               <div style={{ paddingTop: 4, display: "flex", flexDirection: "column", gap: 8 }}>
                 {config.linkDePago && (
                   <a
@@ -476,6 +511,15 @@ export function ConfigScreen() {
                     {porQue}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* En el APK, cuando Google no devuelve los productos, no hay nada
+                que ofrecer: ni compra adentro ni dirección afuera. Queda la
+                razón escrita, que es lo único que sirve para arreglarlo. */}
+            {enApk && hayCompra === false && porQue && (
+              <div style={{ font: "400 11.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                {porQue}
               </div>
             )}
           </Card>
