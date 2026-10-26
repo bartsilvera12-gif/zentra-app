@@ -1,6 +1,7 @@
 "use client";
 
 import { CHAT, MARCA } from "@/lib/theme";
+import TextoConEnlaces from "../ui/TextoConEnlaces";
 import { ADJUNTOS, CHATS, EMOJIS, STICKERS } from "@/lib/data";
 import { alternarFavorito, guardarFavoritos, leerFavoritos, ordenarPorFavoritos } from "@/lib/favoritos";
 import {
@@ -1468,7 +1469,7 @@ export function ConversacionesScreen() {
                 overflowWrap: "anywhere",
               }}
             >
-              {m.texto}
+              <TextoConEnlaces texto={m.texto} />
             </span>
           )}
 
