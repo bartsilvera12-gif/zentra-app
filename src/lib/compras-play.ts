@@ -74,14 +74,26 @@ export async function sePuedeComprar(): Promise<boolean> {
 }
 
 /**
- * Lo que Google dice que sale cada plan.
+ * Qué planes se pueden comprar acá, y a qué precio los muestra Google.
  *
- * El precio lo pone Play Console, no nosotros: Google cobra en la moneda del
- * país de la cuenta y le aplica sus impuestos, así que el número que ve la
- * persona puede no ser el mismo que figura en `zentra.planes`. Mostramos el
- * de Google, que es el que se le va a cobrar.
+ * Devuelve una entrada por cada plan que Google reconoció. El precio puede
+ * venir vacío, y eso NO quiere decir que no se pueda comprar: en una
+ * suscripción el precio vive en el plan base, no en el producto, así que el
+ * campo de texto del producto puede volver en blanco aunque la compra esté
+ * perfectamente disponible.
+ *
+ * Antes esto devolvía sólo precios, y la pantalla usaba "hay precio" como
+ * sinónimo de "se puede comprar". Resultado: Google devolvía los dos planes,
+ * sin texto de precio, y la app mostraba que no había nada que comprar.
+ * Costó una semana encontrarlo, y el error no estaba en Play Console ni en la
+ * publicación: estaba en haber mezclado dos preguntas distintas en un solo
+ * dato.
+ *
+ * Cuando Google trae el precio se muestra el de Google, que es el que se va a
+ * cobrar de verdad: cobra en la moneda del país de la cuenta y le suma sus
+ * impuestos, así que puede no coincidir con `zentra.planes`.
  */
-export async function preciosDePlay(): Promise<Partial<Record<Plan, string>>> {
+export async function planesDePlay(): Promise<Partial<Record<Plan, { precio: string }>>> {
   if (!(await sePuedeComprar())) return {};
   try {
     const { NativePurchases } = await import("@capgo/native-purchases");
@@ -95,11 +107,12 @@ export async function preciosDePlay(): Promise<Partial<Record<Plan, string>>> {
       productIdentifiers: ids,
       productType: TIPO_SUSCRIPCION,
     });
-    const porId = new Map((r?.products ?? []).map((p) => [p.identifier, p.priceString]));
-    const salida: Partial<Record<Plan, string>> = {};
+    const porId = new Map((r?.products ?? []).map((p) => [p.identifier, p]));
+    const salida: Partial<Record<Plan, { precio: string }>> = {};
     for (const [plan, id] of Object.entries(PRODUCTO_DE_PLAN)) {
-      const precio = id ? porId.get(id) : undefined;
-      if (precio) salida[plan as Plan] = String(precio);
+      const producto = id ? porId.get(id) : undefined;
+      // La condición es que el producto EXISTA, no que traiga precio.
+      if (producto) salida[plan as Plan] = { precio: String(producto.priceString || "") };
     }
     return salida;
   } catch {

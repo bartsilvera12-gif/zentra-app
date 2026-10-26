@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { config } from "@/lib/config";
-import { avisarCompra, comprarPlan, preciosDePlay, sePuedeComprar } from "@/lib/compras-play";
+import { avisarCompra, comprarPlan, planesDePlay, sePuedeComprar } from "@/lib/compras-play";
 import { repo } from "@/lib/repo";
 import { gs } from "@/lib/format";
 import { ORDEN_PLANES, PLANES, type Plan } from "@/lib/planes";
@@ -34,7 +34,7 @@ export function AvisoPlan() {
   // —todavía no sabemos— y no en `false`: mostrar la dirección de pago y un
   // segundo después reemplazarla por un botón es peor que esperar.
   const [conPlay, setConPlay] = useState<boolean | null>(null);
-  const [dePlay, setDePlay] = useState<Partial<Record<Plan, string>>>({});
+  const [dePlay, setDePlay] = useState<Partial<Record<Plan, { precio: string }>>>({});
   const [comprando, setComprando] = useState<Plan | null>(null);
   const [falla, setFalla] = useState("");
   const abierto = !!s.avisoPlan;
@@ -49,7 +49,7 @@ export function AvisoPlan() {
       // El precio que muestra Google puede no ser el de `zentra.planes`:
       // cobra en la moneda de la cuenta y le suma sus impuestos. Si se va a
       // comprar ahí, el número que se muestra tiene que ser el que se cobra.
-      if (ok) void preciosDePlay().then((p) => vivo && setDePlay(p));
+      if (ok) void planesDePlay().then((p) => vivo && setDePlay(p));
     });
     return () => {
       vivo = false;
@@ -195,7 +195,11 @@ export function AvisoPlan() {
                         repetir "Gratis" al lado de "Gratis" se lee como un
                         error. Sin precio tampoco se escribe nada: el plan se
                         entiende por lo que incluye. */}
-                    {dePlay[codigo] ? `${dePlay[codigo]} /mes` : precio ? `${gs(precio)} /mes` : ""}
+                    {/* El de Google cuando lo trae —es el que se cobra—, y
+                        si no, el de la base. Que no traiga precio no quiere
+                        decir que no se pueda comprar: en una suscripción el
+                        precio vive en el plan base. */}
+                    {dePlay[codigo]?.precio || (precio ? `${gs(precio)} /mes` : "")}
                   </span>
                 </div>
                 <ul style={{ margin: "9px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 5 }}>

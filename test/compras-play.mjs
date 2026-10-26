@@ -67,3 +67,29 @@ test("se pide el tipo suscripcion, no compra de una vez", () => {
   }
   assert.match(fuente, /TIPO_SUSCRIPCION\s*=\s*"subs"/);
 });
+
+test("un plan sin precio de texto igual se puede comprar", async () => {
+  // Google devuelve el producto pero, en una suscripcion, el precio vive en
+  // el plan base: el campo de texto puede venir vacio. Tratar eso como "no
+  // hay nada que comprar" es el error que nos costo una semana.
+  const { planesDePlay } = await import("../src/lib/compras-play.ts");
+  globalThis.Capacitor = { isNativePlatform: () => true };
+  const falso = {
+    NativePurchases: {
+      isBillingSupported: async () => ({ isBillingSupported: true }),
+      getProducts: async () => ({
+        products: [
+          { identifier: "zentra_max_mensual", priceString: "" },
+          { identifier: "zentra_emprendedor_mensual", priceString: "Gs 49.000" },
+        ],
+      }),
+    },
+  };
+  // El modulo importa el plugin con `await import`: se intercepta por el
+  // registro de modulos de Node, que acá no se puede. Se prueba la regla
+  // leyendo el codigo, que es lo que de verdad cambio.
+  const fuente = readFileSync("src/lib/compras-play.ts", "utf8");
+  assert.match(fuente, /if \(producto\) salida\[plan as Plan\]/, "la condicion dejo de ser 'existe el producto'");
+  assert.doesNotMatch(fuente, /if \(precio\) salida\[/, "volvio a condicionar por el precio");
+  void falso;
+});
