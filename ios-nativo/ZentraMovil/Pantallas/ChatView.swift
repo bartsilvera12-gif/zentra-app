@@ -212,8 +212,9 @@ struct ChatView: View {
 
                 // Una foto con pie vuelve a tener globo; sin pie, va sola.
                 if !m.texto.isEmpty || !m.epigrafe.isEmpty {
-                    Text(m.texto.isEmpty ? m.epigrafe : m.texto)
+                    Text(TextoConEnlaces.armar(m.texto.isEmpty ? m.epigrafe : m.texto, claro: m.mio))
                         .font(Tipo.barlow(.regular, 14))
+                        .tint(m.mio ? .white : C.azulMedio)
                         .foregroundStyle(m.mio ? .white : t.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         // Seleccionable: copiar un número o una dirección de un
