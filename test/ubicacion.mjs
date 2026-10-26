@@ -6,7 +6,7 @@
  * El GPS devuelve cualquier cosa cuando todavía no fijó posición, y mandarle a
  * un cliente un pin en el Golfo de Guinea es peor que decirle que no se pudo.
  */
-import { enlaceDeMapa, posicionValida, textoDeUbicacion } from "../src/lib/ubicacion.ts";
+import { enlaceDeMapa, permisoAlcanza, permisoEsFino, posicionValida, textoDeUbicacion } from "../src/lib/ubicacion.ts";
 
 const casos = [];
 const t = (n, f) => casos.push([n, f]);
@@ -42,6 +42,31 @@ t("fuera de rango no se manda", () => {
 
 t("sin posicion no se inventa nada", () => {
   if (posicionValida(null) || posicionValida({ lat: NaN, lng: 0 })) throw new Error("aceptó una lectura vacía");
+});
+
+
+t("el permiso aproximado alcanza para mandar la ubicacion", () => {
+  // Desde Android 12 el sistema ofrece "Precisa" o "Aproximada" y la
+  // aproximada viene marcada por defecto. Mirando solo la fina, alguien que
+  // YA dio permiso volvia a ver el pedido cada vez, para siempre: el sistema
+  // no vuelve a preguntar algo que ya se contesto.
+  if (!permisoAlcanza({ location: "denied", coarseLocation: "granted" }))
+    throw new Error("rechazo el permiso aproximado");
+  if (!permisoAlcanza({ location: "granted", coarseLocation: "denied" }))
+    throw new Error("rechazo el permiso preciso");
+});
+
+t("sin ninguno de los dos, no alcanza", () => {
+  if (permisoAlcanza({ location: "denied", coarseLocation: "denied" })) throw new Error("acepto sin permiso");
+  if (permisoAlcanza({ location: "prompt", coarseLocation: "prompt" })) throw new Error("acepto sin contestar");
+  if (permisoAlcanza(null)) throw new Error("acepto sin dato");
+});
+
+t("la alta precision se pide solo si la dieron", () => {
+  // Pedirle alta precision a un permiso aproximado es esperar diez segundos
+  // por algo que el sistema no va a dar.
+  if (permisoEsFino({ location: "denied" })) throw new Error("pidio precision sin permiso fino");
+  if (!permisoEsFino({ location: "granted" })) throw new Error("no uso la precision que si tenia");
 });
 
 let malas = 0;

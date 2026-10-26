@@ -58,6 +58,26 @@ export function posicionValida(p: Posicion | null | undefined): p is Posicion {
 
 
 /**
+ * Si con lo que concedió la persona alcanza para tomar la ubicación.
+ *
+ * Desde Android 12 el sistema pregunta "Precisa" o "Aproximada", y la
+ * aproximada viene marcada por defecto: la mayoría toca aceptar sin cambiarla.
+ * El plugin devuelve eso en dos campos distintos, y mirar sólo el fino hace
+ * que alguien que YA dio permiso vea el pedido otra vez, para siempre: el
+ * sistema no vuelve a preguntar algo que ya se contestó.
+ *
+ * Para mandar dónde está un local, la aproximada alcanza de sobra.
+ */
+export function permisoAlcanza(p: { location?: string; coarseLocation?: string } | null): boolean {
+  return p?.location === "granted" || p?.coarseLocation === "granted";
+}
+
+/** Si además dio la precisa, se le pide al GPS la mejor lectura posible. */
+export function permisoEsFino(p: { location?: string } | null): boolean {
+  return p?.location === "granted";
+}
+
+/**
  * Dónde está el teléfono.
  *
  * Adentro del APK va por el plugin, que es el que pide el permiso al sistema;
@@ -72,14 +92,19 @@ export async function ubicacionActual(): Promise<Posicion> {
   if (esNativo()) {
     const { Geolocation } = await import("@capacitor/geolocation");
     let permiso = await Geolocation.checkPermissions().catch(() => null);
-    if (permiso?.location !== "granted") {
+    if (!permisoAlcanza(permiso)) {
       permiso = await Geolocation.requestPermissions().catch(() => null);
     }
-    if (permiso?.location !== "granted") {
-      throw new Error("Necesitamos permiso para usar la ubicación.");
+    if (!permisoAlcanza(permiso)) {
+      throw new Error(
+        "Necesitamos permiso para usar la ubicación. Si ya lo diste y sigue " +
+          "apareciendo, revisalo en los ajustes del teléfono.",
+      );
     }
     const r = await Geolocation.getCurrentPosition({
-      enableHighAccuracy: true,
+      // Con permiso aproximado no tiene sentido pedir alta precisión: el
+      // sistema no la va a dar y la espera se hace larga al pedo.
+      enableHighAccuracy: permisoEsFino(permiso),
       timeout: 10000,
     }).catch(() => null);
     const p = r
