@@ -11,7 +11,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { avisarCompra, PRODUCTO_DE_PLAN, productoDe } from "../src/lib/compras-play.ts";
+import {
+  avisarCompra,
+  interpretarProductos,
+  PLAN_BASE,
+  PRODUCTO_DE_PLAN,
+  productoDe,
+} from "../src/lib/compras-play.ts";
 
 test("cada plan pago tiene su producto, y el gratis no", () => {
   // Si estos ids no coinciden con los de Play Console, la compra falla con
@@ -68,28 +74,56 @@ test("se pide el tipo suscripcion, no compra de una vez", () => {
   assert.match(fuente, /TIPO_SUSCRIPCION\s*=\s*"subs"/);
 });
 
-test("un plan sin precio de texto igual se puede comprar", async () => {
+test("un plan sin precio de texto igual se puede comprar", () => {
   // Google devuelve el producto pero, en una suscripcion, el precio vive en
   // el plan base: el campo de texto puede venir vacio. Tratar eso como "no
   // hay nada que comprar" es el error que nos costo una semana.
-  const { planesDePlay } = await import("../src/lib/compras-play.ts");
-  globalThis.Capacitor = { isNativePlatform: () => true };
-  const falso = {
-    NativePurchases: {
-      isBillingSupported: async () => ({ isBillingSupported: true }),
-      getProducts: async () => ({
-        products: [
-          { identifier: "zentra_max_mensual", priceString: "" },
-          { identifier: "zentra_emprendedor_mensual", priceString: "Gs 49.000" },
-        ],
-      }),
-    },
-  };
-  // El modulo importa el plugin con `await import`: se intercepta por el
-  // registro de modulos de Node, que acá no se puede. Se prueba la regla
-  // leyendo el codigo, que es lo que de verdad cambio.
+  const r = interpretarProductos([
+    { planIdentifier: "zentra_max_mensual", identifier: "mensual", priceString: "" },
+  ]);
+  assert.deepEqual(r.max, { precio: "", base: "mensual" });
+});
+
+test("los campos vienen dados vuelta en las suscripciones de Android", () => {
+  // El plugin devuelve una fila por plan base, y da vuelta los dos campos:
+  // `identifier` es el plan base y `planIdentifier` es el producto. Lo dice
+  // su propia documentacion. Nosotros buscabamos por `identifier`, asi que
+  // los dos planes llegaban con "mensual" y ninguno coincidia: el
+  // diagnostico decia "Google devolvio 2" y la app no mostraba nada para
+  // comprar. Esta es la prueba de ese error.
+  const r = interpretarProductos([
+    { planIdentifier: "zentra_emprendedor_mensual", identifier: "mensual", priceString: "Gs 49.000" },
+    { planIdentifier: "zentra_max_mensual", identifier: "mensual", priceString: "Gs 99.000" },
+  ]);
+  assert.deepEqual(Object.keys(r).sort(), ["emprendedor", "max"]);
+  assert.equal(r.emprendedor.precio, "Gs 49.000");
+  assert.equal(r.max.base, "mensual");
+});
+
+test("sin campos dados vuelta, `identifier` es el producto", () => {
+  // Compras de pago unico y iOS: ahi no hay vuelta de campos. Si se buscara
+  // solo por `planIdentifier`, dejaria de funcionar.
+  const r = interpretarProductos([{ identifier: "zentra_max_mensual", priceString: "Gs 99.000" }]);
+  assert.equal(r.max.precio, "Gs 99.000");
+  // Sin plan base en la respuesta vale el que tenemos escrito.
+  assert.equal(r.max.base, PLAN_BASE);
+});
+
+test("lo que no es nuestro no entra", () => {
+  const r = interpretarProductos([
+    { planIdentifier: "otra_app_mensual", identifier: "mensual" },
+    { identifier: "mensual" },
+    {},
+  ]);
+  assert.deepEqual(r, {});
+});
+
+test("la compra manda el plan base: sin el, el plugin la rechaza", () => {
+  // `planIdentifier` es obligatorio en las suscripciones de Android. El
+  // plugin corta antes de abrir nada: "planIdentifier cannot be empty if
+  // productType is subs". Google no vende el producto, vende un plan base.
   const fuente = readFileSync("src/lib/compras-play.ts", "utf8");
-  assert.match(fuente, /if \(producto\) salida\[plan as Plan\]/, "la condicion dejo de ser 'existe el producto'");
-  assert.doesNotMatch(fuente, /if \(precio\) salida\[/, "volvio a condicionar por el precio");
-  void falso;
+  const compra = fuente.match(/NativePurchases\.purchaseProduct\(\{[^}]*\}/s);
+  assert.ok(compra, "no encontre la llamada de compra: revisa esta prueba");
+  assert.match(compra[0], /planIdentifier:/);
 });

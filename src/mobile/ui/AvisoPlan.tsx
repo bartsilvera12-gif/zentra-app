@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { config } from "@/lib/config";
-import { avisarCompra, comprarPlan, diagnosticoDeCompras, planesDePlay, sePuedeComprar } from "@/lib/compras-play";
+import {
+  avisarCompra,
+  comprarPlan,
+  diagnosticoDeCompras,
+  planesDePlay,
+  sePuedeComprar,
+  type PlanDePlay,
+} from "@/lib/compras-play";
 import { esNativo } from "@/lib/nativo";
 import { repo } from "@/lib/repo";
 import { gs } from "@/lib/format";
@@ -35,7 +42,7 @@ export function AvisoPlan() {
   // —todavía no sabemos— y no en `false`: mostrar la dirección de pago y un
   // segundo después reemplazarla por un botón es peor que esperar.
   const [conPlay, setConPlay] = useState<boolean | null>(null);
-  const [dePlay, setDePlay] = useState<Partial<Record<Plan, { precio: string }>>>({});
+  const [dePlay, setDePlay] = useState<Partial<Record<Plan, PlanDePlay>>>({});
   const [comprando, setComprando] = useState<Plan | null>(null);
   const [falla, setFalla] = useState("");
   // Por qué no hay nada para comprar, cuando no hay. Sólo se usa adentro del
@@ -94,8 +101,12 @@ export function AvisoPlan() {
         setFalla("Volvé a iniciar sesión y probá de nuevo.");
         return;
       }
-      const r = await comprarPlan(p, (productId, purchaseToken) =>
-        avisarCompra(config.cobrosUrl, sesion.token, productId, purchaseToken),
+      const r = await comprarPlan(
+        p,
+        (productId, purchaseToken) => avisarCompra(config.cobrosUrl, sesion.token, productId, purchaseToken),
+        // El plan base que devolvió Google para este producto: sin él, la
+        // compra se rechaza antes de abrirse.
+        dePlay[p]?.base,
       );
       if (r.estado === "cancelado") return;
       if (r.estado === "error") {

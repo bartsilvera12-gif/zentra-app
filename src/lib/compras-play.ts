@@ -43,6 +43,14 @@ export const PRODUCTO_DE_PLAN: Partial<Record<Plan, string>> = {
   max: "zentra_max_mensual",
 };
 
+/**
+ * El id del plan base, tal cual está creado adentro de cada suscripción en
+ * Play Console. Google no vende el producto: vende un plan base del producto,
+ * y sin decirle cuál la compra no arranca. Lleva guion y no guion bajo porque
+ * Play Console no acepta guion bajo en los ids de plan base.
+ */
+export const PLAN_BASE = "mensual";
+
 /** El plan gratuito no se compra: no hay producto para él, y está bien así. */
 export function productoDe(plan: Plan): string | null {
   return PRODUCTO_DE_PLAN[plan] ?? null;
@@ -74,6 +82,48 @@ export async function sePuedeComprar(): Promise<boolean> {
 }
 
 /**
+ * Un plan comprable, como lo devuelve Google.
+ *
+ * `base` es el id del plan base. Hace falta guardarlo: la compra no se lanza
+ * con el producto solo, y el plan base que tiene Google es la verdad —si
+ * alguna vez se renombra en Play Console, esto sigue funcionando sin tocar el
+ * código.
+ */
+export type PlanDePlay = { precio: string; base: string };
+
+/**
+ * El id del producto de una respuesta de Google.
+ *
+ * Acá estuvo el error que costó una semana más. En las suscripciones de
+ * Android, el plugin devuelve una fila por plan base y **da vuelta los dos
+ * campos**: `identifier` es el id del plan base (`mensual`) y
+ * `planIdentifier` es el id del producto (`zentra_max_mensual`). Lo dice su
+ * propia documentación: "si agrupás por `identifier`, estás agrupando por
+ * plan base".
+ *
+ * Nosotros buscábamos nuestros productos por `identifier`. Google devolvía
+ * los dos planes —el diagnóstico decía "devolvió 2"— y la búsqueda no
+ * encontraba ninguno, porque los dos venían con `identifier` igual a
+ * "mensual". De ahí salía todo lo que se veía en el teléfono: ningún plan
+ * comprable, ninguna tarjeta que responda al toque, y la app cayendo al
+ * camino de la web.
+ *
+ * En compras de pago único y en iOS no hay vuelta de campos: `identifier` es
+ * el producto. Por eso el orden es `planIdentifier` primero y `identifier`
+ * después, y no uno de los dos.
+ */
+function idDeProducto(p: { identifier?: string; planIdentifier?: string }): string {
+  return String(p.planIdentifier || p.identifier || "");
+}
+
+/** El plan base que trajo Google; si no lo trae, el que tenemos escrito. */
+function basePlanDe(p: { identifier?: string; planIdentifier?: string }): string {
+  // Sólo cuando los campos vienen dados vuelta —suscripción de Android—
+  // `identifier` es el plan base. Si no, no sabemos y vale el escrito.
+  return p.planIdentifier && p.identifier ? String(p.identifier) : PLAN_BASE;
+}
+
+/**
  * Qué planes se pueden comprar acá, y a qué precio los muestra Google.
  *
  * Devuelve una entrada por cada plan que Google reconoció. El precio puede
@@ -93,7 +143,7 @@ export async function sePuedeComprar(): Promise<boolean> {
  * cobrar de verdad: cobra en la moneda del país de la cuenta y le suma sus
  * impuestos, así que puede no coincidir con `zentra.planes`.
  */
-export async function planesDePlay(): Promise<Partial<Record<Plan, { precio: string }>>> {
+export async function planesDePlay(): Promise<Partial<Record<Plan, PlanDePlay>>> {
   if (!(await sePuedeComprar())) return {};
   try {
     const { NativePurchases } = await import("@capgo/native-purchases");
@@ -107,17 +157,36 @@ export async function planesDePlay(): Promise<Partial<Record<Plan, { precio: str
       productIdentifiers: ids,
       productType: TIPO_SUSCRIPCION,
     });
-    const porId = new Map((r?.products ?? []).map((p) => [p.identifier, p]));
-    const salida: Partial<Record<Plan, { precio: string }>> = {};
-    for (const [plan, id] of Object.entries(PRODUCTO_DE_PLAN)) {
-      const producto = id ? porId.get(id) : undefined;
-      // La condición es que el producto EXISTA, no que traiga precio.
-      if (producto) salida[plan as Plan] = { precio: String(producto.priceString || "") };
-    }
-    return salida;
+    return interpretarProductos(r?.products ?? []);
   } catch {
     return {};
   }
+}
+
+/**
+ * Pasar lo que contestó Google a nuestros planes.
+ *
+ * Está separado de la consulta a propósito: la consulta necesita un teléfono
+ * y acá no se puede probar, pero esta parte —que es donde estuvo el error— se
+ * prueba sola con una respuesta escrita a mano.
+ */
+export function interpretarProductos(
+  productos: readonly { identifier?: string; planIdentifier?: string; priceString?: string }[],
+): Partial<Record<Plan, PlanDePlay>> {
+  const salida: Partial<Record<Plan, PlanDePlay>> = {};
+  for (const p of productos) {
+    const producto = idDeProducto(p);
+    const plan = (Object.keys(PRODUCTO_DE_PLAN) as Plan[]).find((k) => PRODUCTO_DE_PLAN[k] === producto);
+    if (!plan) continue;
+    // Una suscripción vuelve una vez por plan base. Nos quedamos con el
+    // primero: hoy hay uno solo por producto.
+    if (salida[plan]) continue;
+    // La condición es que el producto EXISTA, no que traiga precio: en una
+    // suscripción el precio vive en el plan base y el campo de texto del
+    // producto puede venir vacío.
+    salida[plan] = { precio: String(p.priceString || ""), base: basePlanDe(p) };
+  }
+  return salida;
 }
 
 /**
@@ -135,6 +204,10 @@ export async function planesDePlay(): Promise<Partial<Record<Plan, { precio: str
 export async function comprarPlan(
   plan: Plan,
   avisarAlServidor: (productId: string, purchaseToken: string) => Promise<{ plan: Plan; vence: string | null }>,
+  // El plan base que devolvió Google para este producto. Se recibe en vez de
+  // consultarlo de nuevo: la pantalla ya lo tiene, y preguntar dos veces
+  // abriría la puerta a comprar un plan base distinto del que se mostró.
+  planBase: string = PLAN_BASE,
 ): Promise<ResultadoCompra> {
   const producto = productoDe(plan);
   if (!producto) return { estado: "error", motivo: "Ese plan no se compra desde la app." };
@@ -144,6 +217,10 @@ export async function comprarPlan(
     const { NativePurchases } = await import("@capgo/native-purchases");
     const t = await NativePurchases.purchaseProduct({
       productIdentifier: producto,
+      // Obligatorio en las suscripciones de Android, y el plugin lo rechaza de
+      // entrada si falta: "planIdentifier cannot be empty if productType is
+      // subs". Google no vende el producto, vende un plan base del producto.
+      planIdentifier: planBase,
       productType: TIPO_SUSCRIPCION,
       autoAcknowledgePurchases: false,
     });
@@ -154,7 +231,11 @@ export async function comprarPlan(
     // mejor que tratar "me arrepentí" como un error y asustar a la persona.
     const msg = String((e as Error)?.message || e);
     if (/cancel|abort/i.test(msg)) return { estado: "cancelado" };
-    return { estado: "error", motivo: "No se pudo completar la compra." };
+    // El motivo de Google va escrito. Es en inglés y no es lindo, pero el
+    // "no se pudo completar la compra" solo nos dejó una semana a ciegas:
+    // sin esto, un producto que no existe y una tarjeta rechazada se ven
+    // exactamente iguales desde este lado del teléfono.
+    return { estado: "error", motivo: `No se pudo completar la compra. ${msg.slice(0, 120)}` };
   }
 
   if (!token) {
@@ -231,7 +312,8 @@ export async function diagnosticoDeCompras(): Promise<string> {
       productIdentifiers: ids,
       productType: TIPO_SUSCRIPCION,
     });
-    const encontrados = (r?.products ?? []).length;
+    const productos = r?.products ?? [];
+    const encontrados = productos.length;
     if (!encontrados) {
       return (
         "Google no devolvió ningún plan. Suele ser que la app no se instaló " +
@@ -239,7 +321,16 @@ export async function diagnosticoDeCompras(): Promise<string> {
         "publicaron y todavía no llegaron."
       );
     }
-    return `Listo: Google devolvió ${encontrados} plan${encontrados === 1 ? "" : "es"}.`;
+    // Los ids van escritos. Cuando el diagnóstico decía sólo "devolvió 2", la
+    // app igual no mostraba nada para comprar, y esa cuenta no alcanzaba para
+    // saber por qué: faltaba ver que lo que devolvía no eran los ids que
+    // buscábamos.
+    const reconocidos = Object.keys(await planesDePlay()).join(", ");
+    const vistos = productos.map((p) => idDeProducto(p) || "?").join(", ");
+    return (
+      `Listo: Google devolvió ${encontrados} plan${encontrados === 1 ? "" : "es"} (${vistos}). ` +
+      (reconocidos ? `Comprables: ${reconocidos}.` : "Ninguno coincide con nuestros productos.")
+    );
   } catch (e) {
     return "No se pudo consultar a Google: " + String((e as Error)?.message || e).slice(0, 120);
   }
