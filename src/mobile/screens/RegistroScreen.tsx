@@ -17,7 +17,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
   const volver = () => set({ modoAcceso: "login", authError: "", regConfirmar: false });
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1C8C84" }}>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "#1C8C84" }}>
       <StatusBar />
 
       <div style={{ padding: "4px 20px 0" }}>
@@ -40,7 +40,10 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
 
       <div
         style={{
-          flex: 1,
+          // Toma lo que sobra, pero nunca menos que el logo: con nueve campos
+          // el panel se lo comía y el logo quedaba cortado a la mitad.
+          flex: "1 1 96px",
+          minHeight: 96,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -63,13 +66,23 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
           background: s.theme === "oscuro" ? t.bg : "#f3f5f8",
           borderRadius: "26px 26px 0 0",
           padding: "24px 24px 22px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 13,
-          maxHeight: "72%",
+          // El panel ocupa lo que necesita y, si no entra, se achica y hace
+          // scroll. Antes tenía un alto máximo en porcentaje, que no se
+          // resuelve contra un padre flex: el panel crecía de largo y la
+          // pantalla cortaba el final del formulario —el botón incluido—
+          // sin dejar bajar hasta él.
+          flex: "0 1 auto",
+          minHeight: 0,
           overflowY: "auto",
         }}
       >
+        {/* Lo de adentro va en su propia columna, y no en la del panel. Un
+            panel con alto máximo, flex y scroll a la vez encoge a sus hijos
+            antes de hacer scroll: el título y el texto de arriba
+            desaparecían, el primer campo quedaba cortado contra el borde
+            redondeado y "Crear cuenta" se aplastaba a la mitad de su alto.
+            Pasó en cuanto el formulario creció de cuatro campos a nueve. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
         {s.regConfirmar ? (
           <>
             <div style={{ font: "600 17px/1.2 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>
@@ -214,6 +227,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
             </button>
           </>
         )}
+        </div>
       </div>
     </div>
   );

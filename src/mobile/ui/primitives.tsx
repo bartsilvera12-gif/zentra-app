@@ -218,7 +218,7 @@ export function Field({
   inputMode?: "numeric" | "decimal" | "text" | "email" | "tel";
   dark?: boolean;
 }) {
-  const { t } = useApp();
+  const { s, t } = useApp();
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
       <span
@@ -248,6 +248,10 @@ export function Field({
           color: dark ? "#fff" : t.ink,
           outline: "none",
           minWidth: 0,
+          // Para los campos que abren algo del sistema —el calendario de la
+          // fecha—: sin esto, en modo oscuro se abre un calendario blanco
+          // encima de una pantalla negra.
+          colorScheme: dark || s.theme === "oscuro" ? "dark" : "light",
         }}
       />
     </label>
@@ -291,35 +295,59 @@ export function SelectField({
       >
         {label}
       </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          height: 46,
-          border: `1px solid ${t.border}`,
-          borderRadius: 12,
-          background: t.card,
-          padding: "0 10px",
-          fontSize: 15,
-          // Sin elegir se ve como un marcador, no como una respuesta.
-          color: value ? t.ink : t.ink3,
-          outline: "none",
-          minWidth: 0,
-          // Sin esto, en iOS el select se dibuja con el alto del sistema y
-          // queda más bajo que los campos de al lado.
-          WebkitAppearance: "none",
-          appearance: "none",
-        }}
-      >
-        <option value="" disabled>
-          {placeholder}
-        </option>
-        {opciones.map((o) => (
-          <option key={o} value={o}>
-            {o}
+      {/* El select va adentro de una caja con la flechita: sin la apariencia
+          del sistema no queda nada que diga que se puede tocar, y se lee
+          como un campo de texto que no deja escribir. */}
+      <div style={{ position: "relative", minWidth: 0 }}>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            width: "100%",
+            height: 46,
+            border: `1px solid ${t.border}`,
+            borderRadius: 12,
+            background: t.card,
+            // El mismo relleno y la misma letra que `Field`. Sin `inherit`,
+            // el select usa la letra del sistema: más grande, otra familia, y
+            // corrido a la izquierda respecto del campo de arriba.
+            padding: "0 38px 0 14px",
+            font: "inherit",
+            fontSize: 15,
+            // Sin elegir se ve como un marcador, no como una respuesta.
+            color: value ? t.ink : t.ink3,
+            outline: "none",
+            minWidth: 0,
+            // Sin esto, en iOS el select se dibuja con el alto del sistema y
+            // queda más bajo que los campos de al lado.
+            WebkitAppearance: "none",
+            appearance: "none",
+          }}
+        >
+          <option value="" disabled>
+            {placeholder}
           </option>
-        ))}
-      </select>
+          {opciones.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <svg
+          aria-hidden
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={t.ink2}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ position: "absolute", right: 14, top: 16, pointerEvents: "none" }}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
     </label>
   );
 }
