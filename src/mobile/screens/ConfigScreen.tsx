@@ -22,7 +22,7 @@ import {
 import type { AnchoPapel } from "@/lib/ticket";
 import { estadoDeSuscripcion, motivoBloqueo } from "@/lib/planes";
 import { numeroDeCompilacion } from "@/lib/compilacion";
-import { diagnosticoDeCompras, planesDePlay } from "@/lib/compras-play";
+import { consultarPlanes, razonDe } from "@/lib/compras-play";
 import { esNativo } from "@/lib/nativo";
 import { linkDeSoporte, type MotivoSoporte } from "@/lib/soporte";
 import { repo } from "@/lib/repo";
@@ -71,8 +71,14 @@ export function ConfigScreen() {
   useEffect(() => {
     let vivo = true;
     void numeroDeCompilacion().then((b) => vivo && setBuild(b));
-    void diagnosticoDeCompras().then((d) => vivo && setPorQue(d));
-    void planesDePlay().then((p) => vivo && setHayCompra(Object.keys(p).length > 0));
+    // Una sola consulta a Google: antes eran dos —el diagnóstico y los
+    // planes— corriendo a la vez, y como el plugin tiene un solo cliente de
+    // facturación que cada llamada abre y cierra, se pisaban entre ellas.
+    void consultarPlanes().then((c) => {
+      if (!vivo) return;
+      setHayCompra(Object.keys(c.planes).length > 0);
+      setPorQue(razonDe(c));
+    });
     return () => {
       vivo = false;
     };

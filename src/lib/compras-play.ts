@@ -63,6 +63,113 @@ export type ResultadoCompra =
   | { estado: "error"; motivo: string };
 
 /**
+ * Lo que contestó Google, de una sola vez.
+ *
+ * `vistos` son los ids que devolvió, tal cual, y `error` el motivo cuando no
+ * se pudo preguntar. Van juntos a propósito: son las tres respuestas que hay
+ * que mirar a la vez para saber si se puede comprar, y preguntarlas por
+ * separado fue exactamente el problema (ver `consultarPlanes`).
+ */
+export type Consulta = {
+  soporta: boolean;
+  planes: Partial<Record<Plan, PlanDePlay>>;
+  vistos: string[];
+  error: string;
+  intentos: number;
+};
+
+const SIN_PLUGIN: Consulta = { soporta: false, planes: {}, vistos: [], error: "", intentos: 0 };
+
+/** La consulta en curso, si hay una. Nunca puede haber dos. */
+let enVuelo: Promise<Consulta> | null = null;
+/** La última consulta que trajo planes. Los productos no cambian en la sesión. */
+let ultima: Consulta | null = null;
+
+function esperar(ms: number): Promise<void> {
+  return new Promise((listo) => setTimeout(listo, ms));
+}
+
+/**
+ * Preguntarle a Google una sola vez, y con reintentos.
+ *
+ * Esto existe por un error que se veía como "a veces dice que no encuentra
+ * los productos, y tarda". Las dos mitades tenían la misma causa.
+ *
+ * El plugin tiene UN cliente de facturación compartido, y cada llamada lo
+ * abre al empezar y lo CIERRA al terminar. Nosotros preguntábamos cuatro o
+ * cinco cosas al mismo tiempo al abrir la hoja de planes —¿se puede comprar?,
+ * ¿cuáles son?, y el diagnóstico preguntando las dos de nuevo—, así que la
+ * respuesta de una cerraba el cliente que otra estaba usando. El resultado es
+ * una carrera: a veces llegan los productos y a veces vuelve vacío, que es lo
+ * que el plugin informa como "Product not found". Nada que ver con Play
+ * Console. Y lo lento era eso mismo: cada pregunta abría su propia conexión
+ * con la Play Store, una tras otra.
+ *
+ * Así que ahora hay una sola consulta: quien pregunte mientras hay una en
+ * curso se cuelga de la misma, y el resultado con planes queda guardado.
+ *
+ * Los reintentos son por otra cosa real: recién instalada o actualizada la
+ * app, la Play Store tarda en tener los productos listos y contesta vacío sin
+ * que haya nada roto. Tres intentos con pausas cortas cubren eso. Lo vacío no
+ * se guarda: si fue el primer arranque, la próxima vez que se abra la hoja se
+ * vuelve a preguntar.
+ */
+export async function consultarPlanes({ recargar = false } = {}): Promise<Consulta> {
+  if (!esNativo()) return SIN_PLUGIN;
+  if (!recargar && ultima && Object.keys(ultima.planes).length > 0) return ultima;
+  if (enVuelo) return enVuelo;
+  enVuelo = preguntarAGoogle().finally(() => {
+    enVuelo = null;
+  });
+  const r = await enVuelo;
+  ultima = r;
+  return r;
+}
+
+async function preguntarAGoogle(): Promise<Consulta> {
+  let error = "";
+  let soporta = false;
+  let vistos: string[] = [];
+  let planes: Partial<Record<Plan, PlanDePlay>> = {};
+  // Las pausas crecen: si es la Play Store despertando, el segundo intento ya
+  // alcanza; si no, no vale la pena hacer esperar más de un par de segundos.
+  const pausas = [0, 700, 1800];
+  let intentos = 0;
+  for (const pausa of pausas) {
+    if (pausa) await esperar(pausa);
+    intentos++;
+    try {
+      const { NativePurchases } = await import("@capgo/native-purchases");
+      // En orden, nunca a la vez: las dos llamadas se pelean por el mismo
+      // cliente de facturación.
+      const sop = await NativePurchases.isBillingSupported();
+      soporta = Boolean(sop?.isBillingSupported);
+      // Sin facturación no hay nada que preguntar, y reintentar no la trae:
+      // es un teléfono sin Play Store.
+      if (!soporta) return { soporta: false, planes: {}, vistos: [], error: "", intentos };
+      const ids = Object.values(PRODUCTO_DE_PLAN).filter(Boolean) as string[];
+      // `productType` no es opcional en la práctica: el plugin, si no se lo
+      // decís, pregunta por productos de pago único (`inapp`). Nuestros planes
+      // son suscripciones, así que Google contestaba que no existe ninguno y la
+      // app se caía —bien— al camino de la web. Una hora de buscar el error en
+      // Play Console por una palabra que no estaba acá.
+      const r = await NativePurchases.getProducts({
+        productIdentifiers: ids,
+        productType: TIPO_SUSCRIPCION,
+      });
+      const productos = r?.products ?? [];
+      vistos = productos.map((x) => idDeProducto(x) || "?");
+      planes = interpretarProductos(productos);
+      error = "";
+      if (Object.keys(planes).length > 0) break;
+    } catch (e) {
+      error = String((e as Error)?.message || e).slice(0, 120);
+    }
+  }
+  return { soporta, planes, vistos, error, intentos };
+}
+
+/**
  * Si en este dispositivo se puede comprar.
  *
  * Tres condiciones, y las tres hacen falta. Fuera del APK no hay plugin. En
@@ -71,14 +178,7 @@ export type ResultadoCompra =
  * compilación que no va a la tienda el camino está apagado a propósito.
  */
 export async function sePuedeComprar(): Promise<boolean> {
-  if (!esNativo()) return false;
-  try {
-    const { NativePurchases } = await import("@capgo/native-purchases");
-    const r = await NativePurchases.isBillingSupported();
-    return Boolean(r?.isBillingSupported);
-  } catch {
-    return false;
-  }
+  return (await consultarPlanes()).soporta;
 }
 
 /**
@@ -144,23 +244,7 @@ function basePlanDe(p: { identifier?: string; planIdentifier?: string }): string
  * impuestos, así que puede no coincidir con `zentra.planes`.
  */
 export async function planesDePlay(): Promise<Partial<Record<Plan, PlanDePlay>>> {
-  if (!(await sePuedeComprar())) return {};
-  try {
-    const { NativePurchases } = await import("@capgo/native-purchases");
-    const ids = Object.values(PRODUCTO_DE_PLAN).filter(Boolean) as string[];
-    // `productType` no es opcional en la práctica: el plugin, si no se lo
-    // decís, pregunta por productos de pago único (`inapp`). Nuestros planes
-    // son suscripciones, así que Google contestaba que no existe ninguno y la
-    // app se caía —bien— al camino de la web. Una hora de buscar el error en
-    // Play Console por una palabra que no estaba acá.
-    const r = await NativePurchases.getProducts({
-      productIdentifiers: ids,
-      productType: TIPO_SUSCRIPCION,
-    });
-    return interpretarProductos(r?.products ?? []);
-  } catch {
-    return {};
-  }
+  return (await consultarPlanes()).planes;
 }
 
 /**
@@ -301,37 +385,33 @@ export async function avisarCompra(
  */
 export async function diagnosticoDeCompras(): Promise<string> {
   if (!esNativo()) return "En el navegador no se compra: sólo adentro de la app.";
-  try {
-    const { NativePurchases } = await import("@capgo/native-purchases");
-    const soporta = await NativePurchases.isBillingSupported();
-    if (!soporta?.isBillingSupported) {
-      return "Este teléfono no tiene la facturación de Google disponible.";
-    }
-    const ids = Object.values(PRODUCTO_DE_PLAN).filter(Boolean) as string[];
-    const r = await NativePurchases.getProducts({
-      productIdentifiers: ids,
-      productType: TIPO_SUSCRIPCION,
-    });
-    const productos = r?.products ?? [];
-    const encontrados = productos.length;
-    if (!encontrados) {
-      return (
-        "Google no devolvió ningún plan. Suele ser que la app no se instaló " +
-        "desde Play, que los productos no están publicados, o que recién se " +
-        "publicaron y todavía no llegaron."
-      );
-    }
-    // Los ids van escritos. Cuando el diagnóstico decía sólo "devolvió 2", la
-    // app igual no mostraba nada para comprar, y esa cuenta no alcanzaba para
-    // saber por qué: faltaba ver que lo que devolvía no eran los ids que
-    // buscábamos.
-    const reconocidos = Object.keys(await planesDePlay()).join(", ");
-    const vistos = productos.map((p) => idDeProducto(p) || "?").join(", ");
-    return (
-      `Listo: Google devolvió ${encontrados} plan${encontrados === 1 ? "" : "es"} (${vistos}). ` +
-      (reconocidos ? `Comprables: ${reconocidos}.` : "Ninguno coincide con nuestros productos.")
-    );
-  } catch (e) {
-    return "No se pudo consultar a Google: " + String((e as Error)?.message || e).slice(0, 120);
+  // Se cuelga de la misma consulta que usa la pantalla. Antes preguntaba por
+  // su cuenta, y esa segunda pregunta —corriendo al mismo tiempo que la de la
+  // pantalla— era parte de lo que hacía fallar a las dos.
+  return razonDe(await consultarPlanes());
+}
+
+/**
+ * La frase del diagnóstico, a partir de una consulta ya hecha.
+ *
+ * Separada para que la pantalla pueda mostrarla sin volver a preguntar, y
+ * para poder probarla sin teléfono.
+ */
+export function razonDe(c: Consulta): string {
+  if (c.error) return "No se pudo consultar a Google: " + c.error;
+  if (!c.soporta) return "Este teléfono no tiene la facturación de Google disponible.";
+  const comprables = Object.keys(c.planes);
+  if (comprables.length > 0) {
+    return `Listo: Google devolvió ${comprables.length} plan${comprables.length === 1 ? "" : "es"} para comprar (${comprables.join(", ")}).`;
   }
+  if (c.vistos.length > 0) {
+    // Esto es lo que faltaba ver la semana pasada: Google contestando, con
+    // productos, y ninguno coincidiendo con los ids que buscamos.
+    return `Google devolvió ${c.vistos.length} producto(s) pero ninguno es nuestro: ${c.vistos.join(", ")}.`;
+  }
+  return (
+    `Google no devolvió ningún plan (${c.intentos} intento${c.intentos === 1 ? "" : "s"}). ` +
+    "Suele ser que la app no se instaló desde Play, que los productos no " +
+    "están publicados, o que se publicaron recién y todavía no llegaron."
+  );
 }

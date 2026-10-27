@@ -1,15 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { config } from "@/lib/config";
-import {
-  avisarCompra,
-  comprarPlan,
-  diagnosticoDeCompras,
-  planesDePlay,
-  sePuedeComprar,
-  type PlanDePlay,
-} from "@/lib/compras-play";
+import { avisarCompra, comprarPlan, consultarPlanes, razonDe, type PlanDePlay } from "@/lib/compras-play";
 import { esNativo } from "@/lib/nativo";
 import { repo } from "@/lib/repo";
 import { gs } from "@/lib/format";
@@ -49,6 +42,11 @@ export function AvisoPlan() {
   // APK: ahí no hay camino alternativo que ofrecer, así que lo único honesto
   // es decir qué falta.
   const [porQue, setPorQue] = useState("");
+  // Si la consulta a Google está en curso. Importa decirlo: la Play Store
+  // tarda —y con reintentos puede tardar unos segundos—, y una hoja que
+  // muestra los planes sin forma de comprarlos se lee como "no se puede",
+  // cuando en realidad todavía está preguntando.
+  const [buscando, setBuscando] = useState(false);
   // Adentro del APK la dirección de la web no aparece nunca. Antes dependía de
   // que Google contestara con los productos, y mientras no contestaba —o si
   // fallaba— la hoja volvía a mandar afuera, que es lo que la política de
@@ -56,26 +54,37 @@ export function AvisoPlan() {
   const enApk = esNativo();
   const abierto = !!s.avisoPlan;
 
+  // Una sola consulta a Google, y de ahí salen las tres respuestas: si se
+  // puede comprar, cuáles planes, y por qué no cuando no. Antes eran tres
+  // preguntas en paralelo, y como el plugin tiene un solo cliente de
+  // facturación que cada llamada abre y cierra, se pisaban entre ellas: a
+  // veces andaba y a veces decía "product not found".
+  const consultar = useCallback(async (recargar = false) => {
+    if (!esNativo()) return;
+    setBuscando(true);
+    try {
+      const c = await consultarPlanes({ recargar });
+      setConPlay(c.soporta);
+      // El precio que muestra Google puede no ser el de `zentra.planes`:
+      // cobra en la moneda de la cuenta y le suma sus impuestos. Si se va a
+      // comprar ahí, el número que se muestra tiene que ser el que se cobra.
+      setDePlay(c.planes);
+      setPorQue(razonDe(c));
+    } finally {
+      setBuscando(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!abierto) return;
     let vivo = true;
     void preciosDePlanes().then((p) => vivo && setPrecios(p));
-    // La razón se pide siempre que estemos en el APK, no sólo cuando la
-    // facturación no responde: también falta cuando responde pero los
-    // productos todavía no están, y ése fue el caso real.
-    if (esNativo()) void diagnosticoDeCompras().then((d) => vivo && setPorQue(d));
-    void sePuedeComprar().then((ok) => {
-      if (!vivo) return;
-      setConPlay(ok);
-      // El precio que muestra Google puede no ser el de `zentra.planes`:
-      // cobra en la moneda de la cuenta y le suma sus impuestos. Si se va a
-      // comprar ahí, el número que se muestra tiene que ser el que se cobra.
-      if (ok) void planesDePlay().then((p) => vivo && setDePlay(p));
-    });
+    if (!esNativo()) setConPlay(false);
+    void consultar();
     return () => {
       vivo = false;
     };
-  }, [abierto]);
+  }, [abierto, consultar]);
 
   if (!abierto) return null;
 
@@ -366,18 +375,53 @@ export function AvisoPlan() {
           )
         )}
 
-        {/* En el APK sin productos no queda nada que ofrecer. La razón
-            escrita es lo único que permite arreglarlo sin adivinar. */}
-        {enApk && Object.keys(dePlay).length === 0 && porQue && (
+        {/* Mientras se pregunta se dice que se está preguntando. Con los
+            reintentos la consulta puede tardar unos segundos, y una hoja que
+            muestra los planes sin botón se lee como "no se puede". */}
+        {enApk && buscando && Object.keys(dePlay).length === 0 && (
           <div
             style={{
               marginTop: 16,
               textAlign: "center",
-              font: "400 12px/1.5 var(--font-barlow),Barlow,sans-serif",
+              font: "400 12.5px/1.5 var(--font-barlow),Barlow,sans-serif",
               color: t.ink3,
             }}
           >
-            {porQue}
+            Buscando los planes en Google Play…
+          </div>
+        )}
+
+        {/* En el APK sin productos no queda nada que ofrecer: ni botón de
+            compra ni dirección de la web. Queda la razón escrita y volver a
+            preguntar, que es lo que suele alcanzar —la Play Store tarda en
+            tener los productos listos después de instalar o actualizar. */}
+        {enApk && !buscando && Object.keys(dePlay).length === 0 && (
+          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {porQue && (
+              <div
+                style={{
+                  textAlign: "center",
+                  font: "400 12px/1.5 var(--font-barlow),Barlow,sans-serif",
+                  color: t.ink3,
+                }}
+              >
+                {porQue}
+              </div>
+            )}
+            <button
+              onClick={() => void consultar(true)}
+              style={{
+                padding: "12px",
+                border: `1.5px solid ${t.border}`,
+                borderRadius: 12,
+                background: "transparent",
+                color: t.ink2,
+                cursor: "pointer",
+                font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
+              }}
+            >
+              Probar de nuevo
+            </button>
           </div>
         )}
 

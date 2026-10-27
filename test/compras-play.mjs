@@ -13,7 +13,9 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
   avisarCompra,
+  consultarPlanes,
   interpretarProductos,
+  razonDe,
   PLAN_BASE,
   PRODUCTO_DE_PLAN,
   productoDe,
@@ -126,4 +128,63 @@ test("la compra manda el plan base: sin el, el plugin la rechaza", () => {
   const compra = fuente.match(/NativePurchases\.purchaseProduct\(\{[^}]*\}/s);
   assert.ok(compra, "no encontre la llamada de compra: revisa esta prueba");
   assert.match(compra[0], /planIdentifier:/);
+});
+
+test("la razon dice que ninguno coincide cuando Google trae otros ids", () => {
+  // Este es el caso que nos costo una semana: Google contestando, con
+  // productos, y nosotros buscandolos por el campo equivocado. El
+  // diagnostico decia "devolvio 2" y no alcanzaba para verlo.
+  const r = razonDe({ soporta: true, planes: {}, vistos: ["mensual", "mensual"], error: "", intentos: 1 });
+  assert.match(r, /ninguno es nuestro/);
+  assert.match(r, /mensual, mensual/);
+});
+
+test("la razon separa los tres motivos de no poder comprar", () => {
+  assert.match(
+    razonDe({ soporta: false, planes: {}, vistos: [], error: "Product not found", intentos: 3 }),
+    /No se pudo consultar a Google: Product not found/,
+  );
+  assert.match(
+    razonDe({ soporta: false, planes: {}, vistos: [], error: "", intentos: 1 }),
+    /no tiene la facturación de Google/,
+  );
+  // Facturacion si, productos no: cuenta los intentos, porque la Play Store
+  // tarda en tenerlos listos despues de instalar o actualizar.
+  assert.match(
+    razonDe({ soporta: true, planes: {}, vistos: [], error: "", intentos: 3 }),
+    /ningún plan \(3 intentos\)/,
+  );
+});
+
+test("con planes comprables la razon los nombra", () => {
+  const r = razonDe({
+    soporta: true,
+    planes: { max: { precio: "", base: "mensual" } },
+    vistos: ["zentra_max_mensual"],
+    error: "",
+    intentos: 1,
+  });
+  assert.match(r, /Listo: Google devolvió 1 plan para comprar \(max\)/);
+});
+
+test("fuera del APK no se pregunta nada", async () => {
+  // Sin Capacitor no hay plugin: tiene que contestar sin intentar importarlo.
+  const c = await consultarPlanes();
+  assert.equal(c.soporta, false);
+  assert.deepEqual(c.planes, {});
+  assert.equal(c.intentos, 0);
+});
+
+test("una sola consulta a la vez, y una sola pregunta a Google", () => {
+  // El plugin tiene UN cliente de facturacion que cada llamada abre y cierra.
+  // Dos llamadas al mismo tiempo se pisan: a veces llegan los productos y a
+  // veces vuelve vacio ("product not found"). Por eso las pantallas tienen
+  // que pasar por `consultarPlanes` y no preguntar por su cuenta.
+  const fuente = readFileSync("src/lib/compras-play.ts", "utf8");
+  assert.match(fuente, /if \(enVuelo\) return enVuelo;/, "se perdio la cola de una sola consulta");
+  for (const p of ["src/mobile/ui/AvisoPlan.tsx", "src/mobile/screens/ConfigScreen.tsx"]) {
+    const pantalla = readFileSync(p, "utf8");
+    assert.doesNotMatch(pantalla, /NativePurchases/, p + " habla con el plugin por su cuenta");
+    assert.doesNotMatch(pantalla, /diagnosticoDeCompras|planesDePlay|sePuedeComprar/, p + " hace su propia consulta");
+  }
 });
