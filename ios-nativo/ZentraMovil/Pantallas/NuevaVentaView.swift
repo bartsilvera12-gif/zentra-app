@@ -8,6 +8,18 @@ import SwiftUI
 /// una sola vez al final; redondear por línea y después sumar da un guaraní de
 /// diferencia, y ahí la factura y lo que guarda el ERP dejan de coincidir.
 struct NuevaVentaView: View {
+    /// Se llama cuando la venta quedó registrada en el ERP.
+    ///
+    /// Existe porque Inicio carga su panel una sola vez, con `.task`, y volver
+    /// de acá no lo vuelve a disparar: el total del día se quedaba en lo que
+    /// valía al abrir la app, y recién cambiaba tirando de la pantalla para
+    /// refrescar. Quien acaba de facturar mira justamente ese número.
+    ///
+    /// Va como aviso hacia afuera y no recargando desde acá porque el panel es
+    /// de Inicio: esta pantalla no tiene por qué saber qué hay que recargar,
+    /// sólo que vendió.
+    var alRegistrar: () -> Void = {}
+
     @Environment(\.tema) private var t
     @Environment(\.dismiss) private var cerrar
     @Environment(Estado.self) private var estado
@@ -399,6 +411,10 @@ struct NuevaVentaView: View {
                 credito: credito, plazoDias: plazo, metodo: metodo,
                 cliente: cliente
             )
+            // Acá y no al cerrar: entre que se confirma y que alguien toca
+            // "Listo" pasan unos segundos, y que el panel los use para
+            // recargar es gratis. Al volver, el número ya está puesto.
+            alRegistrar()
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
                 ?? "No se pudo registrar la venta. Probá de nuevo."

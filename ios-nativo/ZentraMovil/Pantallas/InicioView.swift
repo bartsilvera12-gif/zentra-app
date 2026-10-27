@@ -46,7 +46,12 @@ struct InicioView: View {
             }
             .navigationDestination(for: Modulo.self) { m in
                 switch m {
-                case .venta: NuevaVentaView()
+                case .venta:
+                    // Al registrar una venta hay que volver a pedir el panel:
+                    // `.task` corrió una sola vez, al abrir Inicio, y volver de
+                    // la venta no lo dispara de nuevo. `forzar` porque `cargar`
+                    // se niega a repetir el pedido si ya lo hizo.
+                    NuevaVentaView { Task { await panel.cargar(forzar: true) } }
                 case .clientes: ClientesView()
                 case .inventario: InventarioView()
                 case .compras: ComprasView()

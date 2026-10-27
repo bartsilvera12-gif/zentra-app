@@ -22,7 +22,10 @@ struct LoginView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            C.azul.ignoresSafeArea()
+            // El teal del ícono, no el azul petróleo: es el color con el que
+            // la app se ve en la App Store y en la pantalla de inicio del
+            // teléfono, así que es el que alguien espera al abrirla.
+            C.teal.ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 0) {
