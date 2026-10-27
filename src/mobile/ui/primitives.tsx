@@ -254,6 +254,76 @@ export function Field({
   );
 }
 
+/**
+ * Un campo de elegir, con la misma cara que `Field`.
+ *
+ * Es un `<select>` del sistema y no una lista nuestra: en el teléfono abre la
+ * rueda del sistema operativo, que es la que la gente ya sabe usar, y no hay
+ * que resolver el teclado tapando media pantalla.
+ *
+ * El marcador vive como una opción vacía y deshabilitada: así el campo arranca
+ * sin elegir —no con la primera opción puesta, que es lo que pasa si no está—
+ * y lo que se guarda es lo que la persona eligió de verdad.
+ */
+export function SelectField({
+  label,
+  value,
+  onChange,
+  opciones,
+  placeholder = "Elegí una opción",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  opciones: readonly string[];
+  placeholder?: string;
+}) {
+  const { t } = useApp();
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+      <span
+        style={{
+          font: "600 11px/1 var(--font-barlow),Barlow,sans-serif",
+          letterSpacing: ".12em",
+          textTransform: "uppercase",
+          color: t.ink2,
+        }}
+      >
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          height: 46,
+          border: `1px solid ${t.border}`,
+          borderRadius: 12,
+          background: t.card,
+          padding: "0 10px",
+          fontSize: 15,
+          // Sin elegir se ve como un marcador, no como una respuesta.
+          color: value ? t.ink : t.ink3,
+          outline: "none",
+          minWidth: 0,
+          // Sin esto, en iOS el select se dibuja con el alto del sistema y
+          // queda más bajo que los campos de al lado.
+          WebkitAppearance: "none",
+          appearance: "none",
+        }}
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        {opciones.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function PrimaryButton({
   label,
   onClick,

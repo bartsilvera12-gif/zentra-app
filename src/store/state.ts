@@ -88,6 +88,14 @@ export interface AppState {
   regEmpresa: string;
   regMail: string;
   regPass: string;
+  /** La contraseña escrita de nuevo. No viaja a ningún lado: sólo se comparan. */
+  regPass2: string;
+  /** Fecha de nacimiento, en aaaa-mm-dd, que es lo que devuelve el campo de fecha. */
+  regNacimiento: string;
+  /** De dónde salió la persona, el rubro y el tamaño: de las listas de `registro.ts`. */
+  regComoConocio: string;
+  regRubro: string;
+  regTamano: string;
   /** true cuando Supabase pide confirmar el correo antes de entrar. */
   regConfirmar: boolean;
 
@@ -422,6 +430,11 @@ export const initialState: AppState = {
   regEmpresa: "",
   regMail: "",
   regPass: "",
+  regPass2: "",
+  regNacimiento: "",
+  regComoConocio: "",
+  regRubro: "",
+  regTamano: "",
   regConfirmar: false,
 
   borrarAbierto: false,

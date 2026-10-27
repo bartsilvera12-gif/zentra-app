@@ -73,14 +73,17 @@ actor Auth {
     /// Alta en la instalación pública. `necesitaConfirmar` es true cuando el
     /// proyecto tiene activada la confirmación por correo: ahí no hay sesión
     /// todavía y hay que avisarle a la persona que revise su casilla.
-    func registrar(correo: String, clave: String, nombre: String, empresa: String)
+    /// `datos` son los metadatos ya armados por `Registro.metadatos`. Antes
+    /// eran dos parámetros sueltos —nombre y empresa— y cada pregunta nueva
+    /// sumaba uno más, en un orden que se puede equivocar sin que nadie avise:
+    /// dos `String` seguidos entran igual al revés.
+    func registrar(correo: String, clave: String, datos: [String: String])
         async throws -> Bool
     {
         let json = try await pedir("signup", cuerpo: [
             "email": correo.trimmingCharacters(in: .whitespaces),
             "password": clave,
-        ], metadatos: ["nombre": nombre.trimmingCharacters(in: .whitespaces),
-                       "empresa": empresa.trimmingCharacters(in: .whitespaces)])
+        ], metadatos: datos)
 
         // Con confirmación activada Supabase devuelve el usuario pero sin token.
         if json["access_token"] is String {

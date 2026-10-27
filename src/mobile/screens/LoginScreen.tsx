@@ -6,6 +6,7 @@ import { linkDeSoporte } from "@/lib/soporte";
 import { VERSION } from "@/lib/data";
 import { pushPreferido, reanudarPush } from "@/lib/push";
 import { registrar, repo, usaSupabase } from "@/lib/repo";
+import { metadatosDeRegistro, validarRegistro } from "@/lib/registro";
 import { useApp } from "@/store/AppContext";
 import { MARCA } from "@/lib/theme";
 import { StatusBar } from "../layout/StatusBar";
@@ -92,8 +93,22 @@ export function LoginScreen() {
   };
 
   const crearCuenta = async () => {
-    if (!s.regMail.trim() || !s.regPass.trim() || s.regNombre.trim().length < 2) {
-      set({ authError: "Completá tu nombre, correo y contraseña." });
+    const datos = {
+      nombre: s.regNombre,
+      empresa: s.regEmpresa,
+      correo: s.regMail,
+      password: s.regPass,
+      password2: s.regPass2,
+      nacimiento: s.regNacimiento,
+      comoConocio: s.regComoConocio,
+      tamano: s.regTamano,
+      rubro: s.regRubro,
+    };
+    // Una frase por vez, en el orden de la pantalla. La validación vive en
+    // `registro.ts` porque la comparten esta pantalla y la nativa de iOS.
+    const falta = validarRegistro(datos);
+    if (falta) {
+      set({ authError: falta });
       return;
     }
     // El registro siempre va a la instalación pública: en la de un cliente con
@@ -103,12 +118,7 @@ export function LoginScreen() {
 
     set({ entrando: true, authError: "" });
     try {
-      const { necesitaConfirmar } = await registrar(
-        s.regMail,
-        s.regPass,
-        s.regNombre,
-        s.regEmpresa || s.regNombre,
-      );
+      const { necesitaConfirmar } = await registrar(s.regMail, s.regPass, metadatosDeRegistro(datos));
       if (necesitaConfirmar) {
         set({ entrando: false, regConfirmar: true, authError: "" });
         return;
@@ -119,6 +129,7 @@ export function LoginScreen() {
         entrando: false,
         sesion: sesion.usuario,
         regPass: "",
+        regPass2: "",
         authError: "",
       });
     } catch (e) {

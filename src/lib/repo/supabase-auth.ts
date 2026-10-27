@@ -213,20 +213,25 @@ export const supabaseAuth: AuthRepo = {
  * Alta de cuenta. Sólo tiene sentido en la instalación pública: en la de un
  * cliente con ERP los usuarios los da de alta el dueño, no se auto-registran.
  *
- * `nombre` y `empresa` viajan en los metadatos: el disparador de la base los usa
- * para crear la empresa y el perfil en el mismo acto.
+ * Los datos viajan en los metadatos: el disparador de la base los usa para
+ * crear la empresa y el perfil en el mismo acto. Las claves las arma
+ * `metadatosDeRegistro` y las lee `supabase/16_registro_datos.sql`; si cambia
+ * un nombre hay que cambiarlo en los dos lados.
  */
 export async function registrar(
   correo: string,
   password: string,
-  nombre: string,
-  empresa: string,
+  // Todo lo que se preguntó en el alta, ya armado por `metadatosDeRegistro`.
+  // Antes eran dos parámetros sueltos —nombre y empresa— y cada pregunta
+  // nueva sumaba uno más, en un orden que se puede equivocar sin que nadie
+  // avise: dos `string` seguidos entran igual al revés.
+  datos: Record<string, string>,
 ): Promise<{ necesitaConfirmar: boolean }> {
   const { data, error } = await sb().auth.signUp({
     email: correo.trim(),
     password,
     options: {
-      data: { nombre: nombre.trim(), empresa: empresa.trim() },
+      data: datos,
       // A dónde vuelve el enlace del correo de confirmación, si está activada.
       //
       // Sin esto Supabase usa su *Site URL*, que de fábrica es

@@ -99,12 +99,19 @@ Lo que la app recolecta, con la respuesta que corresponde a cada pregunta:
 | Dato | ¿Se recolecta? | ¿Se comparte? | ¿Obligatorio? | Para qué |
 |---|---|---|---|---|
 | Nombre y correo | Sí | No | Sí | La cuenta |
+| Fecha de nacimiento | Sí | No | Sí | Verificar la edad mínima al crear la cuenta |
+| Otra información personal (rubro del negocio, cantidad de empleados, cómo conoció la app) | Sí | No | Sí | Entender quién usa la app |
 | Datos de clientes del comercio (nombre, RUC, dirección) | Sí | No | Sí | Función de la app |
 | Fotos y archivos | Sí | No | No | Adjuntos del chat |
 | Audio | Sí | No | No | Mensajes de voz |
 | Ubicación aproximada y precisa | Sí | No | No | Mandar la ubicación por el chat |
 | Mensajes | Sí | No | No | El chat |
 | Identificador del dispositivo | Sí | No | No | Mandar las notificaciones |
+
+La fecha de nacimiento va en **Información personal → Otra información
+personal** y hay que marcarla: Play la revisa, y una app que la pide en el
+alta y no la declara es un rechazo. Las tres preguntas del alta —rubro,
+cantidad de personas y cómo conoció la app— entran en la misma fila.
 
 Las tres respuestas que siempre se olvidan:
 

@@ -8,18 +8,15 @@ struct RegistroView: View {
     @Environment(\.dismiss) private var cerrar
     @Environment(Estado.self) private var estado
 
-    @State private var nombre = ""
-    @State private var empresa = ""
-    @State private var correo = ""
-    @State private var clave = ""
+    @State private var datos = Registro.Datos()
     @State private var trabajando = false
     @State private var error: String?
     @State private var confirmar = false
 
-    private var puede: Bool {
-        nombre.trimmingCharacters(in: .whitespaces).count >= 2
-            && correo.contains("@") && clave.count >= 6 && !trabajando
-    }
+    // El botón no se apaga por campo incompleto: apagado no dice qué falta, y
+    // con nueve campos eso es dejar a alguien mirando un botón gris. Se puede
+    // tocar siempre, y al tocarlo aparece la frase de lo que falta.
+    private var puede: Bool { !trabajando }
 
     var body: some View {
         NavigationStack {
@@ -29,10 +26,21 @@ struct RegistroView: View {
                         Aviso(texto: "Te mandamos un correo para confirmar la cuenta. Abrilo y después volvé a entrar.",
                               bg: Tint.okBg, ink: Tint.okInk)
                     } else {
-                        CampoLogin("Tu nombre", $nombre, marcador: "Juan Pérez")
-                        CampoLogin("Nombre de tu empresa", $empresa, marcador: "Opcional")
-                        CampoLogin("Correo", $correo, marcador: "vos@empresa.com", teclado: .emailAddress)
-                        CampoLogin("Contraseña", $clave, marcador: "Mínimo 6 caracteres", secreto: true)
+                        CampoLogin("Nombre y apellido", $datos.nombre, marcador: "Juan Pérez")
+                        CampoLogin("Nombre de tu empresa", $datos.empresa, marcador: "Opcional")
+                        CampoLogin("Correo", $datos.correo, marcador: "vos@empresa.com", teclado: .emailAddress)
+                        CampoFecha("Fecha de nacimiento", $datos.nacimiento)
+                        CampoElegir("A qué se dedica tu negocio", $datos.rubro,
+                                    opciones: Registro.rubros, marcador: "Elegí el rubro")
+                        CampoElegir("Cuántas personas trabajan con vos", $datos.tamano,
+                                    opciones: Registro.tamanos, marcador: "Elegí el tamaño")
+                        CampoElegir("Cómo conociste Zentra", $datos.comoConocio,
+                                    opciones: Registro.comoConocio, marcador: "Elegí una opción")
+                        CampoLogin("Contraseña", $datos.clave, marcador: "Mínimo 6 caracteres", secreto: true)
+                        // Escribirla dos veces: mal tipeada acá no se nota
+                        // hasta el día siguiente, con la cuenta ya creada.
+                        CampoLogin("Repetí la contraseña", $datos.clave2,
+                                   marcador: "La misma de arriba", secreto: true)
 
                         if let error {
                             Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk)
@@ -69,6 +77,12 @@ struct RegistroView: View {
     }
 
     private func crear() async {
+        // Una frase por vez, en el orden de la pantalla. La validación vive en
+        // `Registro` porque la comparten esta pantalla y la de la app web.
+        if let falta = Registro.validar(datos) {
+            error = falta
+            return
+        }
         trabajando = true; error = nil
         do {
             // La instalación pública, siempre.
@@ -79,14 +93,15 @@ struct RegistroView: View {
                 return
             }
             await Auth.shared.activar(t)
+            let meta = Registro.metadatos(datos)
             let necesita = try await Auth.shared.registrar(
-                correo: correo, clave: clave, nombre: nombre,
-                empresa: empresa.isEmpty ? nombre : empresa
+                correo: datos.correo, clave: datos.clave, datos: meta
             )
             if necesita { confirmar = true }
             else {
                 estado.tenant = t
-                estado.perfil = Perfil(id: "", nombre: nombre, rol: "ADMIN", empresa: empresa.isEmpty ? nombre : empresa)
+                estado.perfil = Perfil(id: "", nombre: meta["nombre"] ?? "", rol: "ADMIN",
+                                       empresa: meta["empresa"] ?? "")
                 cerrar()
             }
         } catch {
@@ -163,6 +178,81 @@ struct RecuperoView: View {
 }
 
 /// El campo del login y sus pantallas hermanas, sobre fondo claro.
+/// Un campo de elegir, con la misma cara que `CampoLogin`.
+///
+/// Arranca vacío y mostrando el marcador: si arrancara con la primera opción
+/// puesta, lo que se guarda sería lo que la app eligió, no lo que eligió la
+/// persona.
+struct CampoElegir: View {
+    let etiqueta: String
+    @Binding var valor: String
+    let opciones: [String]
+    var marcador = "Elegí una opción"
+
+    init(_ etiqueta: String, _ valor: Binding<String>, opciones: [String],
+         marcador: String = "Elegí una opción") {
+        self.etiqueta = etiqueta; self._valor = valor
+        self.opciones = opciones; self.marcador = marcador
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(etiqueta.uppercased())
+                .font(Tipo.barlow(.semibold, 10.5)).tracking(1.26)
+                .foregroundStyle(Color(hex: "#65707f"))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Menu {
+                Picker("", selection: $valor) {
+                    ForEach(opciones, id: \.self) { Text($0).tag($0) }
+                }
+            } label: {
+                HStack {
+                    Text(valor.isEmpty ? marcador : valor)
+                        .font(.system(size: 16))
+                        .foregroundStyle(valor.isEmpty ? Color(hex: "#8b95a3") : Color(hex: "#13232b"))
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#65707f"))
+                }
+                .padding(.horizontal, 14).frame(height: 46)
+                .background(.white, in: .rect(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#d6dbe3")) }
+            }
+        }
+    }
+}
+
+/// La fecha de nacimiento, con el calendario del sistema. No son tres cajitas
+/// a mano: así no hay forma de escribir 31 de febrero.
+struct CampoFecha: View {
+    let etiqueta: String
+    @Binding var valor: Date
+
+    init(_ etiqueta: String, _ valor: Binding<Date>) {
+        self.etiqueta = etiqueta; self._valor = valor
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(etiqueta.uppercased())
+                .font(Tipo.barlow(.semibold, 10.5)).tracking(1.26)
+                .foregroundStyle(Color(hex: "#65707f"))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            DatePicker("", selection: $valor, in: ...Date(), displayedComponents: .date)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .padding(.horizontal, 10).frame(height: 46)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white, in: .rect(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#d6dbe3")) }
+        }
+    }
+}
+
 struct CampoLogin: View {
     let etiqueta: String
     @Binding var texto: String

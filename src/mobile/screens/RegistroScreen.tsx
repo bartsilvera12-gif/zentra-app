@@ -3,7 +3,8 @@
 import { MARCA } from "@/lib/theme";
 import { useApp } from "@/store/AppContext";
 import { StatusBar } from "../layout/StatusBar";
-import { Field, Notice } from "../ui/primitives";
+import { COMO_CONOCIO, RUBROS, TAMANOS } from "@/lib/registro";
+import { Field, Notice, SelectField } from "../ui/primitives";
 
 /**
  * Alta de cuenta en la instalación pública. Al crearla, un disparador de la base
@@ -104,7 +105,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
             </div>
 
             <Field
-              label="Tu nombre"
+              label="Nombre y apellido"
               value={s.regNombre}
               onChange={(v) => set({ regNombre: v, authError: "" })}
               placeholder="Ulises Gómez"
@@ -113,7 +114,7 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
               label="Nombre del negocio"
               value={s.regEmpresa}
               onChange={(v) => set({ regEmpresa: v, authError: "" })}
-              placeholder="Despensa Doña Lucía"
+              placeholder="Opcional"
             />
             <Field
               label="Correo"
@@ -123,12 +124,52 @@ export function RegistroScreen({ onCrear }: { onCrear: () => void }) {
               onChange={(v) => set({ regMail: v, authError: "" })}
               placeholder="vos@correo.com"
             />
+            {/* El campo de fecha del sistema y no tres cajitas: abre el
+                calendario del teléfono, y no hay forma de escribir 31 de
+                febrero. */}
+            <Field
+              label="Fecha de nacimiento"
+              type="date"
+              value={s.regNacimiento}
+              onChange={(v) => set({ regNacimiento: v, authError: "" })}
+            />
+            <SelectField
+              label="A qué se dedica tu negocio"
+              value={s.regRubro}
+              onChange={(v) => set({ regRubro: v, authError: "" })}
+              opciones={RUBROS}
+              placeholder="Elegí el rubro"
+            />
+            <SelectField
+              label="Cuántas personas trabajan con vos"
+              value={s.regTamano}
+              onChange={(v) => set({ regTamano: v, authError: "" })}
+              opciones={TAMANOS}
+              placeholder="Elegí el tamaño"
+            />
+            <SelectField
+              label="Cómo conociste Zentra"
+              value={s.regComoConocio}
+              onChange={(v) => set({ regComoConocio: v, authError: "" })}
+              opciones={COMO_CONOCIO}
+              placeholder="Elegí una opción"
+            />
             <Field
               label="Contraseña"
               type="password"
               value={s.regPass}
               onChange={(v) => set({ regPass: v, authError: "" })}
               placeholder="Al menos 6 caracteres"
+            />
+            {/* Escribirla dos veces. Una contraseña mal tipeada acá no se nota
+                hasta el día siguiente, cuando no se puede entrar y la cuenta
+                está recién creada. */}
+            <Field
+              label="Repetí la contraseña"
+              type="password"
+              value={s.regPass2}
+              onChange={(v) => set({ regPass2: v, authError: "" })}
+              placeholder="La misma de arriba"
             />
 
             {s.authError && (

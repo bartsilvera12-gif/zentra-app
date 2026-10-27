@@ -421,9 +421,16 @@ export function paginaPrivacidad({ whatsapp = "", email = "", actualizada = "" }
 
       <h2>Qué datos tratamos</h2>
       <ul>
-        <li><strong>De tu cuenta:</strong> nombre, correo electrónico y la
-        empresa a la que pertenecés. Hacen falta para que puedas entrar y para
-        saber qué datos te corresponden.</li>
+        <li><strong>De tu cuenta:</strong> nombre y apellido, correo
+        electrónico, fecha de nacimiento y la empresa a la que pertenecés. El
+        nombre y el correo hacen falta para que puedas entrar y para saber qué
+        datos te corresponden; la fecha de nacimiento, para verificar que
+        tenés la edad mínima para abrir una cuenta.</li>
+        <li><strong>Del alta:</strong> a qué se dedica tu negocio, cuántas
+        personas trabajan en él y cómo conociste Zentra. Se preguntan una sola
+        vez, al crear la cuenta, y las usamos para entender quién usa la app y
+        decidir qué construir. No se comparten con nadie ni se usan para
+        publicidad.</li>
         <li><strong>Del negocio:</strong> lo que cargás en la app — productos,
         ventas, compras, clientes y proveedores, con sus datos de contacto y
         su RUC o cédula. Son tuyos: nosotros los guardamos para que puedas
