@@ -76,38 +76,63 @@ export function edadEn(nacimiento: string, hoy: Date): number | null {
 }
 
 /**
- * Qué falta, en una frase.
- *
- * Devuelve `null` cuando está todo. Una sola frase y no una lista: en un
- * teléfono, seis errores en rojo al mismo tiempo no se leen.
- *
- * El orden importa y es el de la pantalla: señalar la contraseña cuando la
- * persona todavía no terminó de escribir el nombre la manda a buscar un error
- * que no cometió.
+ * Los pasos del alta, en orden. Son tres y no una sola pantalla larga: nueve
+ * campos seguidos se leen como un formulario de banco, y con el teclado
+ * abierto quedaban dos a la vista. De a tres o cuatro por paso, cada pantalla
+ * entra entera.
  */
-export function validarRegistro(d: DatosRegistro, hoy: Date = new Date()): string | null {
-  const nombre = d.nombre.trim().replace(/\s+/g, " ");
-  // Nombre Y apellido: con el nombre solo, después no se sabe a quién
-  // facturarle. Dos palabras de dos letras es el mínimo que no deja pasar
-  // "Juan " ni "J P".
-  const partes = nombre.split(" ").filter((p) => p.length >= 2);
-  if (partes.length < 2) return "Escribí tu nombre y tu apellido.";
+export const PASOS_REGISTRO = ["cuenta", "negocio", "vos"] as const;
+export type PasoRegistro = (typeof PASOS_REGISTRO)[number];
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.correo.trim())) return "Revisá el correo: parece que falta algo.";
-
+/**
+ * Qué falta en un paso, en una frase. `null` cuando el paso está completo.
+ *
+ * Una sola frase y no una lista: en un teléfono, varios errores en rojo al
+ * mismo tiempo no se leen. El orden es el de la pantalla: señalar la
+ * contraseña cuando la persona todavía no terminó de escribir el nombre la
+ * manda a buscar un error que no cometió.
+ */
+export function validarPaso(paso: PasoRegistro, d: DatosRegistro, hoy: Date = new Date()): string | null {
+  if (paso === "cuenta") {
+    const nombre = d.nombre.trim().replace(/\s+/g, " ");
+    // Nombre Y apellido: con el nombre solo, después no se sabe a quién
+    // facturarle. Dos palabras de dos letras es el mínimo que no deja pasar
+    // "Juan " ni "J P".
+    const partes = nombre.split(" ").filter((p) => p.length >= 2);
+    if (partes.length < 2) return "Escribí tu nombre y tu apellido.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.correo.trim())) return "Revisá el correo: parece que falta algo.";
+    if (d.password.length < 6) return "La contraseña necesita al menos 6 caracteres.";
+    if (d.password !== d.password2) return "Las dos contraseñas no son iguales.";
+    return null;
+  }
+  if (paso === "negocio") {
+    if (!(RUBROS as readonly string[]).includes(d.rubro)) return "Elegí a qué se dedica tu negocio.";
+    if (!(TAMANOS as readonly string[]).includes(d.tamano)) return "Elegí cuántas personas trabajan con vos.";
+    return null;
+  }
   const edad = edadEn(d.nacimiento, hoy);
   if (edad === null) return "Poné tu fecha de nacimiento.";
   if (edad < EDAD_MINIMA) return `Hay que tener al menos ${EDAD_MINIMA} años para abrir una cuenta.`;
   if (edad > EDAD_MAXIMA) return "Revisá el año de nacimiento.";
-
-  if (!(RUBROS as readonly string[]).includes(d.rubro)) return "Elegí a qué se dedica tu negocio.";
-  if (!(TAMANOS as readonly string[]).includes(d.tamano)) return "Elegí cuántas personas trabajan con vos.";
   if (!(COMO_CONOCIO as readonly string[]).includes(d.comoConocio)) return "Contanos cómo conociste Zentra.";
-
-  if (d.password.length < 6) return "La contraseña necesita al menos 6 caracteres.";
-  if (d.password !== d.password2) return "Las dos contraseñas no son iguales.";
-
   return null;
+}
+
+/**
+ * Qué falta en todo el alta: lo primero que falte, paso por paso. Es lo que
+ * se corre al final, antes de mandar, por si algún paso quedó a medias.
+ */
+export function validarRegistro(d: DatosRegistro, hoy: Date = new Date()): string | null {
+  for (const paso of PASOS_REGISTRO) {
+    const falta = validarPaso(paso, d, hoy);
+    if (falta) return falta;
+  }
+  return null;
+}
+
+/** En qué paso está lo que falta, para volver ahí y no dejar a nadie buscando. */
+export function pasoConFalta(d: DatosRegistro, hoy: Date = new Date()): PasoRegistro | null {
+  return PASOS_REGISTRO.find((p) => validarPaso(p, d, hoy) !== null) ?? null;
 }
 
 /**
