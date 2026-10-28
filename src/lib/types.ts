@@ -15,6 +15,17 @@ export interface ThemeTokens {
   ink3: string;
   dim: string;
   border: string;
+  /**
+   * Texto que dice algo con el color —bien, mal, ojo, la marca— escrito
+   * directo sobre `card` o `bg`. Van en el tema porque un mismo verde no sirve
+   * para los dos fondos: el verde oscuro que se lee sobre blanco desaparece
+   * sobre el fondo del modo oscuro. Las etiquetas con fondo propio (`Badge`)
+   * no los necesitan: ahí el fondo es siempre claro.
+   */
+  ok: string;
+  mal: string;
+  ojo: string;
+  marca: string;
 }
 
 export type ModuleKey =

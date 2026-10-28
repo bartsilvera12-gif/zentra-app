@@ -350,7 +350,7 @@ export function ComprasScreen() {
               <StatTile
                 label="Por pagar"
                 valor={gs(pend.reduce((a, c) => a + totalCompra(c), 0))}
-                valorInk={ORO}
+                valorInk={t.marca}
               />
             </div>
             <SearchInput
@@ -600,14 +600,14 @@ export function ComprasScreen() {
                     }))}
                   />
                   {s.pfError && (
-                    <span style={{ font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#B0322F" }}>
+                    <span style={{ font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: t.mal }}>
                       Poné el nombre del proveedor para poder guardarlo.
                     </span>
                   )}
                   {/* Si el proveedor no se pudo guardar, la compra no sigue: se
                       dice acá, donde está el botón que falló. */}
                   {s.pfErrorTexto && (
-                    <span style={{ font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: "#B0322F" }}>
+                    <span style={{ font: "500 11.5px/1.35 var(--font-barlow),Barlow,sans-serif", color: t.mal }}>
                       {s.pfErrorTexto}
                     </span>
                   )}
@@ -724,7 +724,7 @@ export function ComprasScreen() {
                     cursor: "pointer",
                     background: t.card,
                     border: `1px dashed ${sinAltaProv ? t.border : ORO}`,
-                    color: sinAltaProv ? t.ink2 : ORO,
+                    color: sinAltaProv ? t.ink2 : t.marca,
                     font: "600 14px/1 var(--font-barlow),Barlow,sans-serif",
                   }}
                 >
@@ -1191,7 +1191,7 @@ export function ComprasScreen() {
                   <KeyValue
                     k={`Precio con ${s.kMargen}% de margen`}
                     v={unidades > 0 ? gs(neto / unidades / (1 - s.kMargen / 100)) : "—"}
-                    vInk="#1F5C46"
+                    vInk={t.ok}
                   />
                 </Card>
 
@@ -1292,7 +1292,7 @@ export function ComprasScreen() {
                     font: "600 14.5px/1 var(--font-barlow),Barlow,sans-serif",
                     background: t.card,
                     border: `1.5px solid ${ORO}`,
-                    color: ORO,
+                    color: t.marca,
                     flex: "0 0 auto",
                   }}
                 >

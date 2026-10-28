@@ -273,10 +273,10 @@ export function ProveedoresScreen() {
               titulo="Proveedores"
               resumen={`${todos.length} proveedores · ${activos} activos`}
               onBack={() => set({ screen: "home" })}
-              accion={{ label: "+ Nuevo", onClick: abrirNuevo, bg: ACCENT, fg: "#023047" }}
+              accion={{ label: "+ Nuevo", onClick: abrirNuevo, bg: ACCENT, fg: "#ffffff" }}
             />
             <div style={{ display: "flex", gap: 10 }}>
-              <StatTile label="Deuda total" valor={gs(deudaTotal)} valorInk={ORO} />
+              <StatTile label="Deuda total" valor={gs(deudaTotal)} valorInk={t.marca} />
               <StatTile label="Por vencer" valor={plural(pendientes.length, "factura", "facturas")} />
             </div>
             <SearchInput
@@ -344,7 +344,7 @@ export function ProveedoresScreen() {
                       <span
                         style={{
                           font: "700 14px/1.1 var(--font-barlow),Barlow,sans-serif",
-                          color: deuda > 0 ? ORO : "#1F5C46",
+                          color: deuda > 0 ? t.marca : t.ok,
                         }}
                       >
                         {deuda > 0 ? gs(deuda) : "Al día"}
@@ -481,7 +481,7 @@ export function ProveedoresScreen() {
                       style={{
                         flex: "0 0 auto",
                         font: "700 12.5px/1.1 var(--font-barlow),Barlow,sans-serif",
-                        color: pagada ? "#1F5C46" : "#6B4A00",
+                        color: pagada ? t.ok : t.ojo,
                       }}
                     >
                       {gs(totalCompra(c))}

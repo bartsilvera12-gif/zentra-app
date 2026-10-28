@@ -512,11 +512,9 @@ export function ConfigScreen() {
                 <div style={{ font: "400 12px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
                   Se paga en {config.cobrosUrl.replace(/^https?:\/\//, "")}/pagar, desde el navegador.
                 </div>
-                {porQue && (
-                  <div style={{ font: "400 11.5px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
-                    {porQue}
-                  </div>
-                )}
+                {/* Acá no va el diagnóstico de Google: esto es el navegador,
+                    donde no hay compra adentro, y "este teléfono no tiene la
+                    facturación de Google" se leía como una falla que no es. */}
               </div>
             )}
 

@@ -9,6 +9,10 @@ export const THEME: Record<ThemeName, ThemeTokens> = {
     ink3: "#5b6676",
     dim: "#c3cbd6",
     border: "#e3e7ee",
+    ok: "#1F5C46",
+    mal: "#8C2F2B",
+    ojo: "#6B4A00",
+    marca: "#023047",
   },
   oscuro: {
     bg: "#0b0f1c",
@@ -18,6 +22,12 @@ export const THEME: Record<ThemeName, ThemeTokens> = {
     ink3: "#7d879a",
     dim: "#3b4459",
     border: "#252d42",
+    // Los mismos cuatro, aclarados para fondo oscuro. Medidos sobre `card`
+    // (#151b2e): todos pasan 7:1.
+    ok: "#7FD4B0",
+    mal: "#F2A9A4",
+    ojo: "#F5C76B",
+    marca: "#8ECAE6",
   },
 };
 

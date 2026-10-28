@@ -483,7 +483,7 @@ export function InventarioScreen() {
             />
             <div style={{ display: "flex", gap: 10 }}>
               <StatTile label="Valuación" valor={gs(prods.reduce((a, p) => a + p.stock * p.costo, 0))} />
-              <StatTile label="Bajo mínimo" valor={`${bajo.length} prod.`} valorInk={MARCA.avisoInk} />
+              <StatTile label="Bajo mínimo" valor={`${bajo.length} prod.`} valorInk={t.ojo} />
             </div>
             <SearchInput
               value={s.iQuery}
@@ -564,7 +564,7 @@ export function InventarioScreen() {
                       }}
                     >
                       <span style={{ font: "700 14px/1.1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{gs(p.precio)}</span>
-                      <span style={{ font: "400 10.5px/1 var(--font-barlow),Barlow,sans-serif", color: "#1F5C46" }}>
+                      <span style={{ font: "400 10.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ok }}>
                         {margenPct(p.costo, p.precio)}%
                       </span>
                     </span>
@@ -653,7 +653,7 @@ export function InventarioScreen() {
               <SectionLabel>Precios y margen</SectionLabel>
               <KeyValue k="Costo promedio" v={gs(det.costo)} />
               <KeyValue k="Precio de venta" v={gs(det.precio)} />
-              <KeyValue k="Margen" v={`${margenPct(det.costo, det.precio)}%`} vInk="#1F5C46" />
+              <KeyValue k="Margen" v={`${margenPct(det.costo, det.precio)}%`} vInk={t.ok} />
               <KeyValue k="IVA de venta" v={det.iva} />
             </Card>
 
@@ -853,10 +853,10 @@ export function InventarioScreen() {
                     font: "700 22px/1 var(--font-barlow),Barlow,sans-serif",
                     color:
                       ajNuevoStock < 0
-                        ? "#B0322F"
+                        ? t.mal
                         : ajNuevoStock <= ajProd.minimo
-                          ? MARCA.avisoInk
-                          : "#1F5C46",
+                          ? t.ojo
+                          : t.ok,
                   }}
                 >
                   {ajNuevoStock} {ajProd.unidad}
@@ -1078,7 +1078,7 @@ export function InventarioScreen() {
               <KeyValue
                 k="Markup resultante"
                 v={npCostoNum > 0 && npPrecioNum > 0 ? `${Math.round(npMarkupCalc)}%` : "—"}
-                vInk={npMarkupCalc < 0 ? "#B0322F" : "#1F5C46"}
+                vInk={npMarkupCalc < 0 ? t.mal : t.ok}
               />
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>IVA de venta</span>
