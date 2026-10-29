@@ -273,7 +273,7 @@ struct ChatView: View {
             Rectangle().fill(C.ambar).frame(width: 3, height: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(m.mio ? "Vos" : chat.nombre)
-                    .font(Tipo.barlow(.semibold, 11.5)).foregroundStyle(C.azulMedio)
+                    .font(Tipo.barlow(.semibold, 11.5)).foregroundStyle(t.marca)
                 Text(m.texto.isEmpty ? m.epigrafe : m.texto)
                     .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2).lineLimit(1)
             }
@@ -349,7 +349,7 @@ struct ChatView: View {
             } label: {
                 Image(systemName: "paperclip")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(C.azulMedio)
+                    .foregroundStyle(t.marca)
                     .frame(width: 34, height: 40)
             }
             .disabled(enviando)
@@ -445,13 +445,13 @@ struct ChatView: View {
                                         in: .rect(cornerRadius: 12))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(fav ? C.azulMedio : (esEmoji ? .clear : t.border))
+                                    .stroke(fav ? t.marca : (esEmoji ? .clear : t.border))
                             }
                             .overlay(alignment: .topTrailing) {
                                 if fav {
                                     Image(systemName: "star.fill")
                                         .font(.system(size: 8))
-                                        .foregroundStyle(C.azulMedio)
+                                        .foregroundStyle(t.marca)
                                         .padding(.top, 2).padding(.trailing, 3)
                                 }
                             }

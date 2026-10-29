@@ -670,7 +670,7 @@ struct NuevoProveedorView: View {
                                 if consultando { ProgressView().controlSize(.small) }
                                 Text("Consultar en la SET").font(Tipo.barlow(.semibold, 13.5))
                             }
-                            .foregroundStyle(C.azulMedio)
+                            .foregroundStyle(t.marca)
                         }
                         .buttonStyle(.plain)
                         .disabled(ruc.trimmingCharacters(in: .whitespaces).isEmpty || consultando)
@@ -903,7 +903,7 @@ struct NuevaCompraView: View {
                                 } else { nuevoProv = true }
                             }
                             .font(Tipo.barlow(.semibold, 13))
-                            .foregroundStyle(C.azulMedio)
+                            .foregroundStyle(t.marca)
                         }
                         if !lineas.isEmpty {
                             Bloque(titulo: lineas.count == 1

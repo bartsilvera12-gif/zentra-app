@@ -103,7 +103,7 @@ struct InicioView: View {
                     Text(Formato.rolLegible(rolCrudo))
                         .font(Tipo.barlow(.semibold, 10.5))
                         .tracking(1.26) // .12em sobre 10.5px
-                        .foregroundStyle(Color(hex: "#8A5F00"))
+                        .foregroundStyle(t.ojo)
                 }
 
                 NavigationLink { BuscadorView() } label: {

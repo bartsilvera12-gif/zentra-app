@@ -269,7 +269,7 @@ struct NuevaVentaView: View {
                                     .font(Tipo.barlow(.regular, 11)).foregroundStyle(t.ink2)
                                 if precio(p) != p.precio {
                                     Text("mayorista").font(Tipo.barlow(.semibold, 10))
-                                        .foregroundStyle(Tint.okInk)
+                                        .foregroundStyle(t.ok)
                                 }
                             }
                         }
@@ -449,7 +449,7 @@ struct Contador: View {
     private func boton(_ icono: String, _ accion: @escaping () -> Void) -> some View {
         Button(action: accion) {
             Image(systemName: icono)
-                .font(.system(size: 13, weight: .bold)).foregroundStyle(C.azulMedio)
+                .font(.system(size: 13, weight: .bold)).foregroundStyle(t.marca)
                 .frame(width: 30, height: 30)
                 .background(t.bg, in: .circle)
         }

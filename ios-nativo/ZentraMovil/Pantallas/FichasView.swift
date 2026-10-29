@@ -63,7 +63,7 @@ struct AccionContacto: View {
                     Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(t.ink3)
                 }
-                .foregroundStyle(C.azulMedio)
+                .foregroundStyle(t.marca)
             }
             .buttonStyle(.plain)
         }

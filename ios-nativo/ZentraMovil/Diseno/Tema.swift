@@ -24,7 +24,7 @@ extension Color {
 
 // MARK: - Tema claro / oscuro
 
-/// Los siete tokens que la web resuelve en `useApp().t`.
+/// Los tokens que la web resuelve en `useApp().t`.
 struct TemaTokens {
     let bg: Color
     let card: Color
@@ -34,6 +34,18 @@ struct TemaTokens {
     let dim: Color
     let border: Color
 
+    /// Texto que dice algo con el color —bien, mal, ojo, la marca— escrito
+    /// directo sobre `card` o `bg`.
+    ///
+    /// Van en el tema porque un mismo verde no sirve para los dos fondos: el
+    /// verde oscuro que se lee sobre blanco desaparece sobre el fondo del modo
+    /// oscuro. Lo que tiene fondo propio y claro —los `Chip`, los `Aviso`— no
+    /// los usa: ahí el fondo es siempre claro y el color oscuro es el correcto.
+    let ok: Color
+    let mal: Color
+    let ojo: Color
+    let marca: Color
+
     static let claro = TemaTokens(
         bg: Color(hex: "#f3f5f8"),
         card: Color(hex: "#ffffff"),
@@ -41,7 +53,11 @@ struct TemaTokens {
         ink2: Color(hex: "#65707f"),
         ink3: Color(hex: "#5b6676"),
         dim: Color(hex: "#c3cbd6"),
-        border: Color(hex: "#e3e7ee")
+        border: Color(hex: "#e3e7ee"),
+        ok: Color(hex: "#1F5C46"),
+        mal: Color(hex: "#8C2F2B"),
+        ojo: Color(hex: "#6B4A00"),
+        marca: Color(hex: "#04617A")
     )
 
     /// El oscuro sale de la marca y no de un gris neutro: con grises la app se
@@ -53,7 +69,14 @@ struct TemaTokens {
         ink2: Color(hex: "#A8C2CC"),
         ink3: Color(hex: "#89A6B2"),
         dim: Color(hex: "#3C5A68"),
-        border: Color(hex: "#1D4252")
+        border: Color(hex: "#1D4252"),
+        // Los mismos cuatro, aclarados para fondo oscuro. Medidos sobre
+        // `card` (#143A49): el azul de la marca daba 1,7 a 1 —el mínimo
+        // legible es 4,5— y en la práctica no se veía.
+        ok: Color(hex: "#7FD4B0"),
+        mal: Color(hex: "#F2A9A4"),
+        ojo: Color(hex: "#F5C76B"),
+        marca: Color(hex: "#8ECAE6")
     )
 }
 

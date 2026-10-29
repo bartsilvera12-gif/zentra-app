@@ -188,7 +188,7 @@ struct InventarioView: View {
                   HStack(spacing: 10) {
                       Kpi(rotulo: "VALUACIÓN", valor: Panel.gs(valuacion))
                       Kpi(rotulo: "BAJO MÍNIMO", valor: "\(bajoMinimo) prod.",
-                          tinte: bajoMinimo > 0 ? Tint.avisoInk : nil)
+                          tinte: bajoMinimo > 0 ? t.ojo : nil)
                   }
                   .padding(.horizontal, 14)
 
@@ -287,9 +287,11 @@ struct InventarioView: View {
     }
 
     private func colorStock(_ p: InvProducto) -> Color {
-        if p.stock <= 0 { return Tint.errorInk }
-        if p.minimo > 0 && p.stock <= p.minimo { return Tint.avisoInk }
-        return Tint.okInk
+        // Del tema: estos van sobre la tarjeta, sin fondo propio, y los
+        // tonos oscuros desaparecían contra el fondo del modo oscuro.
+        if p.stock <= 0 { return t.mal }
+        if p.minimo > 0 && p.stock <= p.minimo { return t.ojo }
+        return t.ok
     }
 
     private func cargar() async {

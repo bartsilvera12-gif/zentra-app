@@ -220,6 +220,11 @@ struct HojaPlanes: View {
 
     private func tarjeta(_ p: Plan) -> some View {
         let esElTuyo = p == actual
+        // Si tocar esta tarjeta compra. El botón de abajo sigue estando —es lo
+        // que dice qué va a pasar— pero la tarjeta entera también responde:
+        // nadie mira una lista de planes y entiende que para elegir hay que
+        // apuntarle a un rectángulo de 40 puntos.
+        let comprable = comprables.contains(p) && comprando == nil
         return VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(p.nombre)
@@ -285,6 +290,11 @@ struct HojaPlanes: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(esElTuyo ? C.cian : t.border, lineWidth: 1.5)
         }
+        // Todo el rectángulo, no sólo donde hay texto. El botón de adentro se
+        // queda con su propio toque, así que una compra no se dispara dos veces.
+        .contentShape(.rect(cornerRadius: 14))
+        .onTapGesture { if comprable { Task { await comprar(p) } } }
+        .opacity(comprando != nil && comprando != p ? 0.55 : 1)
     }
 }
 
