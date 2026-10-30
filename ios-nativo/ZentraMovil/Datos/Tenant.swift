@@ -21,6 +21,13 @@ struct TenantConfig: Codable, Equatable {
     /// no es una deuda sino lo normal.
     var vence: Date?
 
+    /// Quién factura, para el encabezado del ticket. Vacíos cuando no están
+    /// cargados en el directorio: ahí el ticket dice "Sin RUC cargado" y se
+    /// llama comprobante interno, que es la verdad. Inventarle un RUC al papel
+    /// es una mentira que se descubre en la mesa de la DNIT.
+    var ruc: String = ""
+    var ciudad: String = ""
+
     static let schemaPropio = "zentra"
 }
 
@@ -167,7 +174,9 @@ enum Directorio {
             // Un plan que no reconocemos se trata como `free`: ante la duda, el
             // que menos deja, no el que más.
             plan: (o["plan"] as? String).flatMap(Plan.init(rawValue:)) ?? .free,
-            vence: (o["vence"] as? String).flatMap(fecha)
+            vence: (o["vence"] as? String).flatMap(fecha),
+            ruc: ((o["ruc"] as? String) ?? "").trimmingCharacters(in: .whitespaces),
+            ciudad: ((o["ciudad"] as? String) ?? "").trimmingCharacters(in: .whitespaces)
         )
     }
 }

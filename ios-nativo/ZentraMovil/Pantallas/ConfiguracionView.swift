@@ -29,6 +29,7 @@ struct ConfiguracionView: View {
                 apariencia($a)
                 notificaciones($a)
                 plan
+                SeccionImpresora()
                 soporte
                 cuenta
 

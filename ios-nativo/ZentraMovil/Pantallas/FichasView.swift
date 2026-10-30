@@ -299,7 +299,11 @@ struct ProductoDetalleView: View {
 struct VentaDetalleView: View {
     let venta: Venta
     @Environment(\.tema) private var t
+    @Environment(Estado.self) private var estado
     @State private var fresca: Venta?
+    @State private var impresora = Impresora.shared
+    @State private var avisoImpresion: String?
+    @State private var falloImpresion = false
 
     private var v: Venta { fresca ?? venta }
 
@@ -336,6 +340,28 @@ struct VentaDetalleView: View {
         return cab + "\n\n" + cuerpo
             + "\n\nIVA incluido  \(Panel.gs(iva))"
             + "\nTOTAL  \(Panel.gs(v.total))"
+    }
+
+    /// El mismo comprobante, en el formato que entiende una térmica: 32 o 48
+    /// columnas de ancho fijo. Lo arma `Ticket`, que es el port de lo que usa
+    /// Android, así que el papel sale igual en los dos teléfonos.
+    private var paraImprimir: Ticket.Venta {
+        Ticket.Venta(
+            numero: v.numero, fecha: v.iso, cliente: v.cliente, doc: v.doc, pago: v.pago,
+            estado: v.cobrada ? "Cobrada" : "Pendiente",
+            lineas: v.lineas.map {
+                Ticket.Linea(nombre: $0.nombre, qty: $0.qty, precio: $0.precio,
+                             iva: $0.iva.rawValue, tasa: RepoERP.tasa($0.iva))
+            })
+    }
+
+    /// Quién factura. Sale del tenant, no de un ejemplo escrito a mano: toda
+    /// factura emitida desde otra empresa con el RUC ajeno es un comprobante
+    /// inválido, y el que la emite no se entera.
+    private var emisor: Ticket.Emisor {
+        Ticket.Emisor(nombre: estado.perfil?.empresa ?? estado.tenant?.nombre ?? "",
+                      ruc: estado.tenant?.ruc ?? "",
+                      ciudad: estado.tenant?.ciudad ?? "")
     }
 
     var body: some View {
@@ -384,7 +410,42 @@ struct VentaDetalleView: View {
         .background(t.bg)
         .safeAreaInset(edge: .bottom) {
             if !v.lineas.isEmpty {
+                VStack(spacing: 10) {
+                if let avisoImpresion {
+                    Text(avisoImpresion)
+                        .font(Tipo.barlow(.regular, 12.5))
+                        .foregroundStyle(falloImpresion ? Tint.errorInk : Tint.okInk)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(falloImpresion ? Tint.errorBg : Tint.okBg,
+                                    in: .rect(cornerRadius: 10))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack(spacing: 10) {
+                    // "Mandamos el ticket" y no "Listo, impreso": por el cable
+                    // de la impresora no vuelve nada, así que si el papel salió
+                    // lo sabe quien está mirando el rollo, no nosotros.
+                    Button {
+                        Task {
+                            avisoImpresion = nil
+                            switch await impresora.imprimir(paraImprimir, emisor: emisor) {
+                            case .enviado:
+                                falloImpresion = false
+                                avisoImpresion = "Mandamos el ticket a \(impresora.guardada?.nombre ?? "la impresora")."
+                            case let .error(motivo, _):
+                                falloImpresion = true
+                                avisoImpresion = motivo
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if impresora.imprimiendo { ProgressView().controlSize(.small) }
+                            Text(impresora.imprimiendo ? "Mandando…" : "Imprimir")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .disabled(impresora.imprimiendo)
+
                     ShareLink(item: Pdf.deTexto(comprobante, titulo: v.numero),
                               preview: SharePreview(v.numero)) {
                         Text("Exportar PDF").frame(maxWidth: .infinity)
@@ -392,6 +453,7 @@ struct VentaDetalleView: View {
                     ShareLink(item: comprobante) {
                         Text("Compartir").frame(maxWidth: .infinity)
                     }
+                }
                 }
                 .font(Tipo.barlow(.semibold, 13.5))
                 .foregroundStyle(t.ink)
