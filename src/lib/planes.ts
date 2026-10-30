@@ -256,15 +256,39 @@ export function motivoBloqueo(accion: Accion, ctx: Contexto): Motivo {
  * alguien de más por un dato roto es un problema nuestro; trabar a alguien que
  * pagó es un problema suyo, y bastante peor.
  */
+/**
+ * El día que nombra una fecha, como número comparable.
+ *
+ * `new Date("2026-11-13")` no es el 13 a la medianoche de acá: el estándar
+ * manda leer una fecha sola como medianoche **UTC**, que en Paraguay es el 12 a
+ * las 21:00. Preguntarle después `getDate()` devuelve 12, así que un plan que
+ * vencía el 13 figuraba vencido el 13, y la pantalla decía "venció el 12". Un
+ * día de menos para todos, todo el tiempo.
+ *
+ * Por eso `aaaa-mm-dd` se lee de los números escritos y no del reloj. Si la
+ * fecha trae hora —un instante— ahí sí vale el día local, que es el que esa
+ * persona tiene en el calendario. `null` cuando no se entiende.
+ */
+function diaDe(fecha: string | Date): number | null {
+  if (typeof fecha !== "string") {
+    return isNaN(fecha.getTime())
+      ? null
+      : Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha.trim());
+  if (m) return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(fecha);
+  return isNaN(d.getTime()) ? null : Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 export function fechaVencida(vence: string | null | undefined, ahora?: Date): string | null {
   if (!vence) return null;
-  const limite = new Date(vence);
-  if (isNaN(limite.getTime())) return null;
   // Se compara por día, no por instante: alguien que vence el 13 trabaja todo
   // el 13, no hasta la hora en que se grabó la fecha.
-  const hoy = ahora ?? new Date();
-  const d = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
-  return d(hoy) > d(limite) ? vence : null;
+  const limite = diaDe(vence);
+  if (limite === null) return null;
+  const hoy = diaDe(ahora ?? new Date());
+  return hoy !== null && hoy > limite ? vence : null;
 }
 
 /**
@@ -274,11 +298,10 @@ export function fechaVencida(vence: string | null | undefined, ahora?: Date): st
  */
 export function diasParaVencer(vence: string | null | undefined, ahora?: Date): number | null {
   if (!vence) return null;
-  const limite = new Date(vence);
-  if (isNaN(limite.getTime())) return null;
-  const hoy = ahora ?? new Date();
-  const d = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
-  return Math.round((d(limite) - d(hoy)) / 86400000);
+  const limite = diaDe(vence);
+  const hoy = diaDe(ahora ?? new Date());
+  if (limite === null || hoy === null) return null;
+  return Math.round((limite - hoy) / 86400000);
 }
 
 /** El plan que rige de verdad: el contratado, o Free si venció. */
@@ -288,10 +311,13 @@ export function planEfectivo(plan: Plan, vence?: string | null, ahora?: Date): P
 
 /** `2026-11-13` → `13/11/2026`, para decirlo en un mensaje. */
 function enCriollo(iso: string): string {
-  const f = new Date(iso);
-  if (isNaN(f.getTime())) return iso;
+  const dia = diaDe(iso);
+  if (dia === null) return iso;
+  // Se escribe desde el mismo marco en que se calculó: `getUTC*` y no
+  // `getDate()`, que volvería a correr el día una zona horaria atrás.
+  const f = new Date(dia);
   const dos = (n: number) => String(n).padStart(2, "0");
-  return `${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${f.getFullYear()}`;
+  return `${dos(f.getUTCDate())}/${dos(f.getUTCMonth() + 1)}/${f.getUTCFullYear()}`;
 }
 
 /** Atajo para cuando sólo importa si se puede. */
