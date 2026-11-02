@@ -420,57 +420,82 @@ enum RepoERP {
         return try ApiERP.comoLista(crudo, clave: "compras", ruta: "/compras").map(aCompra)
     }
 
-    /// Conversaciones. Se prueban dos endpoints, en este orden.
+    /// Conversaciones. Dos endpoints, según quién pregunta.
     ///
-    /// `/chat/mobile-inbox` respeta el **rol**: un administrador ve todas, igual
-    /// que en el escritorio. El otro filtra por **cola de atención**, y un
-    /// administrador no está en ninguna — veía "no atendés conversaciones"
-    /// aunque en el ERP las tuviera todas delante.
+    /// `/mobile/asesor/conversations` trae **sólo las asignadas a esta cuenta**
+    /// (`assignment: "mine"`, el mismo camino que el inbox del escritorio). Si
+    /// la cuenta no es agente de ninguna cola contesta `is_agent: false`, y
+    /// recién ahí se prueba `/mobile/supervision/conversations`, que trae lo que
+    /// esa persona ve en la compu —el ERP recorta por rol— ni más ni menos.
     ///
-    /// El respaldo sólo entra si el primero no existe o no está permitido
-    /// (401/403/404). Un error de forma no se tapa: si contestó pero con otra
-    /// estructura, el problema es ese y hay que verlo.
-    /// Cuántas conversaciones trae el ERP de una vez.
+    /// **Por qué no `/chat/mobile-inbox`**, que es lo que había acá: ese filtra
+    /// por rol y, para un agente, suma todas las SIN ASIGNAR de sus colas. Un
+    /// vendedor veía conversaciones de contabilidad y de project manager que en
+    /// el ERP no le aparecen. Peor: el listado salía por rol y abrir iba por
+    /// asignación, así que algunas contestaban "no autorizado" al tocarlas.
+    /// Estas dos rutas usan el mismo criterio para listar y para abrir, que es
+    /// lo que hace imposible el desajuste.
     ///
-    /// Es el mismo número que usa Android (`TANDA_CHATS`). Importa saberlo
-    /// acá: si vuelven menos de esto, no hay más y no hace falta ofrecer otra
-    /// tanda.
-    static let tandaChats = 50
-
-    static func conversaciones(desde: Int = 0,
-                               incluirCerradas: Bool = false) async throws -> [Chat] {
+    /// Ninguna de las dos pagina ni trae las cerradas: contestan hasta 200
+    /// abiertas de una, que es el tope del escritorio. Por eso el listado ya no
+    /// ofrece "Cargar más" ni la pestaña "Cerradas" — para las cerradas hace
+    /// falta una ruta nueva en el ERP.
+    ///
+    /// Las dos aceptan `?cola=`, pero el filtro se hace acá: como vienen todas
+    /// de una, cambiar de pestaña no tiene por qué ser otro viaje.
+    static func conversaciones() async throws -> [Chat] {
         // El chat es de WhatsApp y vive en el ERP. Sin ERP no hay nada que leer,
         // y decirlo es mejor que una lista vacía que parece "no tenés mensajes".
         if await !conErp() { throw ApiError.sinChat }
-        let salto = max(desde, 0)
-        do {
-            // Sin `offset` el ERP devuelve siempre las 50 más recientes. Una
-            // empresa con cientos de conversaciones abiertas veía esas 50 y no
-            // había forma de llegar al resto — ni buscando, porque la búsqueda
-            // filtra lo que ya se trajo.
-            let crudo = try await ApiERP.get("/chat/mobile-inbox", query: [
-                "offset": String(salto),
-                "limit": String(tandaChats),
-                // El ERP excluye las cerradas salvo que se le pidan.
-                "only_open": incluirCerradas ? "0" : nil,
-            ]) { $0 }
-            return try ApiERP.comoLista(crudo, clave: "conversations",
-                                        ruta: "/chat/mobile-inbox").map(aChat)
-        } catch let e as ApiError {
-            if case .http(let status, _, _) = e, ![401, 403, 404].contains(status) { throw e }
+
+        let propias = try await ApiERP.crudo("/mobile/asesor/conversations")
+        if !diceQueNoEsAgente(propias) {
+            return try chatsDe(propias, ruta: "/mobile/asesor/conversations")
         }
 
-        // El endpoint viejo no pagina: con él sólo existe la primera tanda.
-        if salto > 0 { return [] }
-        let crudo = try await ApiERP.get("/mobile/asesor/conversations") { $0 }
-        // `is_agent: false` no es "no tenés conversaciones": es que este usuario
-        // no está en ninguna cola. Son cosas distintas y se dicen distinto.
-        if let o = crudo as? [String: Any],
-           ((o["data"] as? [String: Any])?["is_agent"] as? Bool ?? o["is_agent"] as? Bool) == false {
-            throw ApiError.sinCola
+        // No es agente de ninguna cola. No es "no tenés conversaciones": puede
+        // ser quien supervisa, que en la compu las ve todas.
+        let ajenas = try await ApiERP.crudo("/mobile/supervision/conversations")
+        return try chatsDe(ajenas, ruta: "/mobile/supervision/conversations")
+    }
+
+    /// `is_agent: false` llega suelto o dentro de `data`, según la ruta.
+    private static func diceQueNoEsAgente(_ crudo: Any) -> Bool {
+        guard let o = crudo as? [String: Any] else { return false }
+        let dentro = (o["data"] as? [String: Any])?["is_agent"] as? Bool
+        return (dentro ?? o["is_agent"] as? Bool) == false
+    }
+
+    /// Arma los chats y les pega el nombre de la cola.
+    ///
+    /// Estas rutas mandan `queue_id` en cada conversación y el catálogo de colas
+    /// aparte, en `queues`. El id solo no sirve para dividir el listado —serían
+    /// pestañas con un UUID por nombre—, así que se cruza acá y se deja en
+    /// `queue_nombre`, que es uno de los nombres que `aChat` ya sabe leer.
+    ///
+    /// Va en `queue_nombre` y no en `cola_nombre` a propósito: `cola_nombre` es
+    /// además de dónde sale la etiqueta de quién atiende, y por la ruta del
+    /// asesor **todas** son suyas. Poner ahí la cola dibujaría "Ventas" debajo
+    /// de cada fila como si fuera el responsable.
+    private static func chatsDe(_ crudo: Any, ruta: String) throws -> [Chat] {
+        var nivel = crudo
+        if let o = nivel as? [String: Any], let d = o["data"] { nivel = d }
+
+        var nombrePorCola: [String: String] = [:]
+        for q in (nivel as? [String: Any])?["queues"] as? [[String: Any]] ?? [] {
+            let id = texto(q["id"])
+            let nombre = noVacio(q["nombre"]) ?? ""
+            if !id.isEmpty, !nombre.isEmpty { nombrePorCola[id] = nombre }
         }
-        return try ApiERP.comoLista(crudo, clave: "conversations",
-                                    ruta: "/mobile/asesor/conversations").map(aChat)
+
+        return try ApiERP.comoLista(crudo, clave: "conversations", ruta: ruta).map { fila in
+            var c = fila
+            if c["cola_nombre"] == nil, c["queue_nombre"] == nil,
+               let n = nombrePorCola[texto(c["queue_id"])] {
+                c["queue_nombre"] = n
+            }
+            return aChat(c)
+        }
     }
 
     /// Guarda el token de Firebase de este teléfono para el usuario de la sesión.
@@ -593,27 +618,27 @@ enum RepoERP {
 
     /// Mensajes de una conversación. Dos endpoints, igual que el listado.
     ///
-    /// `/chat/messages` respeta el **rol**: un administrador abre cualquier
-    /// conversación de su empresa, como en el ERP de escritorio. El otro exige
-    /// que la conversación esté **asignada** a quien pregunta.
+    /// El mismo par de rutas que el listado, en el mismo orden.
     ///
-    /// Tienen que ser los dos criterios de siempre, y el mismo par que usa el
-    /// listado: con la lista por rol y la apertura por asignación, un
-    /// administrador veía conversaciones que al tocarlas contestaban "no
-    /// autorizado" —las de los asesores de su propia empresa, que en el ERP
-    /// abre sin problema—. La app web ya lo hacía así; esta se había quedado
-    /// con la mitad.
+    /// Primero la del asesor, que exige que la conversación esté **asignada** a
+    /// quien pregunta; si contesta que no (401/403/404), la de supervisión, que
+    /// valida el alcance del escritorio. Es la misma pareja que usa
+    /// `conversaciones`, y tiene que seguir siéndolo: con el listado saliendo
+    /// de una y la apertura de la otra, aparecían conversaciones que al tocarlas
+    /// contestaban "no autorizado".
+    ///
+    /// Un error de forma no se tapa con el respaldo: si el endpoint contestó
+    /// pero con otra estructura, el problema es ese y hay que verlo.
     static func mensajes(_ chatId: String) async throws -> [Mensaje] {
         do {
-            let crudo = try await ApiERP.get("/chat/messages",
-                                             query: ["conversation_id": chatId]) { $0 }
+            let crudo = try await ApiERP.crudo("/mobile/asesor/conversations/\(esc(chatId))")
             return mensajesDe(crudo)
         } catch let e as ApiError {
-            // Un error de forma no se tapa con el respaldo: si el endpoint
-            // contestó pero con otra estructura, el problema es ese.
             if case .http(let status, _, _) = e, ![401, 403, 404].contains(status) { throw e }
         }
-        return mensajesDe(try await ApiERP.get("/mobile/asesor/conversations/\(esc(chatId))") { $0 })
+        return mensajesDe(
+            try await ApiERP.crudo("/mobile/supervision/conversations/\(esc(chatId))")
+        )
     }
 
     /// Los mensajes de la respuesta, venga del endpoint que venga: uno los
@@ -644,8 +669,19 @@ enum RepoERP {
                 "preview": String(cita.texto.prefix(160)),
             ]
         }
-        _ = try await ApiERP.post("/mobile/asesor/conversations/\(esc(chatId))/send",
-                                  cuerpo: cuerpo)
+        do {
+            _ = try await ApiERP.post("/mobile/asesor/conversations/\(esc(chatId))/send",
+                                      cuerpo: cuerpo)
+            return
+        } catch let e as ApiError {
+            // Mismo criterio que para leerla: si la ruta del asesor dice que no
+            // es suya, se prueba la del escritorio, que valida el alcance de
+            // supervisión. Reintentar es seguro: un 401/403/404 es un pedido
+            // rechazado, no uno a medio mandar.
+            if case .http(let status, _, _) = e, ![401, 403, 404].contains(status) { throw e }
+        }
+        cuerpo["conversation_id"] = chatId
+        _ = try await ApiERP.post("/chat/send", cuerpo: cuerpo)
     }
 
     /// Manda una foto, un video o un documento, con su pie opcional.

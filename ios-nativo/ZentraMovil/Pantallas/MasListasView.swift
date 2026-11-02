@@ -322,15 +322,8 @@ struct ConversacionesView: View {
     @State private var cargando = true
     @State private var error: String?
     @State private var nueva = false
-    @State private var trayendo = false
-    /// Si ya no hay más tandas que pedir.
-    ///
-    /// Arranca en `false` y se apaga solo: con el botón visible para siempre,
-    /// quien llega al final queda tocando algo que no trae nada.
-    @State private var finDeLista = false
 
     private static let sinLeer = "No leídas"
-    private static let cerradas = "Cerradas"
 
     private var colas: [Colas.Cola] { Colas.desde(filas.filter { !$0.cerrada }) }
 
@@ -346,11 +339,10 @@ struct ConversacionesView: View {
     }
 
     private var vistas: [Chat] {
-        let verCerradas = filtro == Self.cerradas
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
         return filas.filter { c in
             // Una cerrada no aparece entre las abiertas aunque el ERP la mande.
-            if verCerradas ? !c.cerrada : c.cerrada { return false }
+            if c.cerrada { return false }
             if !Colas.entra(c, en: colaActiva) { return false }
             if filtro == Self.sinLeer, c.noLeidos == 0 { return false }
             return n.isEmpty
@@ -392,7 +384,6 @@ struct ConversacionesView: View {
                           HStack(spacing: 8) {
                               chip(Colas.todas, Colas.todas, "bubble.left.and.bubble.right")
                               chip(Self.sinLeer, Self.sinLeer, "circle.fill")
-                              chip(Self.cerradas, Self.cerradas, nil)
                               // Las colas sólo si el ERP las informa; si no, la
                               // fila queda como antes.
                               ForEach(colas) { c in
@@ -443,22 +434,6 @@ struct ConversacionesView: View {
                 .buttonStyle(.plain)
             }
 
-            // Traer las más viejas.
-            //
-            // El ERP contesta de a 50. Una empresa con cientos de
-            // conversaciones abiertas veía esas 50 y no había forma de llegar
-            // al resto: la búsqueda tampoco servía, porque filtra lo que ya se
-            // trajo y lo que falta ni siquiera estaba.
-            if !finDeLista, !filas.isEmpty, q.isEmpty {
-                Button { Task { await traerMas() } } label: {
-                    Text(trayendo ? "Trayendo…" : "Cargar más")
-                        .font(Tipo.barlow(.semibold, 13.5))
-                        .foregroundStyle(trayendo ? t.ink3 : C.cian)
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                }
-                .buttonStyle(.plain)
-                .disabled(trayendo)
-            }
         }
         .searchable(text: $q, prompt: "Buscar conversación…")
         .toolbar {
@@ -474,17 +449,6 @@ struct ConversacionesView: View {
         }
         .task { await cargar() }
         .refreshable { await cargar() }
-        // Pasar a "Cerradas" —o volver— es otra consulta, no otro filtro: el
-        // ERP no manda las cerradas salvo que se le pidan. Sin esto, tocar
-        // "Cerradas" mostraba una lista vacía por más conversaciones cerradas
-        // que hubiera, y lo que se hubiera traído con "Cargar más" de la otra
-        // lista no pertenece a ésta.
-        .onChange(of: filtro) { viejo, nuevo in
-            guard (viejo == Self.cerradas) != (nuevo == Self.cerradas) else { return }
-            filas = []
-            finDeLista = false
-            Task { await cargar() }
-        }
         // 25s en el listado: no hace falta tan seguido como adentro de un chat.
         .latido(cada: 25, activo: true) {
             if let nuevas = try? await RepoERP.conversaciones(), nuevas != filas {
@@ -517,12 +481,7 @@ struct ConversacionesView: View {
     private func cargar() async {
         cargando = filas.isEmpty
         do {
-            filas = try await RepoERP.conversaciones(incluirCerradas: filtro == Self.cerradas)
-            // Al refrescar vuelve la primera tanda, así que lo que se había
-            // traído con "Cargar más" se va con ella. Si no, quedarían
-            // conversaciones viejas pegadas debajo de una lista recién
-            // actualizada.
-            finDeLista = filas.count < RepoERP.tandaChats
+            filas = try await RepoERP.conversaciones()
             error = nil
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar."
@@ -530,27 +489,6 @@ struct ConversacionesView: View {
         cargando = false
     }
 
-    /// La siguiente tanda, pegada abajo.
-    private func traerMas() async {
-        guard !trayendo else { return }
-        trayendo = true
-        defer { trayendo = false }
-        do {
-            let mas = try await RepoERP.conversaciones(desde: filas.count,
-                                                       incluirCerradas: filtro == Self.cerradas)
-            // Un ERP que no entiende `offset` devuelve siempre la misma tanda.
-            // Sin esto el botón quedaría para siempre trayendo lo mismo: si
-            // nada de lo que llegó es nuevo, se terminó.
-            let conocidas = Set(filas.map(\.id))
-            let nuevas = mas.filter { !conocidas.contains($0.id) }
-            if nuevas.isEmpty || mas.count < RepoERP.tandaChats { finDeLista = true }
-            filas.append(contentsOf: nuevas)
-        } catch {
-            // Un fallo acá no rompe lo que ya está en pantalla. Se deja de
-            // ofrecer "Cargar más" en vez de dejar un botón que no hace nada.
-            finDeLista = true
-        }
-    }
 }
 
 /// Detalle de ventas: el listado de facturas del período.
