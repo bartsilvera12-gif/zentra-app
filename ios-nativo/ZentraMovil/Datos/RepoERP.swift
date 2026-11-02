@@ -1103,8 +1103,81 @@ enum RepoERP {
         )
     }
 
+    /// El sello del ERP, como fecha.
+    ///
+    /// Llega en ISO-8601, con o sin milésimas (`2026-11-02T09:03:48+00:00` o
+    /// `...T09:03:48.123+00:00`). Son dos formatos distintos para
+    /// `ISO8601DateFormatter`, así que se prueban los dos; los formateadores se
+    /// guardan porque crearlos en cada fila de la lista cuesta más que parsear.
+    private static let isoConMilesimas: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoSinMilesimas: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    /// Sin zona horaria no hay nada que deducir, así que se asume UTC: es lo que
+    /// guarda la base y lo que mandan las rutas que sí la informan.
+    private static let isoPelado: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f
+    }()
+
+    static func fecha(_ v: Any?) -> Date? {
+        guard let s = noVacio(v) else { return nil }
+        if let d = isoConMilesimas.date(from: s) { return d }
+        if let d = isoSinMilesimas.date(from: s) { return d }
+        return isoPelado.date(from: String(s.prefix(19)))
+    }
+
+    /// La hora de un mensaje, en la del teléfono.
+    ///
+    /// Antes esto era `suffix(14).prefix(5)` sobre el texto crudo. Andaba de
+    /// casualidad con `2026-11-02T13:03:00+00:00` —25 caracteres justos— y se
+    /// rompió el día que el ERP empezó a mandar milésimas: con
+    /// `2026-11-02T09:03:48.123+00:00` esos mismos cortes caen sobre los
+    /// MINUTOS y los SEGUNDOS, y el listado mostraba "3:48." en vez de "06:03".
+    /// El punto del final era el de las milésimas.
+    ///
+    /// De paso arregla lo otro que hacía mal: cortar el texto muestra la hora
+    /// del sello, que viene en UTC. Acá son tres horas menos.
+    private static let soloHora: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_PY")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private static let soloDia: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_PY")
+        f.dateFormat = "dd/MM"
+        return f
+    }()
+
     private static func hora(_ v: Any?) -> String {
-        String((noVacio(v) ?? "").suffix(14).prefix(5))
+        guard let d = fecha(v) else { return "" }
+        return soloHora.string(from: d)
+    }
+
+    /// Lo que va a la derecha de cada fila de la bandeja.
+    ///
+    /// La hora sola sirve para hoy; en una conversación de la semana pasada
+    /// "09:03" se lee como si hubiera escrito esta mañana. Desde ayer para
+    /// atrás, la fecha.
+    private static func horaOFecha(_ v: Any?, ahora: Date = Date()) -> String {
+        guard let d = fecha(v) else { return "" }
+        return Calendar.current.isDate(d, inSameDayAs: ahora)
+            ? soloHora.string(from: d)
+            : soloDia.string(from: d)
     }
 
     private static func aMensaje(_ m: [String: Any]) -> Mensaje? {
@@ -1209,7 +1282,7 @@ enum RepoERP {
         return Chat(
             id: texto(c["id"]),
             nombre: primero(c["contact_nombre"], c["contact_telefono"]) ?? "Sin nombre",
-            hora: String((noVacio(c["last_message_at"]) ?? "").suffix(14).prefix(5)),
+            hora: horaOFecha(c["last_message_at"]),
             noLeidos: cuantosSinLeer(c),
             vistaPrevia: vistaPrevia(noVacio(c["last_message_preview"]) ?? ""),
             responsable: primero(c["agente_nombre"], c["cola_nombre"]),
