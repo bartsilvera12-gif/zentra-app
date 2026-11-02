@@ -139,6 +139,9 @@ struct Mensaje: Identifiable, Equatable {
     var mio: Bool
     var texto: String
     var hora: String
+    /// Cuándo se mandó. `hora` es esto mismo ya escrito; la fecha hace falta
+    /// aparte para separar los días dentro de la conversación.
+    var fecha: Date?
     /// "✓" entregado, "✓✓" leído. Vacío en los que llegan.
     var tick: String
 
@@ -166,6 +169,9 @@ struct Mensaje: Identifiable, Equatable {
     /// A qué mensaje responde éste, ya resumido para dibujarlo arriba del globo.
     var citaTexto: String = ""
     var citaMia: Bool = false
+    /// El wamid del mensaje citado, para poder saltar hasta él al tocar la cita.
+    /// Vacío cuando el sobre no lo trae: ahí la cita se dibuja pero no lleva.
+    var citaWamid: String = ""
     var reenviado: Bool = false
 
     var esMedia: Bool { !imagen.isEmpty || !video.isEmpty || !documento.isEmpty || !audio.isEmpty }
@@ -1166,11 +1172,13 @@ enum RepoERP {
         let mio = (m["from_me"] as? Bool) ?? false
         let crudo = m["raw_payload"] as? [String: Any] ?? [:]
 
-        var base = Mensaje(mio: mio, texto: "", hora: hora(m["created_at"]), tick: "")
+        var base = Mensaje(mio: mio, texto: "", hora: hora(m["created_at"]),
+                           fecha: fecha(m["created_at"]), tick: "")
         base.wamid = noVacio(m["wa_message_id"]) ?? ""
         if let c = cita(crudo) {
             base.citaTexto = c.texto
             base.citaMia = c.mio
+            base.citaWamid = c.wamid
         }
         base.reenviado = (crudo["forwarded"] as? Bool)
             ?? ((crudo["context"] as? [String: Any])?["forwarded"] as? Bool) ?? false
@@ -1218,12 +1226,27 @@ enum RepoERP {
     }
 
     /// A qué mensaje responde éste. WhatsApp lo manda en el contexto del sobre.
-    private static func cita(_ crudo: [String: Any]) -> (texto: String, mio: Bool)? {
-        let ctx = (crudo["context"] as? [String: Any]) ?? (crudo["quoted"] as? [String: Any])
+    private static func cita(_ crudo: [String: Any]) -> (texto: String, mio: Bool, wamid: String)? {
+        // `reply_context` es lo que guarda el ERP cuando la cita la hicimos
+        // nosotros: ahí el texto ya viene resuelto. `context`/`quoted` es el
+        // nodo de WhatsApp, que llega cuando cita el cliente.
+        let ctx = (crudo["reply_context"] as? [String: Any])
+            ?? (crudo["context"] as? [String: Any])
+            ?? (crudo["quoted"] as? [String: Any])
         guard let ctx else { return nil }
         let texto = noVacio(ctx["preview"]) ?? noVacio(ctx["body"]) ?? noVacio(ctx["text"]) ?? ""
         guard !texto.isEmpty else { return nil }
-        return (texto, (ctx["from_me"] as? Bool) ?? false)
+        return (texto, (ctx["from_me"] as? Bool) ?? false, wamidCitado(ctx))
+    }
+
+    /// El id del mensaje citado. Cada proveedor lo pone con otro nombre, y el
+    /// puente del canal QR usa ids que no empiezan con `wamid.`, así que no se
+    /// filtra por el prefijo: se toma el primero que venga.
+    private static func wamidCitado(_ ctx: [String: Any]) -> String {
+        for k in ["wa_message_id", "id", "message_id", "messageId", "wamid", "quoted_wamid"] {
+            if let v = noVacio(ctx[k]) { return v }
+        }
+        return ""
     }
 
     private static func urlDeMedia(_ crudo: [String: Any]) -> String? {

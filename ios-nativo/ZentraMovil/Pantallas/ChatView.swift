@@ -37,6 +37,10 @@ struct ChatView: View {
     @State private var solapaPanel = "Emojis"
     @State private var favoritos: [String] = Ajustes.favoritosChat()
 
+    /// El mensaje al que acabamos de saltar desde una cita, para destacarlo un
+    /// segundo. Sin esto se llega al mensaje sin saber a cuál se llegó.
+    @State private var destacado: UUID?
+
     private let emojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
     /// Los que coinciden con la búsqueda. Sin búsqueda, todos.
@@ -137,7 +141,18 @@ struct ChatView: View {
                                 : "Ningún mensaje contiene “\(busqueda)”.",
                               bg: t.card, ink: t.ink2).padding(.top, 20)
                     }
-                    ForEach(visibles) { m in
+                    ForEach(Array(visibles.enumerated()), id: \.element.id) { i, m in
+                        // El día, cuando cambia. Va antes del primer mensaje
+                        // también: una conversación que arranca sin fecha deja
+                        // sin saber de cuándo es lo de más arriba.
+                        if let d = diaSiCambia(en: i) {
+                            Text(d)
+                                .font(Tipo.barlow(.semibold, 11))
+                                .foregroundStyle(t.ink2)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(t.card, in: .capsule)
+                                .padding(.vertical, 6)
+                        }
                         if m.reaccion.isEmpty { globo(m).id(m.id) } else { reaccion(m).id(m.id) }
                     }
                 }
@@ -146,7 +161,61 @@ struct ChatView: View {
             // Abre abajo, en lo último, que es lo que uno quiere ver al entrar.
             .onChange(of: msgs.count) { _, _ in alFinal(sc) }
             .onAppear { alFinal(sc) }
+            .onChange(of: saltarA) { _, id in
+                guard let id else { return }
+                saltarA = nil
+                withAnimation { sc.scrollTo(id, anchor: .center) }
+                destacado = id
+                Task {
+                    try? await Task.sleep(for: .seconds(1.6))
+                    withAnimation { destacado = nil }
+                }
+            }
         }
+    }
+
+    /// A qué mensaje hay que saltar. Lo pone `irALaCita` y lo consume la lista,
+    /// que es la única que tiene el `ScrollViewProxy`.
+    @State private var saltarA: UUID?
+
+    /// El rótulo del día si este mensaje abre uno nuevo; `nil` si sigue el mismo.
+    private func diaSiCambia(en i: Int) -> String? {
+        guard let f = visibles[i].fecha else { return nil }
+        if i > 0, let anterior = visibles[i - 1].fecha,
+           Calendar.current.isDate(f, inSameDayAs: anterior) {
+            return nil
+        }
+        return Self.dia(f)
+    }
+
+    /// "Hoy", "Ayer", o el día escrito. Dentro de la misma semana alcanza con el
+    /// nombre; más atrás hace falta la fecha.
+    static func dia(_ f: Date, ahora: Date = Date()) -> String {
+        let cal = Calendar.current
+        if cal.isDate(f, inSameDayAs: ahora) { return "Hoy" }
+        if let ayer = cal.date(byAdding: .day, value: -1, to: ahora),
+           cal.isDate(f, inSameDayAs: ayer) { return "Ayer" }
+        let dias = cal.dateComponents([.day], from: cal.startOfDay(for: f),
+                                      to: cal.startOfDay(for: ahora)).day ?? 0
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "es_PY")
+        df.dateFormat = (1...6).contains(dias) ? "EEEE" : "d 'de' MMMM 'de' yyyy"
+        // En español el formateador escribe "martes" y "octubre" en minúscula,
+        // que es lo correcto en una oración pero no en un rótulo suelto.
+        let texto = df.string(from: f)
+        return texto.prefix(1).uppercased() + texto.dropFirst()
+    }
+
+    /// Lleva a lo que cita este mensaje.
+    ///
+    /// Sólo si el citado está entre los que se trajeron: saltar a algo que no
+    /// está cargado no es "no pasa nada", es la lista dando un tirón al vacío.
+    private func irALaCita(_ m: Mensaje) {
+        guard !m.citaWamid.isEmpty,
+              let objetivo = msgs.first(where: { $0.wamid == m.citaWamid })
+        else { return }
+        busqueda = ""
+        saltarA = objetivo.id
     }
 
     private func alFinal(_ sc: ScrollViewProxy) {
@@ -170,6 +239,7 @@ struct ChatView: View {
                 }
 
                 // El mensaje citado, arriba y con una barra al costado.
+                // Tocarlo lleva hasta el original, como en WhatsApp.
                 if !m.citaTexto.isEmpty {
                     HStack(spacing: 6) {
                         Rectangle().fill(C.ambar).frame(width: 3)
@@ -180,6 +250,8 @@ struct ChatView: View {
                     }
                     .padding(6)
                     .background((m.mio ? Color.white : t.ink).opacity(0.1), in: .rect(cornerRadius: 7))
+                    .contentShape(.rect(cornerRadius: 7))
+                    .onTapGesture { irALaCita(m) }
                 }
 
                 if !m.imagen.isEmpty {
@@ -195,9 +267,16 @@ struct ChatView: View {
                     }
                     .buttonStyle(.plain)
                 } else if !m.audio.isEmpty {
-                    Label("Audio", systemImage: "mic.fill")
-                        .font(Tipo.barlow(.regular, 14))
-                        .foregroundStyle(m.mio ? .white : t.ink)
+                    if let u = URL(string: m.audio) {
+                        ReproductorAudio(url: u, claro: m.mio, avisarArrastre: $moviendoAudio)
+                            .frame(width: 210)
+                    } else {
+                        // Llegó marcado como audio pero sin enlace utilizable.
+                        // Decirlo es mejor que un reproductor que no suena.
+                        Label("Audio no disponible", systemImage: "mic.slash")
+                            .font(Tipo.barlow(.regular, 14))
+                            .foregroundStyle(m.mio ? .white : t.ink)
+                    }
                 } else if !m.documento.isEmpty {
                     Label(m.epigrafe.isEmpty ? "Documento" : m.epigrafe, systemImage: "doc.fill")
                         .font(Tipo.barlow(.regular, 14))
@@ -230,6 +309,15 @@ struct ChatView: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(m.mio ? C.azulMedio : t.card, in: .rect(cornerRadius: 14))
+            // Al llegar desde una cita, un destello: marca cuál de todos era.
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(C.ambar.opacity(destacado == m.id ? 0.28 : 0))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(C.ambar, lineWidth: destacado == m.id ? 2.5 : 0)
+            }
             .contextMenu {
                 Button { citando = m } label: { Label("Responder", systemImage: "arrowshape.turn.up.left") }
                 Button { reaccionando = m } label: { Label("Reaccionar", systemImage: "face.smiling") }
@@ -241,6 +329,42 @@ struct ChatView: View {
             if !m.mio { Spacer(minLength: 50) }
         }
         .padding(.horizontal, 14)
+        .offset(x: arrastrado == m.id ? dx : 0)
+        .animation(.snappy(duration: 0.28), value: destacado)
+        // `simultaneousGesture` y no `gesture`: con el segundo el reconocedor
+        // del globo compite con el del scroll y la lista se traba en cada
+        // mensaje hasta que el gesto falla. Así conviven y el scroll manda.
+        .simultaneousGesture(gestoResponder(m))
+    }
+
+    /// Hasta dónde hay que arrastrar para que quede citado.
+    private static let umbralCita: CGFloat = 56
+
+    /// Cuál globo se está arrastrando, y cuánto. Uno solo a la vez.
+    @State private var arrastrado: UUID?
+    @State private var dx: CGFloat = 0
+    /// El dedo está moviendo la barra de un audio. Los dos gestos son
+    /// horizontales y conviven por `simultaneousGesture`, así que el del globo
+    /// se abstiene: elegir desde dónde escuchar no tiene que preparar una cita.
+    @State private var moviendoAudio = false
+
+    /// Deslizar hacia la derecha para responder, como en WhatsApp.
+    ///
+    /// Sólo sigue al dedo si el movimiento es más horizontal que vertical: si
+    /// no, arrastrar la lista movería los globos de costado.
+    private func gestoResponder(_ m: Mensaje) -> some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onChanged { v in
+                guard !moviendoAudio else { return }
+                guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                arrastrado = m.id
+                dx = max(0, min(v.translation.width, Self.umbralCita + 14))
+            }
+            .onEnded { _ in
+                if arrastrado == m.id, dx >= Self.umbralCita { citando = m }
+                withAnimation(.snappy(duration: 0.2)) { dx = 0 }
+                arrastrado = nil
+            }
     }
 
     /// Miniatura liviana: la imagen entera se carga recién en el visor.
