@@ -591,9 +591,34 @@ enum RepoERP {
         return (razon, activo)
     }
 
-    /// Mensajes de una conversación.
+    /// Mensajes de una conversación. Dos endpoints, igual que el listado.
+    ///
+    /// `/chat/messages` respeta el **rol**: un administrador abre cualquier
+    /// conversación de su empresa, como en el ERP de escritorio. El otro exige
+    /// que la conversación esté **asignada** a quien pregunta.
+    ///
+    /// Tienen que ser los dos criterios de siempre, y el mismo par que usa el
+    /// listado: con la lista por rol y la apertura por asignación, un
+    /// administrador veía conversaciones que al tocarlas contestaban "no
+    /// autorizado" —las de los asesores de su propia empresa, que en el ERP
+    /// abre sin problema—. La app web ya lo hacía así; esta se había quedado
+    /// con la mitad.
     static func mensajes(_ chatId: String) async throws -> [Mensaje] {
-        let crudo = try await ApiERP.get("/mobile/asesor/conversations/\(esc(chatId))") { $0 }
+        do {
+            let crudo = try await ApiERP.get("/chat/messages",
+                                             query: ["conversation_id": chatId]) { $0 }
+            return mensajesDe(crudo)
+        } catch let e as ApiError {
+            // Un error de forma no se tapa con el respaldo: si el endpoint
+            // contestó pero con otra estructura, el problema es ese.
+            if case .http(let status, _, _) = e, ![401, 403, 404].contains(status) { throw e }
+        }
+        return mensajesDe(try await ApiERP.get("/mobile/asesor/conversations/\(esc(chatId))") { $0 })
+    }
+
+    /// Los mensajes de la respuesta, venga del endpoint que venga: uno los
+    /// manda sueltos y el otro adentro de `data`.
+    private static func mensajesDe(_ crudo: Any) -> [Mensaje] {
         var nivel = crudo
         if let o = nivel as? [String: Any], let d = o["data"] { nivel = d }
         let msgs = (nivel as? [String: Any])?["messages"] as? [[String: Any]] ?? []
