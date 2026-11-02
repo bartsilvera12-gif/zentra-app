@@ -1156,28 +1156,9 @@ enum RepoERP {
         return f
     }()
 
-    private static let soloDia: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "es_PY")
-        f.dateFormat = "dd/MM"
-        return f
-    }()
-
     private static func hora(_ v: Any?) -> String {
         guard let d = fecha(v) else { return "" }
         return soloHora.string(from: d)
-    }
-
-    /// Lo que va a la derecha de cada fila de la bandeja.
-    ///
-    /// La hora sola sirve para hoy; en una conversación de la semana pasada
-    /// "09:03" se lee como si hubiera escrito esta mañana. Desde ayer para
-    /// atrás, la fecha.
-    private static func horaOFecha(_ v: Any?, ahora: Date = Date()) -> String {
-        guard let d = fecha(v) else { return "" }
-        return Calendar.current.isDate(d, inSameDayAs: ahora)
-            ? soloHora.string(from: d)
-            : soloDia.string(from: d)
     }
 
     private static func aMensaje(_ m: [String: Any]) -> Mensaje? {
@@ -1282,7 +1263,7 @@ enum RepoERP {
         return Chat(
             id: texto(c["id"]),
             nombre: primero(c["contact_nombre"], c["contact_telefono"]) ?? "Sin nombre",
-            hora: horaOFecha(c["last_message_at"]),
+            hora: hora(c["last_message_at"]),
             noLeidos: cuantosSinLeer(c),
             vistaPrevia: vistaPrevia(noVacio(c["last_message_preview"]) ?? ""),
             responsable: primero(c["agente_nombre"], c["cola_nombre"]),
