@@ -183,6 +183,34 @@ struct FichaContacto {
     var lineas: [(String, String)]
 }
 
+/// El anuncio de Meta del que nació una conversación.
+///
+/// Es la atribución Click-to-WhatsApp que el ERP guarda en
+/// `chat_conversation_attribution`: quien tocó una pauta en Facebook o
+/// Instagram y terminó escribiendo por WhatsApp. Port del chip "Pauta ↗" del
+/// inbox de escritorio.
+///
+/// Sólo existe si vino de un anuncio. El que escribió por su cuenta no tiene
+/// ninguna, y ahí no hay nada que dibujar: no es un dato faltante.
+struct Pauta {
+    /// El anuncio, para abrirlo donde está publicado.
+    var url: URL
+    /// El titular del anuncio. Si el ERP no lo guardó, el nombre de la pauta o
+    /// el de la campaña, que es lo que queda para reconocerla. Puede ser "".
+    var titulo: String
+    /// Cómo la clasificó el ERP: `instagram`, `facebook` o `no_identificado`.
+    var red: String
+
+    /// El rótulo corto, igual que en el inbox de escritorio.
+    var rotulo: String {
+        switch red {
+        case "instagram": "Pauta IG"
+        case "facebook": "Pauta FB"
+        default: "Pauta"
+        }
+    }
+}
+
 struct Destino: Identifiable, Hashable {
     var id: String
     var nombre: String
@@ -762,6 +790,29 @@ enum RepoERP {
             if let v = noVacio(c[k]) { lineas.append((etiqueta, v)) }
         }
         return FichaContacto(nombre: nombre.isEmpty ? tel : nombre, telefono: tel, lineas: lineas)
+    }
+
+    /// De qué anuncio vino esta conversación, o `nil` si no vino de ninguno.
+    ///
+    /// Misma ruta que usa el inbox del ERP para el chip "Pauta ↗".
+    ///
+    /// No tira nunca, a propósito. El ERP contesta `data: null` tanto para un
+    /// contacto que escribió por su cuenta como para un tenant donde la tabla
+    /// de atribución no existe, y en los dos casos lo correcto es lo mismo: no
+    /// dibujar la franja. Un error acá tampoco puede tapar el chat, que es lo
+    /// que la persona vino a ver.
+    static func pauta(_ chatId: String) async -> Pauta? {
+        guard let crudo = try? await ApiERP.crudo("/chat/conversation-attribution",
+                                                  query: ["conversation_id": chatId]),
+              let envoltorio = crudo as? [String: Any]
+        else { return nil }
+
+        let d = (envoltorio["data"] as? [String: Any]) ?? envoltorio
+        guard let link = noVacio(d["source_url"]), let url = URL(string: link) else { return nil }
+
+        return Pauta(url: url,
+                     titulo: primero(d["headline"], d["ad_name"], d["campaign_name"]) ?? "",
+                     red: noVacio(d["red"]) ?? "no_identificado")
     }
 
     private static func esc(_ s: String) -> String {

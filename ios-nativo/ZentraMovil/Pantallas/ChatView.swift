@@ -41,6 +41,9 @@ struct ChatView: View {
     /// segundo. Sin esto se llega al mensaje sin saber a cuál se llegó.
     @State private var destacado: UUID?
 
+    /// El anuncio del que vino este contacto, si vino de uno.
+    @State private var pauta: Pauta?
+
     private let emojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
     /// Los que coinciden con la búsqueda. Sin búsqueda, todos.
@@ -55,6 +58,8 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let pauta { franja(pauta) }
+
             if cargando {
                 Spacer(); ProgressView(); Spacer()
             } else {
@@ -127,8 +132,40 @@ struct ChatView: View {
             await cargar()
             // Abrir la conversación es lo que la marca como leída.
             await RepoERP.marcarLeido(chat.id)
+            pauta = await RepoERP.pauta(chat.id)
         }
         .latido(cada: 8, activo: true) { await refrescar() }
+    }
+
+    /// De dónde vino este contacto, bajo el encabezado.
+    ///
+    /// Va acá arriba y no en el menú de los tres puntos porque cambia cómo se
+    /// atiende desde el primer mensaje: no es lo mismo alguien que tocó una
+    /// promo que alguien que escribió por su cuenta. Tocarla abre el anuncio.
+    ///
+    /// Los colores salen de la paleta de la app y no de las marcas: el morado
+    /// para Instagram y el celeste para Facebook alcanzan para distinguirlas de
+    /// un vistazo sin meter dos colores nuevos en la pantalla.
+    private func franja(_ p: Pauta) -> some View {
+        let bg = p.red == "instagram" ? Tint.crmBg : p.red == "facebook" ? Tint.infoBg : t.card
+        let ink = p.red == "instagram" ? Tint.crmInk : p.red == "facebook" ? Tint.infoInk : t.ink2
+
+        return Link(destination: p.url) {
+            HStack(spacing: 6) {
+                Image(systemName: "megaphone.fill").font(.system(size: 10, weight: .semibold))
+                Text(p.rotulo).font(Tipo.barlow(.semibold, 11.5))
+                if !p.titulo.isEmpty {
+                    Text(p.titulo).font(Tipo.barlow(.regular, 11.5)).opacity(0.8).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(ink)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .frame(maxWidth: .infinity)
+            .background(bg)
+            .overlay(alignment: .bottom) { Rectangle().fill(t.border).frame(height: 0.5) }
+        }
     }
 
     private var lista: some View {
