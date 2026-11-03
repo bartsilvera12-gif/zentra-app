@@ -892,8 +892,15 @@ struct FichaContactoView: View {
                               bg: t.card, ink: t.ink2)
                     }
                 }
+                // Ancho entero aunque adentro sólo haya una ruedita. Sin esto
+                // la pila se encoge al tamaño del `ProgressView`, el `ScrollView`
+                // se encoge con ella y el fondo quedaba pintado en una franja
+                // de cuatro dedos en el medio de la hoja: parecía un error, y
+                // se arreglaba solo cuando llegaba la ficha y la ensanchaba.
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(t.bg)
             .navigationTitle("Ficha")
             .navigationBarTitleDisplayMode(.inline)

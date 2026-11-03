@@ -1251,7 +1251,14 @@ enum RepoERP {
         let url = urlDeMedia(crudo) ?? urlEnTexto(contenido)
         let epigrafe = noVacio((crudo["caption"])) ?? (url == nil ? contenido : "")
 
-        if tipo.contains("sticker") {
+        // "Eliminar para todos" no borra nada acá: WhatsApp avisa que el
+        // mensaje se eliminó y el ERP lo guarda como una fila más, de tipo
+        // `revoke`. Sin traducirlo el globo dice "[revoke]" crudo. Mismo texto
+        // que usa el ERP en el inbox de escritorio.
+        if tipo.contains("revoke")
+            || contenido.trimmingCharacters(in: .whitespacesAndNewlines) == "[revoke]" {
+            base.texto = "Se eliminó un mensaje"
+        } else if tipo.contains("sticker") {
             if let url { base.imagen = url; base.sticker = " " }
             else { base.sticker = contenido.count <= 4 && !contenido.isEmpty ? contenido : "" }
         } else if tipo.contains("image") {

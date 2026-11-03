@@ -26,9 +26,12 @@ struct InicioView: View {
     @State private var pagina = 0
     @State private var aviso: String?
 
-    /// Si está abierta la tarjeta de la cuenta.
-    @State private var verCuenta = false
     @State private var confirmarSalir = false
+
+    /// Lo que va bajo el nombre en el menú: qué podés hacer y dónde.
+    private var debajoDelNombre: String {
+        [Formato.rolLegible(rolCrudo), empresa].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
 
     private var empresa: String { estado.tenant?.nombre ?? estado.perfil?.empresa ?? "" }
     private var usuarioCompleto: String { estado.perfil?.nombre ?? "" }
@@ -65,80 +68,13 @@ struct InicioView: View {
         .avisoPlan($aviso)
         .task { await panel.cargar() }
         .refreshable { await panel.cargar(forzar: true) }
-        .sheet(isPresented: $verCuenta) {
-            tarjetaCuenta
-                // Alto justo: una hoja a media pantalla para tres datos y un
-                // botón deja un vacío que se lee como que falta algo.
-                .presentationDetents([.height(290)])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(t.bg)
-        }
         .alert("¿Cerrar sesión?", isPresented: $confirmarSalir) {
             Button("Cancelar", role: .cancel) {}
             Button("Cerrar sesión", role: .destructive) {
-                verCuenta = false
                 Task { await estado.salir() }
             }
         } message: {
             Text("Vas a tener que entrar de nuevo con tu usuario y contraseña.")
-        }
-    }
-
-    /// Quién sos y dónde estás parado.
-    ///
-    /// Los tres datos tienen jerarquía distinta porque no valen lo mismo: el
-    /// nombre es quién, el rol es qué podés hacer y la empresa es dónde. Antes
-    /// iban los tres del mismo tamaño, en gris, separados por puntos.
-    private var tarjetaCuenta: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 12) {
-                Text(Formato.inicialDe(usuarioCompleto))
-                    .font(Tipo.barlow(.semibold, 24))
-                    .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
-                    .background(Color(hex: "#04617A"), in: .circle)
-
-                VStack(spacing: 5) {
-                    Text(Formato.nombreCorto(usuarioCompleto))
-                        .font(Tipo.barlow(.semibold, 19))
-                        .foregroundStyle(t.ink)
-                        .multilineTextAlignment(.center)
-
-                    if !rolCrudo.isEmpty {
-                        Text(Formato.rolLegible(rolCrudo).uppercased())
-                            .font(Tipo.barlow(.semibold, 10.5))
-                            .tracking(1.26)
-                            .foregroundStyle(t.marca)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(t.card, in: .capsule)
-                    }
-
-                    if !empresa.isEmpty {
-                        Text(empresa)
-                            .font(Tipo.barlow(.regular, 13))
-                            .foregroundStyle(t.ink2)
-                            .multilineTextAlignment(.center)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 26)
-            .padding(.bottom, 22)
-
-            Button { confirmarSalir = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Cerrar sesión").font(Tipo.barlow(.semibold, 15))
-                }
-                .foregroundStyle(Tint.errorInk)
-                .frame(maxWidth: .infinity).frame(height: 50)
-                .background(Tint.errorBg, in: .rect(cornerRadius: 13))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 18)
-
-            Spacer(minLength: 0)
         }
     }
 
@@ -189,24 +125,41 @@ struct InicioView: View {
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(t.ink2)
 
-                // Una hoja y no un `Menu`. El menú ponía el nombre, el rol y
-                // la empresa pegados con puntos en el encabezado de una
-                // sección: iOS los dibuja chiquitos, grises y sobre el vidrio,
-                // así que "Fernando Gonzalez · Usuario · Neura Sistemas"
-                // terminaba partido en dos renglones y casi ilegible encima del
-                // contenido. Acá cada dato tiene su lugar y su peso.
+                // `Menu` y no una hoja: se ancla solo a la inicial, sale de
+                // ahí y se cierra tocando al costado. Una hoja para esto sube
+                // desde abajo y tapa media pantalla.
+                //
+                // El nombre, el rol y la empresa iban en el encabezado de una
+                // sección, que iOS dibuja chiquito y gris, y "Fernando Gonzalez
+                // · Usuario · Neura Sistemas" terminaba partido en dos
+                // renglones. Ahora van como el título y el subtítulo de un
+                // renglón del propio menú, que se dibuja al tamaño normal y a
+                // una línea cada uno.
                 //
                 // Cerrar sesión estaba sólo adentro de Configuración, tres
                 // toques más abajo, y en un teléfono que se pasa entre turnos
                 // eso se usa seguido.
-                Button { verCuenta = true } label: {
+                Menu {
+                    Section {
+                        // No hace nada: es quién sos. Tocarlo cierra el menú,
+                        // igual que tocar al costado.
+                        Button {} label: {
+                            Text(Formato.nombreCorto(usuarioCompleto))
+                            if !debajoDelNombre.isEmpty { Text(debajoDelNombre) }
+                        }
+                    }
+                    Button(role: .destructive) {
+                        confirmarSalir = true
+                    } label: {
+                        Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                } label: {
                     Text(Formato.inicialDe(usuarioCompleto))
                         .font(Tipo.barlow(.semibold, 13))
                         .foregroundStyle(.white)
                         .frame(width: 32, height: 32)
                         .background(Color(hex: "#04617A"), in: .circle)
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel("Tu cuenta")
             }
         }
