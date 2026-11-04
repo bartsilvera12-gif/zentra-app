@@ -1308,6 +1308,33 @@ enum RepoERP {
     }
 
     private static func urlDeMedia(_ crudo: [String: Any]) -> String? {
+        // 1) Lo que subimos nosotros. El ERP guarda el archivo en su storage y
+        //    deja acá el enlace definitivo, que es el que conviene usar: no
+        //    vence.
+        if let erp = crudo["erp"] as? [String: Any], let u = enlace(erp["public_url"]) {
+            return u
+        }
+
+        // 2) Lo que mandó el cliente. WhatsApp no lo pone arriba: viene adentro
+        //    del sobre, bajo el tipo de adjunto, y puede estar anidado una o
+        //    dos veces según de dónde llegó el mensaje. Sin mirar acá, el audio
+        //    de un cliente quedaba como la palabra "Audio" mientras que el
+        //    nuestro se escuchaba. Mismos lugares que mira el ERP.
+        var sobres: [[String: Any]] = []
+        for k in ["whatsappInboundMessage", "whatsappMessage"] {
+            if let d = crudo[k] as? [String: Any] { sobres.append(d) }
+        }
+        sobres.append(crudo)
+
+        for sobre in sobres {
+            for tipo in ["image", "video", "audio", "document", "sticker"] {
+                if let adjunto = sobre[tipo] as? [String: Any], let u = enlace(adjunto["link"]) {
+                    return u
+                }
+            }
+        }
+
+        // 3) Las formas sueltas que ya veníamos aceptando.
         for k in ["media_url", "url", "link", "file_url"] {
             if let u = noVacio(crudo[k]) { return u }
         }
@@ -1315,6 +1342,14 @@ enum RepoERP {
             for k in ["url", "link"] { if let u = noVacio(a[k]) { return u } }
         }
         return nil
+    }
+
+    /// El valor sólo si es una dirección http. Un `link` que no lo sea termina
+    /// en un reproductor que nunca arranca.
+    private static func enlace(_ v: Any?) -> String? {
+        guard let s = noVacio(v) else { return nil }
+        let b = s.lowercased()
+        return b.hasPrefix("http://") || b.hasPrefix("https://") ? s : nil
     }
 
     /// Algunos sobres mandan la media como una URL suelta adentro del texto.
