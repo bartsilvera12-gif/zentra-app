@@ -59,7 +59,10 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let pauta { franja(pauta) }
+            // Mientras se busca, la franja no va: el campo de búsqueda se
+            // dibuja justo ahí y los dos quedaban encimados, ilegibles. Y
+            // buscando un mensaje viejo, de dónde vino el contacto no importa.
+            if let pauta, !buscando { franja(pauta) }
 
             if cargando {
                 Spacer(); ProgressView(); Spacer()
@@ -79,6 +82,11 @@ struct ChatView: View {
         .background(t.bg)
         .navigationTitle(chat.nombre)
         .navigationBarTitleDisplayMode(.inline)
+        // La barra con su color y no con el de abajo: iOS le pasa el fondo del
+        // primer elemento del contenido, y con la franja arriba el nombre del
+        // contacto quedaba blanco sobre lila.
+        .toolbarBackground(t.card, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -144,27 +152,30 @@ struct ChatView: View {
     /// atiende desde el primer mensaje: no es lo mismo alguien que tocó una
     /// promo que alguien que escribió por su cuenta. Tocarla abre el anuncio.
     ///
-    /// Los colores salen de la paleta de la app y no de las marcas: el morado
-    /// para Instagram y el celeste para Facebook alcanzan para distinguirlas de
-    /// un vistazo sin meter dos colores nuevos en la pantalla.
+    /// Los colores salen del tema y no de los tintes de estado. Los tintes son
+    /// siempre claros a propósito —van en chips chicos, con su fondo propio—,
+    /// pero esto es una banda de lado a lado pegada al encabezado: en modo
+    /// oscuro quedaba como una tira blanca, y como iOS le pasa el fondo del
+    /// primer elemento a la barra de navegación, el nombre del contacto salía
+    /// blanco sobre lila. Qué red fue lo dice el rótulo, que para eso está.
     private func franja(_ p: Pauta) -> some View {
-        let bg = p.red == "instagram" ? Tint.crmBg : p.red == "facebook" ? Tint.infoBg : t.card
-        let ink = p.red == "instagram" ? Tint.crmInk : p.red == "facebook" ? Tint.infoInk : t.ink2
-
-        return Link(destination: p.url) {
+        Link(destination: p.url) {
             HStack(spacing: 6) {
                 Image(systemName: "megaphone.fill").font(.system(size: 10, weight: .semibold))
                 Text(p.rotulo).font(Tipo.barlow(.semibold, 11.5))
                 if !p.titulo.isEmpty {
-                    Text(p.titulo).font(Tipo.barlow(.regular, 11.5)).opacity(0.8).lineLimit(1)
+                    Text(p.titulo)
+                        .font(Tipo.barlow(.regular, 11.5))
+                        .foregroundStyle(t.ink2)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .semibold))
             }
-            .foregroundStyle(ink)
+            .foregroundStyle(t.marca)
             .padding(.horizontal, 12).padding(.vertical, 7)
             .frame(maxWidth: .infinity)
-            .background(bg)
+            .background(t.card)
             .overlay(alignment: .bottom) { Rectangle().fill(t.border).frame(height: 0.5) }
         }
     }
@@ -331,7 +342,18 @@ struct ChatView: View {
                         .font(Tipo.barlow(.regular, 14))
                         .tint(m.mio ? .white : C.azulMedio)
                         .foregroundStyle(m.mio ? .white : t.ink)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
+                        // El globo se ajusta a lo que dice, como en WhatsApp.
+                        //
+                        // Acá el texto pedía `maxWidth: .infinity`, así que
+                        // estiraba el globo hasta el tope aunque el mensaje
+                        // fuera un emoji: dos corazones ocupaban el ancho de la
+                        // pantalla. El ancho máximo ya lo pone el `Spacer` del
+                        // otro lado, que deja siempre 50 puntos libres.
+                        //
+                        // `fixedSize` en vertical para que un mensaje largo
+                        // siga cortándose en varias líneas en vez de achicarse.
+                        .fixedSize(horizontal: false, vertical: true)
                         // Seleccionable: copiar un número o una dirección de un
                         // mensaje es de las cosas que más se hacen en un chat.
                         .textSelection(.enabled)
