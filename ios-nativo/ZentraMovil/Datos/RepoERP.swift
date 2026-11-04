@@ -164,6 +164,9 @@ struct Mensaje: Identifiable, Equatable {
     /// El texto que acompaña a una foto. Una foto con pie lleva globo; sin pie,
     /// la imagen va sola.
     var epigrafe: String = ""
+    /// Cómo se llama el archivo adjunto. Un documento sin nombre es un globo
+    /// que dice "Documento" y no deja saber si es el presupuesto o el catálogo.
+    var archivo: String = ""
     var sticker: String = ""
 
     /// A qué mensaje responde éste, ya resumido para dibujarlo arriba del globo.
@@ -1270,8 +1273,15 @@ enum RepoERP {
         } else if tipo.contains("audio") || tipo.contains("voice") {
             if let url { base.audio = url } else { base.texto = "Audio" }
         } else if tipo.contains("document") {
-            if let url { base.documento = url; base.epigrafe = epigrafe }
-            else { base.texto = epigrafe.isEmpty ? "Documento" : epigrafe }
+            base.archivo = nombreDeArchivo(crudo)
+            if let url {
+                base.documento = url
+                // El pie sólo si es un pie de verdad: si el ERP repitió ahí el
+                // nombre del archivo, se dibujaría dos veces.
+                base.epigrafe = epigrafe == base.archivo ? "" : epigrafe
+            } else {
+                base.texto = [base.archivo, epigrafe].first { !$0.isEmpty } ?? "Documento"
+            }
         } else {
             base.texto = contenido
         }
@@ -1342,6 +1352,26 @@ enum RepoERP {
             for k in ["url", "link"] { if let u = noVacio(a[k]) { return u } }
         }
         return nil
+    }
+
+    /// Cómo se llama el archivo, mire donde mire el sobre.
+    ///
+    /// `erp.filename` es el que guardamos nosotros al subirlo; el de adentro
+    /// del nodo `document` es el que mandó WhatsApp con el archivo del cliente.
+    /// Mismos lugares que mira el ERP.
+    private static func nombreDeArchivo(_ crudo: [String: Any]) -> String {
+        if let erp = crudo["erp"] as? [String: Any], let n = noVacio(erp["filename"]) { return n }
+        var sobres: [[String: Any]] = []
+        for k in ["whatsappInboundMessage", "whatsappMessage"] {
+            if let d = crudo[k] as? [String: Any] { sobres.append(d) }
+        }
+        sobres.append(crudo)
+        for sobre in sobres {
+            if let doc = sobre["document"] as? [String: Any], let n = noVacio(doc["filename"]) {
+                return n
+            }
+        }
+        return ""
     }
 
     /// El valor sólo si es una dirección http. Un `link` que no lo sea termina

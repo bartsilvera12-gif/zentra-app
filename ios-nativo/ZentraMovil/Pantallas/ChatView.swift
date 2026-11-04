@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 /// Una conversación de WhatsApp del ERP.
@@ -297,7 +298,7 @@ struct ChatView: View {
                 } else if !m.video.isEmpty {
                     Button { viendo = m } label: {
                         ZStack {
-                            miniatura(m.video)
+                            if let u = URL(string: m.video) { MiniaturaVideo(url: u) }
                             Image(systemName: "play.circle.fill")
                                 .font(.system(size: 38)).foregroundStyle(.white.opacity(0.9))
                         }
@@ -315,9 +316,7 @@ struct ChatView: View {
                             .foregroundStyle(m.mio ? .white : t.ink)
                     }
                 } else if !m.documento.isEmpty {
-                    Label(m.epigrafe.isEmpty ? "Documento" : m.epigrafe, systemImage: "doc.fill")
-                        .font(Tipo.barlow(.regular, 14))
-                        .foregroundStyle(m.mio ? .white : t.ink)
+                    documento(m)
                 } else if !m.sticker.isEmpty {
                     // Un sticker que llegó sin imagen: se dice que lo era, con
                     // el símbolo del sistema en vez de una carita de relleno.
@@ -405,6 +404,45 @@ struct ChatView: View {
     }
 
     /// Miniatura liviana: la imagen entera se carga recién en el visor.
+    /// Un documento adjunto: cómo se llama, de qué tipo es, y abrirlo.
+    ///
+    /// Antes era la palabra "Documento" y nada más, sin forma de abrirlo: no
+    /// se sabía si era el presupuesto o el catálogo, y para verlo había que ir
+    /// a la computadora.
+    @ViewBuilder
+    private func documento(_ m: Mensaje) -> some View {
+        let nombre = [m.archivo, m.epigrafe].first { !$0.isEmpty } ?? "Documento"
+        let extension_ = (m.archivo as NSString).pathExtension.uppercased()
+        let contenido = HStack(spacing: 9) {
+            Image(systemName: "doc.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(m.mio ? .white.opacity(0.9) : C.azulMedio)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(nombre)
+                    .font(Tipo.barlow(.semibold, 13.5))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                if !extension_.isEmpty {
+                    Text(extension_)
+                        .font(Tipo.barlow(.regular, 10.5))
+                        .foregroundStyle(m.mio ? .white.opacity(0.7) : t.ink3)
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 16))
+                .foregroundStyle(m.mio ? .white.opacity(0.75) : t.ink3)
+        }
+        .foregroundStyle(m.mio ? .white : t.ink)
+        .frame(width: 210)
+
+        if let u = URL(string: m.documento) {
+            Link(destination: u) { contenido }
+        } else {
+            contenido
+        }
+    }
+
     private func miniatura(_ url: String) -> some View {
         AsyncImage(url: URL(string: url)) { img in
             img.resizable().scaledToFill()
@@ -799,6 +837,18 @@ struct VisorView: View {
     let mensaje: Mensaje
     @Environment(\.dismiss) private var cerrar
     @State private var escala: CGFloat = 1
+    /// Uno solo por apertura: armarlo adentro del `body` lo volvería a crear en
+    /// cada redibujo y el video arrancaría de cero cada vez.
+    @State private var player: AVPlayer?
+
+    private func reproductor(_ url: URL) -> AVPlayer {
+        if let player { return player }
+        let p = AVPlayer(url: url)
+        DispatchQueue.main.async { self.player = p }
+        return p
+    }
+
+    private var esVideo: Bool { mensaje.imagen.isEmpty && !mensaje.video.isEmpty }
 
     private var url: URL? {
         URL(string: mensaje.imagen.isEmpty ? mensaje.video : mensaje.imagen)
@@ -809,14 +859,23 @@ struct VisorView: View {
             Color.black.ignoresSafeArea()
 
             if let url {
-                AsyncImage(url: url) { img in
-                    img.resizable().scaledToFit()
-                        .scaleEffect(escala)
-                        .gesture(MagnifyGesture()
-                            .onChanged { escala = max(1, $0.magnification) }
-                            .onEnded { _ in withAnimation { escala = max(1, escala) } })
-                } placeholder: {
-                    ProgressView().tint(.white)
+                // Un video no se abre con `AsyncImage`: eso descarga y
+                // decodifica imágenes, así que un `.mp4` dejaba la rueda
+                // girando para siempre. Se mira con el reproductor del
+                // sistema, que trae sus controles y la pantalla completa.
+                if esVideo {
+                    VideoPlayer(player: reproductor(url))
+                        .ignoresSafeArea()
+                } else {
+                    AsyncImage(url: url) { img in
+                        img.resizable().scaledToFit()
+                            .scaleEffect(escala)
+                            .gesture(MagnifyGesture()
+                                .onChanged { escala = max(1, $0.magnification) }
+                                .onEnded { _ in withAnimation { escala = max(1, escala) } })
+                    } placeholder: {
+                        ProgressView().tint(.white)
+                    }
                 }
             }
 
