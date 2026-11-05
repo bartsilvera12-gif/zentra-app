@@ -9,6 +9,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import {
   COMO_CONOCIO,
   EDAD_MINIMA,
@@ -57,15 +58,25 @@ test("las dos contraseñas tienen que ser iguales", () => {
 test("la fecha de nacimiento tiene que ser una fecha posible", () => {
   assert.match(validarRegistro(completo({ nacimiento: "" }), HOY), /fecha de nacimiento/);
   assert.match(validarRegistro(completo({ nacimiento: "2025-02-31" }), HOY), /fecha de nacimiento/);
-  assert.match(validarRegistro(completo({ nacimiento: "2030-01-01" }), HOY), /al menos 16 años/);
+  assert.match(validarRegistro(completo({ nacimiento: "2030-01-01" }), HOY), /al menos 18 años/);
   assert.match(validarRegistro(completo({ nacimiento: "1850-01-01" }), HOY), /año de nacimiento/);
+});
+
+test("la edad mínima es 18, la misma que dicen la privacidad y las condiciones", () => {
+  // Las tres tienen que decir lo mismo: el alta, la política de privacidad
+  // y las condiciones del servicio. Con 16 en el alta y 18 en la política,
+  // la app aceptaba a quien sus propias reglas decían que no.
+  assert.equal(EDAD_MINIMA, 18);
+  const servidor = readFileSync("server/src/pagina.js", "utf8");
+  assert.match(servidor, /no está dirigida a menores de\s+18 años/);
+  assert.match(servidor, /mayor de 18 años/);
 });
 
 test("la edad se cuenta por cumpleaños, no por año", () => {
   // Cumple mañana: todavía no los tiene.
-  assert.equal(edadEn("2010-10-28", HOY), EDAD_MINIMA - 1);
+  assert.equal(edadEn("2008-10-28", HOY), EDAD_MINIMA - 1);
   // Cumple hoy: ya los tiene.
-  assert.equal(edadEn("2010-10-27", HOY), EDAD_MINIMA);
+  assert.equal(edadEn("2008-10-27", HOY), EDAD_MINIMA);
   assert.equal(edadEn("no es una fecha", HOY), null);
 });
 

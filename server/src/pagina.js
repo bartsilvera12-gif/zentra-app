@@ -488,6 +488,132 @@ export function paginaPrivacidad({ whatsapp = "", email = "", actualizada = "" }
 }
 
 /**
+ * Las condiciones del servicio.
+ *
+ * Google las pide en la declaración de comerciante y las muestra en la ficha
+ * de Play a usuarios de todo el mundo; tienen que estar en una página web
+ * pública, no en un PDF. Viven acá por lo mismo que la de privacidad: es el
+ * único dominio nuestro publicado y andando.
+ *
+ * Lo que dice tiene que coincidir con lo que la app hace de verdad, porque
+ * cualquiera puede comprobarlo: los tres planes, que se cobran por mes, que
+ * dentro de la app cobran Google o Apple y en la web Pagopar, y que vencer no
+ * borra nada. No lleva precios: cambian, y la app los muestra antes de pagar.
+ * Una cifra vieja escrita acá sería una promesa que no cumplimos.
+ *
+ * La edad mínima es la misma que valida el alta (`EDAD_MINIMA` en
+ * `src/lib/registro.ts`) y la misma que dice la política de privacidad. Si
+ * cambia una, cambian las tres.
+ */
+export function paginaCondiciones({ whatsapp = "", email = "", actualizada = "" } = {}) {
+  const tel = String(whatsapp || "").replace(/\D/g, "");
+  const contacto = [
+    tel ? `<li>WhatsApp: <a href="https://wa.me/${esc(tel)}">+${esc(tel)}</a></li>` : "",
+    email ? `<li>Correo: <a href="mailto:${esc(email)}">${esc(email)}</a></li>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return marco(
+    "Condiciones del servicio",
+    `<h1>Condiciones del servicio de Zentra</h1>
+    <p class="sub">Última actualización: ${esc(actualizada || "5 de noviembre de 2026")}</p>
+
+    <div class="tarjeta datos">
+      <h2>Qué es Zentra</h2>
+      <p>Zentra es una aplicación para manejar las ventas, el inventario, las
+      compras, los clientes y los proveedores de un comercio, desarrollada por
+      Neura, en Paraguay. Al crear una cuenta o usar la app aceptás estas
+      condiciones. Si no estás de acuerdo, no uses la app.</p>
+
+      <h2>Tu cuenta</h2>
+      <ul>
+        <li>Para abrir una cuenta tenés que ser mayor de 18 años.</li>
+        <li>Los datos que ponés al registrarte tienen que ser verdaderos.</li>
+        <li>Sos responsable de cuidar tu contraseña y de lo que se haga con tu
+        usuario. Si creés que alguien más entró, cambiá la contraseña y
+        avisanos.</li>
+        <li>Si tu empresa tiene varios usuarios, el administrador decide quién
+        entra y qué puede hacer cada uno.</li>
+      </ul>
+
+      <h2>Los planes</h2>
+      <p>Zentra tiene un plan <strong>Gratis</strong>, con límites, y dos
+      planes pagos, <strong>Emprendedor</strong> y <strong>Max</strong>, que
+      suman funciones. Qué incluye cada uno y cuánto cuesta se muestra en la
+      app antes de pagar; ese es el precio que se cobra.</p>
+
+      <h2>Cómo se paga</h2>
+      <ul>
+        <li><strong>En la app de Android:</strong> cobra Google Play. La
+        suscripción se renueva sola cada mes hasta que la canceles desde
+        Google Play → Pagos y suscripciones.</li>
+        <li><strong>En la app de iPhone:</strong> cobra Apple. Se renueva sola
+        cada mes hasta que la canceles desde Ajustes → tu nombre →
+        Suscripciones.</li>
+        <li><strong>Por la web:</strong> cobra Pagopar. Cada pago cubre un mes
+        y no se renueva solo: para seguir hay que volver a pagar.</li>
+      </ul>
+      <p>Si cancelás, el plan sigue activo hasta el final del período que ya
+      pagaste. Los reembolsos de compras hechas en la app los decide y hace
+      la tienda que cobró —Google o Apple— según sus propias reglas; nosotros
+      no podemos devolver un cobro que no hicimos. Si pagaste y el plan no se
+      activó, escribinos y lo resolvemos.</p>
+
+      <h2>Cuando un plan vence</h2>
+      <p>Si el plan pago vence y no se renueva, la cuenta vuelve a los límites
+      del plan Gratis. <strong>Tus datos no se borran</strong>: siguen ahí y
+      vuelven a estar completos en cuanto renovás.</p>
+
+      <h2>Tus datos</h2>
+      <p>Lo que cargás en la app —productos, ventas, clientes, proveedores—
+      es tuyo. Nosotros lo guardamos para que la app funcione y no lo usamos
+      para otra cosa. Podés exportar los reportes y eliminar la cuenta cuando
+      quieras. Los detalles están en la
+      <a href="/privacidad">política de privacidad</a> y en
+      <a href="/eliminar-cuenta">cómo eliminar tu cuenta</a>.</p>
+
+      <h2>Comprobantes e impuestos</h2>
+      <p>Zentra te ayuda a registrar ventas y a emitir comprobantes, pero no
+      reemplaza a tu contador. Cumplir con la SET —tener tu timbrado vigente,
+      cargar bien tus datos fiscales y declarar— es responsabilidad de cada
+      comercio. Mientras no cargues la razón social y el RUC de quien factura,
+      lo que emite la app es un comprobante interno y no una factura
+      legal.</p>
+
+      <h2>Uso permitido</h2>
+      <p>No uses Zentra para nada ilegal, para mandar mensajes que la otra
+      persona no pidió, para cargar datos de terceros sin derecho a hacerlo ni
+      para intentar entrar a cuentas o datos que no son tuyos. Si eso pasa,
+      podemos suspender la cuenta.</p>
+
+      <h2>Disponibilidad</h2>
+      <p>Trabajamos para que Zentra esté siempre funcionando, pero puede haber
+      cortes por mantenimiento, fallas de internet o de los servicios en los
+      que se apoya. No respondemos por pérdidas que vengan de no poder usar la
+      app por un tiempo, ni por decisiones tomadas a partir de datos cargados
+      mal. En todo caso, lo máximo que respondemos es lo que pagaste en los
+      últimos tres meses.</p>
+
+      <h2>Cambios</h2>
+      <p>Si estas condiciones cambian, se actualiza esta página con una fecha
+      nueva arriba. Si el cambio es importante, tratamos de avisarlo con
+      anticipación. Seguir usando Zentra después del cambio es aceptarlo.</p>
+
+      <h2>Ley aplicable</h2>
+      <p>Estas condiciones se rigen por las leyes de la República del
+      Paraguay. Nada de lo que dicen te quita los derechos que te da la ley de
+      defensa del consumidor de tu país.</p>
+
+      <h2>Contacto</h2>
+      <ul>${contacto || "<li>Escribinos desde la app, en Configuración → Escribir a soporte.</li>"}</ul>
+    </div>`,
+    false,
+    true,
+  );
+}
+
+/**
  * Cómo borrar la cuenta.
  *
  * Google exige una dirección pública, que se pueda abrir sin instalar la app
@@ -560,6 +686,7 @@ export function paginaSoporte({ whatsapp = "", email = "" } = {}) {
       <h2>Tu cuenta y tus datos</h2>
       <ul>
         <li><a href="/privacidad">Política de privacidad</a></li>
+        <li><a href="/condiciones">Condiciones del servicio</a></li>
         <li><a href="/eliminar-cuenta">Cómo eliminar tu cuenta</a></li>
       </ul>
     </div>`,

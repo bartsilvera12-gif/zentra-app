@@ -282,6 +282,36 @@ t("esa pagina no borra nada por si sola", async () => {
   if (/<form/i.test(html)) throw new Error("tiene un formulario que borra");
 });
 
+t("las condiciones del servicio se abren sin sesion", async () => {
+  // Google las muestra en la ficha a cualquiera, sin cuenta: si piden
+  // iniciar sesión o dan 404, la declaración de comerciante queda mal.
+  const r = await fetch(SRV + "/condiciones");
+  if (r.status !== 200) throw new Error("status " + r.status);
+  const html = await r.text();
+  if (!/Condiciones del servicio de Zentra/.test(html)) throw new Error("no es la pagina de condiciones");
+  if (/<form/i.test(html)) throw new Error("no deberia tener formularios");
+});
+
+t("las condiciones dicen lo que la app hace de verdad", async () => {
+  const html = await (await fetch(SRV + "/condiciones")).text();
+  // Los tres planes, las tres cajas, y que vencer no borra nada.
+  for (const debe of ["Gratis", "Emprendedor", "Max", "Google Play", "Apple", "Pagopar", "no se borran", "mayor de 18"]) {
+    if (!html.includes(debe)) throw new Error("falta: " + debe);
+  }
+  // Sin precios: cambian, y la app los muestra antes de pagar. Una cifra
+  // vieja acá sería una promesa que no se cumple.
+  if (/₲\s*\d|Gs\.?\s*\d/.test(html)) throw new Error("tiene un precio escrito");
+  // Enlaza a las otras dos páginas que miran las tiendas.
+  if (!html.includes('href="/privacidad"') || !html.includes('href="/eliminar-cuenta"')) {
+    throw new Error("no enlaza a privacidad y eliminar cuenta");
+  }
+});
+
+t("soporte enlaza a las condiciones", async () => {
+  const html = await (await fetch(SRV + "/soporte")).text();
+  if (!html.includes('href="/condiciones"')) throw new Error("no enlaza a /condiciones");
+});
+
 let malas = 0;
 for (const [n, f] of casos) {
   try {

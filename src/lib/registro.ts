@@ -57,7 +57,7 @@ export type DatosRegistro = {
 };
 
 /** La edad que se acepta. Abajo no se puede firmar; arriba es un año mal tipeado. */
-export const EDAD_MINIMA = 16;
+export const EDAD_MINIMA = 18;
 export const EDAD_MAXIMA = 100;
 
 /** Los años cumplidos a una fecha dada. Se le pasa el hoy para poder probarlo. */

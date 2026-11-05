@@ -36,7 +36,7 @@ enum Registro {
         "Otro",
     ]
 
-    static let edadMinima = 16
+    static let edadMinima = 18
     static let edadMaxima = 100
 
     struct Datos: Equatable {

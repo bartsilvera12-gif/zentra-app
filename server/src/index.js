@@ -76,6 +76,7 @@ import {
   paginaPrivacidad,
   paginaResultado,
   paginaSoporte,
+  paginaCondiciones,
 } from "./pagina.js";
 import { esCobroDePrueba } from "./cobro-prueba.js";
 
@@ -431,6 +432,22 @@ app.get("/eliminar-cuenta", (_req, res) => {
 app.get("/soporte", (_req, res) => {
   res.type("html").send(
     paginaSoporte({
+      whatsapp: process.env.SOPORTE_WHATSAPP || "595973989068",
+      email: process.env.CONTACTO_EMAIL || "",
+    }),
+  );
+});
+
+/**
+ * Las condiciones del servicio.
+ *
+ * Google las pide en la declaración de comerciante y las muestra en la ficha
+ * de Play. Van con las otras tres: son las direcciones que miran las tiendas
+ * y conviene que vivan juntas.
+ */
+app.get("/condiciones", (_req, res) => {
+  res.type("html").send(
+    paginaCondiciones({
       whatsapp: process.env.SOPORTE_WHATSAPP || "595973989068",
       email: process.env.CONTACTO_EMAIL || "",
     }),
