@@ -17,6 +17,13 @@ struct ChatView: View {
 
     /// A qué mensaje estoy respondiendo. Se arma tocando "Responder".
     @State private var citando: Mensaje?
+    /// El cursor está en el campo de texto.
+    ///
+    /// Citar un mensaje es el paso previo a escribir la respuesta, siempre. Sin
+    /// esto quedaba la barra de la cita armada y el teclado abajo, y había que
+    /// tocar el campo para empezar a escribir: un toque de más en lo que más se
+    /// hace en esta pantalla.
+    @FocusState private var escribiendo: Bool
     /// A cuál le estoy por poner un emoji.
     @State private var reaccionando: Mensaje?
     /// La foto o el video abiertos a pantalla completa.
@@ -80,6 +87,13 @@ struct ChatView: View {
             barra
         }
         .background(t.bg)
+        // Citar es el paso previo a escribir: el teclado sube solo. El panel de
+        // emojis se cierra, que si no el teclado lo empujaría fuera de la vista.
+        .onChange(of: citando?.id) { _, nueva in
+            guard nueva != nil else { return }
+            panel = false
+            escribiendo = true
+        }
         .navigationTitle(chat.nombre)
         .navigationBarTitleDisplayMode(.inline)
         // La barra con su color y no con el de abajo: iOS le pasa el fondo del
@@ -267,8 +281,30 @@ struct ChatView: View {
         saltarA = objetivo.id
     }
 
+    /// Ya llegamos abajo una vez en esta conversación.
+    ///
+    /// La primera vez no se anima: el chat tiene que **abrir** en el último
+    /// mensaje, no empezar arriba y caer en picada hasta el final, que es lo
+    /// que se veía. De ahí en adelante sí, porque ahí el movimiento significa
+    /// algo —llegó un mensaje— y sin animación aparece de golpe.
+    @State private var yaBajo = false
+
     private func alFinal(_ sc: ScrollViewProxy) {
         guard let u = visibles.last else { return }
+
+        guard yaBajo else {
+            // Sin retardo y sin animación. El retardo de cinco centésimas era
+            // lo que dejaba ver el principio de la conversación antes del
+            // salto.
+            sc.scrollTo(u.id, anchor: .bottom)
+            yaBajo = true
+            // Otra vez en el siguiente ciclo: en una conversación con fotos y
+            // audios, los globos todavía no midieron lo que van a medir y el
+            // primer salto queda corto.
+            DispatchQueue.main.async { sc.scrollTo(u.id, anchor: .bottom) }
+            return
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             withAnimation { sc.scrollTo(u.id, anchor: .bottom) }
         }
@@ -577,6 +613,7 @@ struct ChatView: View {
 
             // Crece con el mensaje, hasta cinco líneas.
             TextField("Escribí un mensaje…", text: $texto, axis: .vertical)
+                .focused($escribiendo)
                 .font(.system(size: 16))
                 .lineLimit(1...5)
                 .padding(.horizontal, 14).padding(.vertical, 10)

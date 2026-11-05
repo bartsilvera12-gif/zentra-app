@@ -28,6 +28,15 @@ struct InicioView: View {
 
     @State private var confirmarSalir = false
 
+    /// La pila de navegación, manejada a mano.
+    ///
+    /// Antes el `NavigationStack` no llevaba ruta: alcanzaba, porque a todo se
+    /// entraba tocando. Ahora además se entra desde afuera —tocando un aviso—,
+    /// y para eso hay que poder empujar un destino sin que nadie toque nada.
+    @State private var ruta = NavigationPath()
+
+    private var avisador = Avisador.shared
+
     /// Lo que va bajo el nombre en el menú: qué podés hacer y dónde.
     private var debajoDelNombre: String {
         [Formato.rolLegible(rolCrudo), empresa].filter { !$0.isEmpty }.joined(separator: " · ")
@@ -38,7 +47,7 @@ struct InicioView: View {
     private var rolCrudo: String { estado.perfil?.rol ?? "" }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $ruta) {
             VStack(spacing: 0) {
                 carrusel
                 puntos
@@ -60,6 +69,12 @@ struct InicioView: View {
                 case .reportes: ReportesView()
                 }
             }
+            // Entrar derecho a una conversación desde un aviso. Va directo al
+            // chat y no pasa por el listado: lo que se tocó fue ese mensaje.
+            .navigationDestination(for: ChatDestino.self) { d in
+                ChatView(chat: Chat(id: d.id, nombre: d.nombre, hora: "",
+                                    noLeidos: 0, vistaPrevia: ""))
+            }
         .background(t.bg)
             .safeAreaInset(edge: .top, spacing: 0) { encabezado }
         }
@@ -68,6 +83,15 @@ struct InicioView: View {
         .avisoPlan($aviso)
         .task { await panel.cargar() }
         .refreshable { await panel.cargar(forzar: true) }
+        // El número sobre la baldosa y el globito del ícono de la app.
+        .task { await avisador.refrescar() }
+        .latido(cada: 45, activo: true) { await avisador.refrescar() }
+        // Dos veces lo mismo a propósito. `onChange` atiende el aviso tocado
+        // con la app abierta; `task` atiende el que ya estaba guardado cuando
+        // esta pantalla apareció, que es el caso de la app cerrada: iOS la
+        // arranca, guarda el destino, y recién entonces se dibuja Inicio.
+        .onChange(of: avisador.entrarA) { _, d in abrir(d) }
+        .task { abrir(avisador.entrarA) }
         .alert("¿Cerrar sesión?", isPresented: $confirmarSalir) {
             Button("Cancelar", role: .cancel) {}
             Button("Cerrar sesión", role: .destructive) {
@@ -76,6 +100,18 @@ struct InicioView: View {
         } message: {
             Text("Vas a tener que entrar de nuevo con tu usuario y contraseña.")
         }
+    }
+
+    /// Empuja el chat que vino de un aviso y consume el destino, para que no se
+    /// vuelva a abrir solo la próxima vez que se mire esta pantalla.
+    private func abrir(_ d: ChatDestino?) {
+        guard let d else { return }
+        avisador.entrarA = nil
+        // La pila se vacía primero: si ya había un chat abierto —el aviso de
+        // otra conversación mientras se mira una— quedarían los dos apilados y
+        // el botón de volver llevaría al anterior en vez de a Inicio.
+        ruta = NavigationPath()
+        ruta.append(d)
     }
 
     // MARK: - Encabezado
@@ -381,6 +417,7 @@ struct InicioView: View {
                                 bloqueo: m.accion.flatMap {
                                     Planes.motivoBloqueo($0, estado.contextoPlan())
                                 },
+                                sinLeer: m == .conversaciones ? avisador.sinLeer : 0,
                                 aviso: $aviso)
                         }
                     }
@@ -445,14 +482,36 @@ struct Baldosa: View {
     let modulo: Modulo
     /// Por qué no se puede entrar, si el plan no lo incluye.
     var bloqueo: String? = nil
+    /// Cuántas conversaciones esperan respuesta. Cero no dibuja nada.
+    var sinLeer: Int = 0
     @Binding var aviso: String?
     @State private var presionada = false
 
-    init(modulo: Modulo, bloqueo: String? = nil,
+    init(modulo: Modulo, bloqueo: String? = nil, sinLeer: Int = 0,
          aviso: Binding<String?> = .constant(nil)) {
         self.modulo = modulo
         self.bloqueo = bloqueo
+        self.sinLeer = sinLeer
         self._aviso = aviso
+    }
+
+    /// El número de sin leer, arriba a la derecha de la baldosa.
+    ///
+    /// Rojo y no del color del módulo: es lo único de la pantalla que pide algo
+    /// de quien la mira, y tiene que separarse de la decoración.
+    @ViewBuilder
+    private var globito: some View {
+        if sinLeer > 0 {
+            Text(sinLeer > 99 ? "99+" : "\(sinLeer)")
+                .font(Tipo.barlow(.semibold, 12))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .frame(minWidth: 22, minHeight: 22)
+                .background(Color(hex: "#C7362F"), in: .capsule)
+                .overlay { Capsule().stroke(.white.opacity(0.25)) }
+                .padding(.top, 8)
+                .padding(.trailing, 8)
+        }
     }
 
     /// Si el texto va en blanco, la baldosa es oscura: ahí el velo blanco se
@@ -505,7 +564,9 @@ struct Baldosa: View {
     }
 
     private var navegable: some View {
-        NavigationLink(value: modulo) { cara }
+        NavigationLink(value: modulo) {
+            cara.overlay(alignment: .topTrailing) { globito }
+        }
             .buttonStyle(.plain)
             .animation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.36), value: presionada)
             .onLongPressGesture(minimumDuration: 0.12, pressing: { presionada = $0 },

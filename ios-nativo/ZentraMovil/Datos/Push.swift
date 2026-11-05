@@ -101,4 +101,23 @@ final class Push: NSObject, MessagingDelegate, UNUserNotificationCenterDelegate 
     ) async -> UNNotificationPresentationOptions {
         [.banner, .sound, .badge]
     }
+
+    /// Tocaron el aviso: hay que entrar a ESA conversación.
+    ///
+    /// El ERP manda el id en `data.conversationId` y el nombre del contacto
+    /// como título del aviso. Se guarda en `Avisador` en vez de navegar desde
+    /// acá porque esto también corre con la app cerrada: iOS la arranca, llama
+    /// a esto, y recién después aparece la primera pantalla. Dejarlo guardado
+    /// es lo que hace que lo encuentre cuando por fin existe.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let contenido = response.notification.request.content
+        let datos = contenido.userInfo
+        let titulo = contenido.title
+        await MainActor.run {
+            Avisador.shared.desdeAviso(datos, titulo: titulo)
+        }
+    }
 }
