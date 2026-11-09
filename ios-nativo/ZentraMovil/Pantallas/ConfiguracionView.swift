@@ -140,7 +140,8 @@ struct ConfiguracionView: View {
     private var plan: some View {
         if let sus = Planes.suscripcion(conErp: estado.conErp,
                                         plan: estado.tenant?.plan ?? .free,
-                                        vence: estado.tenant?.vence) {
+                                        vence: estado.tenant?.vence,
+                                        pruebaHasta: estado.tenant?.pruebaHasta) {
             tarjeta {
                 etiqueta("SUSCRIPCIÓN")
 

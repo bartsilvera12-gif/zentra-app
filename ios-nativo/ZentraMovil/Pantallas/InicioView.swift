@@ -215,20 +215,45 @@ struct InicioView: View {
     /// verlo. Desde siete días antes y no antes: avisar con un mes es ruido.
     @ViewBuilder
     private var avisoVencimiento: some View {
-        if !estado.conErp,
-           let d = Vencimiento.dias(estado.tenant?.vence), d <= 7 {
+        if estado.conErp {
+            EmptyView()
+        } else if Planes.pruebaVigente(estado.tenant?.pruebaHasta),
+                  let d = Vencimiento.dias(estado.tenant?.pruebaHasta), d <= 3 {
+            // Recién a los 3 días y no a los 7 como el vencimiento. La prueba
+            // dura 7: una franja desde el primer día es una alarma que suena
+            // toda la semana, y ésas dejan de verse al segundo día.
+            //
+            // La fecha va escrita entera. "Te quedan 3 días" obliga a sacar la
+            // cuenta, y sacada mal se reclama después.
+            franja(titulo: d == 0 ? "Hoy termina tu prueba"
+                        : d == 1 ? "Mañana termina tu prueba"
+                        : "Te quedan \(d) días de prueba",
+                   cuerpo: "Tenés todo lo de Max hasta el \(Self.dia(estado.tenant?.pruebaHasta)). Después seguís viendo todo lo cargado.",
+                   rojo: false)
+        } else if let d = Vencimiento.dias(estado.tenant?.vence), d <= 7 {
             let vencido = d < 0
             let t0 = Vencimiento.texto(vencido ? -1 : d)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(t0.titulo).font(Tipo.barlow(.bold, 13.5))
-                Text(t0.cuerpo).font(Tipo.barlow(.regular, 12.5))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .foregroundStyle(vencido ? Color(hex: "#7A2220") : Tint.avisoInk)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(vencido ? Color(hex: "#FBE9E8") : Tint.avisoBg)
+            franja(titulo: t0.titulo, cuerpo: t0.cuerpo, rojo: vencido)
         }
+    }
+
+    private func franja(titulo: String, cuerpo: String, rojo: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(titulo).font(Tipo.barlow(.bold, 13.5))
+            Text(cuerpo).font(Tipo.barlow(.regular, 12.5))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(rojo ? Color(hex: "#7A2220") : Tint.avisoInk)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(rojo ? Color(hex: "#FBE9E8") : Tint.avisoBg)
+    }
+
+    private static func dia(_ f: Date?) -> String {
+        guard let f else { return "" }
+        let df = DateFormatter()
+        df.dateFormat = "dd/MM/yyyy"
+        return df.string(from: f)
     }
 
     // MARK: - Carrusel

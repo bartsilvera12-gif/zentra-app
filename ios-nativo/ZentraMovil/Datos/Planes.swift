@@ -168,6 +168,30 @@ enum Planes {
         motivoBloqueo(accion, ctx) == nil
     }
 
+    /// Si la prueba gratis sigue corriendo.
+    ///
+    /// El último día cuenta entero, igual que el vencimiento de un plan pago:
+    /// quien se registra un lunes la tiene hasta el domingo inclusive. Sin
+    /// fecha no hay prueba.
+    static func pruebaVigente(_ pruebaHasta: Date?, _ ahora: Date = Date()) -> Bool {
+        guard let d = Vencimiento.dias(pruebaHasta, ahora) else { return false }
+        return d >= 0
+    }
+
+    /// El plan con el que se trabaja, contando la prueba.
+    ///
+    /// Mientras dura es Max, pague lo que pague: comprar Emprendedor en el
+    /// medio de la prueba no puede quitarle lo que estaba usando. Y el
+    /// vencimiento se tapa, porque un plan pago vencido de antes bloquearía a
+    /// alguien que está probando.
+    ///
+    /// Terminada la prueba todo vuelve solo a lo de siempre: el plan pago si
+    /// lo hay, y si no, el gratis.
+    static func conPrueba(plan: Plan, vence: Date?,
+                          pruebaHasta: Date?, ahora: Date = Date()) -> (plan: Plan, vence: Date?) {
+        pruebaVigente(pruebaHasta, ahora) ? (.max, nil) : (plan, vence)
+    }
+
     /// Qué decir de la suscripción, ya escrito para mostrar.
     ///
     /// `nil` cuando no corresponde mostrarla: con ERP propio no hay plan que
@@ -175,9 +199,28 @@ enum Planes {
     /// si cada pantalla tuviera que decidir qué decir según los días que
     /// faltan, terminarían diciendo cosas distintas.
     static func suscripcion(
-        conErp: Bool, plan: Plan, vence: Date?, ahora: Date = Date()
+        conErp: Bool, plan: Plan, vence: Date?, pruebaHasta: Date? = nil,
+        ahora: Date = Date()
     ) -> (plan: String, estado: String, detalle: String, urgente: Bool)? {
         if conErp { return nil }
+
+        // En prueba no se habla de vencer ni de renovar. No pagó nada, y
+        // "vence en 3 días" a alguien que nunca pagó se lee como una deuda.
+        // Se le dice qué tiene, hasta cuándo —con la fecha escrita, no "en 3
+        // días"— y qué pasa después, que es lo que quiere saber.
+        if pruebaVigente(pruebaHasta, ahora) {
+            let d = Vencimiento.dias(pruebaHasta, ahora) ?? 0
+            let f = DateFormatter()
+            f.dateFormat = "dd/MM/yyyy"
+            let hasta = pruebaHasta.map { f.string(from: $0) } ?? ""
+            return (Plan.max.nombre,
+                    d == 0 ? "Prueba gratis · termina hoy"
+                        : d == 1 ? "Prueba gratis · termina mañana"
+                        : "Prueba gratis · \(d) días",
+                    "Tenés todo lo de Max hasta el \(hasta). Después seguís en tu plan, sin perder nada de lo cargado.",
+                    // Nunca en rojo: no debe nada. El rojo es para una deuda.
+                    false)
+        }
 
         guard let vence else {
             // Sin fecha: nunca pagó. No es un error ni una deuda, es el gratis.

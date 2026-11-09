@@ -16,8 +16,14 @@ final class Estado {
     var conErp: Bool { !(tenant?.apiUrl ?? "").isEmpty }
 
     func contextoPlan(productos: Int? = nil, ultimoAjuste: Date? = nil) -> ContextoPlan {
-        ContextoPlan(conErp: conErp, plan: tenant?.plan ?? .free,
-                     productos: productos, ultimoAjuste: ultimoAjuste)
+        // Durante la prueba el plan es Max y el vencimiento no cuenta. Se
+        // resuelve acá, en el único lugar donde se arma el contexto, para que
+        // ninguna pantalla tenga que acordarse.
+        let efectivo = Planes.conPrueba(plan: tenant?.plan ?? .free,
+                                        vence: tenant?.vence,
+                                        pruebaHasta: tenant?.pruebaHasta)
+        return ContextoPlan(conErp: conErp, plan: efectivo.plan,
+                            productos: productos, ultimoAjuste: ultimoAjuste)
     }
 
     /// Entra: resuelve la instalación, valida contra Supabase y trae el perfil.
@@ -109,6 +115,10 @@ final class Estado {
         guard var t = tenant else { return }
         if let plan = p.plan { t.plan = plan }
         if let vence = p.vence { t.vence = vence }
+        // Sin `if let`: que la prueba se haya terminado se informa mandando
+        // `null`, y con un `if let` la app se quedaría con la fecha vieja para
+        // siempre — alguien seguiría viendo "prueba gratis" un mes después.
+        t.pruebaHasta = p.pruebaHasta
         tenant = t
     }
 

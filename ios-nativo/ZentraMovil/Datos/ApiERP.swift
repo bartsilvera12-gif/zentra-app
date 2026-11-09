@@ -217,6 +217,8 @@ struct Perfil: Equatable {
     var plan: Plan?
     /// Hasta cuándo está pagado.
     var vence: Date?
+    /// Último día de la prueba gratis de Max, inclusive. `nil` es sin prueba.
+    var pruebaHasta: Date?
 }
 
 enum ApiError: LocalizedError {

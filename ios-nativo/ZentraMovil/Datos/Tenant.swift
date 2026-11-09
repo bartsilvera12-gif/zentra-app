@@ -20,6 +20,12 @@ struct TenantConfig: Codable, Equatable {
     /// Hasta cuándo está pagado. `nil` es "nunca pagó", que en el plan gratis
     /// no es una deuda sino lo normal.
     var vence: Date?
+    /// Último día de la prueba gratis de Max, inclusive. `nil` es sin prueba.
+    ///
+    /// Va aparte de `plan` y `vence` a propósito, igual que en la base: `vence`
+    /// es lo pagado, y de ahí salen los avisos de renovar. Mezclar las dos
+    /// cosas haría que pagar en el medio de la prueba quitara o regalara días.
+    var pruebaHasta: Date?
 
     /// Quién factura, para el encabezado del ticket. Vacíos cuando no están
     /// cargados en el directorio: ahí el ticket dice "Sin RUC cargado" y se

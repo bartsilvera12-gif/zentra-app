@@ -180,7 +180,7 @@ enum SupabaseDatos {
         // Son los que deciden qué se puede hacer: sin ellos la app deja a todo
         // el mundo en gratis, y quien pagó no recibe lo que pagó.
         let crudo = try await pedir("GET", "/usuarios", query: [
-            "select": "id,nombre,email,rol,empresas(nombre,plan,vence)",
+            "select": "id,nombre,email,rol,empresas(nombre,plan,vence,prueba_hasta)",
             "limit": "1",
         ])
         guard let u = filas(crudo).first else {
@@ -202,7 +202,8 @@ enum SupabaseDatos {
             // Un plan que no reconocemos se ignora en vez de tratarse como
             // gratis: ante un valor raro en la columna, manda el directorio.
             plan: (emp?["plan"] as? String).flatMap(Plan.init(rawValue:)),
-            vence: (emp?["vence"] as? String).flatMap(fechaISO)
+            vence: (emp?["vence"] as? String).flatMap(fechaISO),
+            pruebaHasta: (emp?["prueba_hasta"] as? String).flatMap(fechaISO)
         )
     }
 
