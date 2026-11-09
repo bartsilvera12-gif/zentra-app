@@ -32,7 +32,8 @@ export type Screen =
   | "conversaciones"
   | "proveedores"
   | "reportes"
-  | "detventas";
+  | "detventas"
+  | "presupuestos";
 
 export type VentaPaso = "cliente" | "productos" | "resumen" | "pago" | "listo" | "factura";
 export type CompraPaso = "proveedor" | "producto" | "condiciones" | "listo";
@@ -134,6 +135,32 @@ export interface AppState {
   vVenta: Venta | null;
   vGuardando: boolean;
   vErrorAlta: string;
+  /**
+   * Para qué se usa el armado de venta. "presupuesto" reutiliza los mismos
+   * pasos —cliente, productos, resumen— y en vez de cobrar, guarda.
+   */
+  vModo: "venta" | "presupuesto";
+  /**
+   * El presupuesto que se está convirtiendo en esta venta, si viene de uno.
+   * Al registrar la venta, se marca como vendido.
+   */
+  vDePresupuesto: string | null;
+  /**
+   * Precios fijados por producto. Sólo los llena convertir un presupuesto en
+   * venta: el cliente aceptó un precio, y la venta tiene que salir con ése y
+   * no con el de hoy si la lista cambió en el medio.
+   */
+  vPrecio: Record<string, number>;
+  /** Días de validez del presupuesto que se está armando. */
+  vValidez: number;
+  /** Notas del presupuesto: condiciones, entrega, lo que haga falta aclarar. */
+  vNotas: string;
+
+  /* Presupuestos */
+  pSub: "lista" | "detalle";
+  pSel: string | null;
+  pFiltro: "Todos" | "Pendientes" | "Aceptados" | "Vendidos";
+  pQuery: string;
 
   /* Clientes */
   cSub: "lista" | "detalle" | "nuevo";
@@ -461,6 +488,16 @@ export const initialState: AppState = {
   vVenta: null,
   vGuardando: false,
   vErrorAlta: "",
+  vModo: "venta",
+  vDePresupuesto: null,
+  vPrecio: {},
+  vValidez: 15,
+  vNotas: "",
+
+  pSub: "lista",
+  pSel: null,
+  pFiltro: "Todos",
+  pQuery: "",
 
   cSub: "lista",
   cQuery: "",

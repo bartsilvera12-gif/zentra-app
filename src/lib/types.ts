@@ -34,6 +34,7 @@ export type ModuleKey =
   | "compras"
   | "inventario"
   | "conversaciones"
+  | "presupuestos"
   | "proveedores"
   | "reportes";
 
@@ -77,6 +78,38 @@ export interface VentaLinea {
   qty: number;
   precio: number;
   iva: Iva;
+}
+
+/**
+ * Una línea de presupuesto. Igual que la de venta, más el producto: para
+ * convertir el presupuesto en venta hay que saber qué producto descontar, y
+ * el nombre solo no alcanza.
+ */
+export interface PresupuestoLinea extends VentaLinea {
+  /** null si el producto se borró después de presupuestar. */
+  prodId: string | null;
+}
+
+/** Lo que se guarda. "Vencido" no está: se calcula con `validoHasta`. */
+export type EstadoPresupuesto = "pendiente" | "aceptado" | "rechazado" | "convertido";
+
+export interface Presupuesto {
+  id: string;
+  numero: string;
+  /** Fecha de emisión, ISO corto. */
+  iso: string;
+  /** La misma fecha, para mostrar ("30 sep 2026"). */
+  fecha: string;
+  /** Último día en que vale el precio, ISO corto, inclusive. */
+  validoHasta: string;
+  cliId: string | null;
+  cliente: string;
+  doc: string;
+  estado: EstadoPresupuesto;
+  notas: string;
+  /** La venta en que se convirtió, si se convirtió. */
+  ventaId: string | null;
+  lineas: PresupuestoLinea[];
 }
 
 export interface Venta {

@@ -1914,6 +1914,19 @@ export const httpRepo: Repo = {
     ajustar: () => pendiente("inventario.ajustar"),
   },
 
+  /**
+   * Con ERP propio los presupuestos se hacen en el ERP, y la app no los
+   * muestra: en Inicio, ese lugar es de Conversaciones. Si algún día la app
+   * los muestra también acá, hace falta el endpoint del ERP.
+   */
+  presupuestos: {
+    list: () => pendiente("presupuestos.list"),
+    get: () => pendiente("presupuestos.get"),
+    create: () => pendiente("presupuestos.create"),
+    cambiarEstado: () => pendiente("presupuestos.cambiarEstado"),
+    marcarConvertido: () => pendiente("presupuestos.marcarConvertido"),
+  },
+
   ventas: {
     async productos(params) {
       const r = await request<unknown>("/productos", { query: { q: params?.q, vendibles: true } });

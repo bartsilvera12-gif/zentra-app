@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 import { MARCA } from "@/lib/theme";
-import { repo } from "@/lib/repo";
+import { repo, usaApiDelErp } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "@/mobile/ui/Estado";
 import { totalCompra } from "@/lib/calc";
@@ -529,14 +529,18 @@ export function ProveedoresScreen() {
               Nueva compra a este proveedor
             </button>
             <div style={{ display: "flex", gap: 10 }}>
-              <GhostButton
-                label="Conversación"
-                flex={1}
-                onClick={() => {
-                  if (det.chatId) return abrirChat(det.chatId);
-                  set({ screen: "conversaciones", xSub: "nuevo", xnQuery: "" });
-                }}
-              />
+              {/* Conversaciones existe sólo con ERP: sin ERP, este botón
+                  llevaba a una pantalla que en Inicio ya no aparece. */}
+              {usaApiDelErp() && (
+                <GhostButton
+                  label="Conversación"
+                  flex={1}
+                  onClick={() => {
+                    if (det.chatId) return abrirChat(det.chatId);
+                    set({ screen: "conversaciones", xSub: "nuevo", xnQuery: "" });
+                  }}
+                />
+              )}
               <GhostButton label="Editar ficha" flex={1} onClick={() => det && editarProveedor(det)} />
             </div>
           </ScrollBody>

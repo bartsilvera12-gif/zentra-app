@@ -102,6 +102,20 @@ export function IconConversaciones({ size = 26, stroke = "#023047" }: IconProps)
   );
 }
 
+export function IconPresupuestos({ size = 26, stroke = "#023047" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      {/* Una hoja con renglones y un tilde abajo: un papel con precios que
+          espera un "sí". Distinto de la factura, que es una hoja sola. */}
+      <path d="M6 2.8h8.5L19 7.3v8.2" />
+      <path d="M14.5 2.8v4.5H19" />
+      <path d="M6 2.8v18.4h7" />
+      <path d="M9 9h4M9 12.5h6M9 16h3" />
+      <path d="m15.2 19.2 1.9 1.9 3.7-3.9" />
+    </svg>
+  );
+}
+
 export function IconProveedores({ size = 26, stroke = "#023047" }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">

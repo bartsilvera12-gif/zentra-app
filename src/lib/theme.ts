@@ -135,6 +135,9 @@ export const MODULES: Record<ModuleKey, ModuleDef> = {
   compras: { title: "Compras", color: "#3DBFB0", fill: "#08A696", over: "#04212A" },
   inventario: { title: "Inventario", color: "#F27405", fill: "#F28705", over: "#04212A" },
   conversaciones: { title: "Conversaciones", color: "#F28705", fill: "#F27405", over: "#04212A" },
+  // El mismo lugar y el mismo naranja que Conversaciones: es la baldosa que
+  // la reemplaza cuando no hay ERP, y quien conoce la app la busca por color.
+  presupuestos: { title: "Presupuestos", color: "#F28705", fill: "#F27405", over: "#04212A" },
   proveedores: { title: "Proveedores", color: "#F3AA20", fill: "#F28705", over: "#04212A" },
   reportes: { title: "Reportes", color: "#025159", fill: "#013B40", over: "#ffffff" },
 };

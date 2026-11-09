@@ -51,19 +51,21 @@ eso en los textos de abajo no aparece ninguna dirección de cobro. Ver
     Ventas, compras e inventario por día, semana, mes o año, con gráficos y
     detalle exportable.
 
-    CONVERSACIONES
-    Atendé los mensajes de WhatsApp de tu negocio desde la misma app: fotos,
-    audios, documentos y ubicación, con respuestas citadas.
+    PRESUPUESTOS
+    Armá el presupuesto con el cliente y los productos, mandalo por WhatsApp
+    y, cuando te dice que sí, convertilo en venta con un toque y a los
+    precios que le pasaste.
 
     FUNCIONA CON TU ERP
     Si tu empresa ya usa un ERP de Neura, la app se conecta y trabaja con los
-    mismos datos. Si no, Zentra funciona sola.
+    mismos datos, y suma las conversaciones de WhatsApp de tu negocio. Si no,
+    Zentra funciona sola.
 
     PLANES
     Hay un plan gratuito para empezar, con hasta 20 productos, ventas al
     contado y el panel de ventas. Los planes pagos suman compras, proveedores,
-    inventario sin tope, precios mayoristas, código de barras, vencimientos y
-    el chat de WhatsApp.
+    presupuestos, inventario sin tope, precios mayoristas, código de barras y
+    vencimientos.
 
 **Categoría:** Negocios
 **Etiquetas:** ventas, inventario, punto de venta, negocios, comercio

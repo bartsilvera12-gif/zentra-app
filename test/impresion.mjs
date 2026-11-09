@@ -135,10 +135,15 @@ t("el adjunto del chat no es un PDF inventado", () => {
   if (/archivo:\s*\{/.test(DET)) throw new Error("sigue adjuntando un archivo que no existe");
 });
 
-t("la hora del mensaje es la del reloj y no una fija", () => {
+t("pasar por WhatsApp no inventa un mensaje en un chat de ejemplo", () => {
+  // Antes, sin ERP, buscaba el chat del cliente en las conversaciones de
+  // EJEMPLO y le agregaba un mensaje con la factura: con una cuenta real
+  // nunca lo encontraba, y en la demo lo mandaba a un chat que no existe.
+  // Ahora siempre comparte, que es lo que de verdad llega al cliente.
+  if (/\bCHATS\b/.test(DET)) throw new Error("vuelve a usar las conversaciones de ejemplo");
+  if (/pushMsg\(/.test(DET)) throw new Error("vuelve a inventar un mensaje en un chat");
   const fija = DET.match(/hora:\s*"[^"]+"/);
   if (fija) throw new Error("hora escrita a mano: " + fija[0]);
-  if (!/hora:\s*new Date\(\)/.test(DET)) throw new Error("tiene que salir del reloj");
 });
 
 t("imprimir pregunta primero por el plan", () => {

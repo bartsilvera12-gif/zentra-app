@@ -219,6 +219,7 @@ const INCLUYE = {
   emprendedor: [
     "Hasta 50 productos",
     "Módulo de compras y proveedores",
+    "Presupuestos por WhatsApp",
     "Alta de proveedores",
     "Categorías de inventario",
     "Panel de compras",
@@ -232,7 +233,6 @@ const INCLUYE = {
     "Precio mayorista por cliente",
     "Ventas a crédito",
     "Compras en dólares",
-    "Conversaciones de WhatsApp",
     "Factura electrónica (SIFEN)",
   ],
 };
@@ -248,8 +248,9 @@ const ESTRELLA =
 
 export function paginaPagar({ planes, email = "", plan = "", error = "", clave = "", prueba = 0 }) {
   // El más caro se marca como recomendado. No es un invento de marketing: es
-  // el único que trae conversaciones y factura electrónica, que es por lo que
-  // la gente pregunta.
+  // el único que trae ventas a crédito y factura electrónica, que es por lo
+  // que la gente pregunta. Las conversaciones de WhatsApp no se venden: son
+  // de quien trabaja con su ERP, y ese no paga plan.
   const tope = planes.length ? planes[planes.length - 1].codigo : "";
 
   const tarjetas = planes

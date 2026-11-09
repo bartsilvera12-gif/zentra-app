@@ -26,6 +26,7 @@ import type {
   FichaChat,
   InvProducto,
   Movimiento,
+  Presupuesto,
   Proveedor,
   Venta,
 } from "../types";
@@ -54,6 +55,7 @@ const extra = {
   movimientos: [] as Movimiento[],
   compras: [] as Compra[],
   ventas: [] as Venta[],
+  presupuestos: [] as Presupuesto[],
   mensajes: {} as Record<string, ChatMsg[]>,
   /** Ajustes de stock aplicados, por id de producto. */
   deltas: {} as Record<string, number>,
@@ -82,6 +84,45 @@ const conStockVigente = (p: InvProducto): InvProducto => ({
 
 let sesion: Sesion | null = null;
 let seqVenta = 148;
+let seqPresupuesto = 3;
+
+/**
+ * Dos presupuestos de ejemplo: uno esperando respuesta y uno ya vendido, para
+ * que la demo muestre los dos casos que más se ven.
+ */
+const PRESUPUESTOS: Presupuesto[] = [
+  {
+    id: "pr2",
+    numero: "PRE-000002",
+    iso: "2026-09-29",
+    fecha: "29 sep 2026",
+    validoHasta: "2026-12-31",
+    cliId: "c3",
+    cliente: "Minimercado Ykuá",
+    doc: "CI 4.521.330",
+    estado: "pendiente",
+    notas: "Entrega en el local, sin costo de envío.",
+    ventaId: null,
+    lineas: [
+      { prodId: "p1", nombre: "Gaseosa cola 2 L", qty: 24, precio: 12000, iva: "10%" },
+      { prodId: "p4", nombre: "Jugo natural 1 L", qty: 12, precio: 11500, iva: "5%" },
+    ],
+  },
+  {
+    id: "pr1",
+    numero: "PRE-000001",
+    iso: "2026-09-20",
+    fecha: "20 sep 2026",
+    validoHasta: "2026-10-05",
+    cliId: "c1",
+    cliente: "Despensa Doña Lucía",
+    doc: "RUC 80012345-6",
+    estado: "convertido",
+    notas: "",
+    ventaId: "v147",
+    lineas: [{ prodId: "p3", nombre: "Cerveza lata 350 ml", qty: 48, precio: 9500, iva: "10%" }],
+  },
+];
 let seqCompra = 148;
 let seqAjuste = 32;
 
@@ -480,6 +521,64 @@ export const mockRepo: Repo = {
       };
       extra.ventas.unshift(venta);
       return demora(venta);
+    },
+  },
+
+  presupuestos: {
+    async list(params) {
+      const q = norm(params?.q?.trim() ?? "");
+      return demora(
+        extra.presupuestos
+          .concat(PRESUPUESTOS)
+          .filter((p) => norm(p.numero + " " + p.cliente + " " + p.lineas.map((l) => l.nombre).join(" ")).indexOf(q) >= 0),
+      );
+    },
+    async get(id) {
+      return demora(extra.presupuestos.concat(PRESUPUESTOS).find((p) => p.id === id) ?? null);
+    },
+    async create(input) {
+      const cli = input.clienteId ? CLIENTES.concat(extra.clientes).find((c) => c.id === input.clienteId) : null;
+      const hoy = new Date();
+      const hasta = new Date(hoy);
+      hasta.setDate(hasta.getDate() + input.validezDias);
+      const iso = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const p: Presupuesto = {
+        id: "npr" + (extra.presupuestos.length + 1),
+        numero: "PRE-" + String(seqPresupuesto++).padStart(6, "0"),
+        iso: iso(hoy),
+        fecha: hoy.toLocaleDateString("es-PY", { day: "numeric", month: "short", year: "numeric" }),
+        validoHasta: iso(hasta),
+        cliId: input.clienteId,
+        cliente: cli?.nombre ?? "Sin nombre",
+        doc: cli?.doc ?? "Sin documento",
+        estado: "pendiente",
+        notas: input.notas.trim(),
+        ventaId: null,
+        lineas: input.lineas.map((l) => ({
+          prodId: l.prodId,
+          nombre: PRODUCTOS.find((x) => x.id === l.prodId)?.nombre ?? "—",
+          qty: l.cantidad,
+          precio: l.precio,
+          iva: l.iva,
+        })),
+      };
+      extra.presupuestos.unshift(p);
+      return demora(p);
+    },
+    async cambiarEstado(id, estado) {
+      const p = extra.presupuestos.concat(PRESUPUESTOS).find((x) => x.id === id);
+      if (!p) throw new Error("No se encontró el presupuesto.");
+      if (p.estado !== "convertido") p.estado = estado;
+      return demora(p);
+    },
+    async marcarConvertido(id, ventaId) {
+      const p = extra.presupuestos.concat(PRESUPUESTOS).find((x) => x.id === id);
+      if (p) {
+        p.estado = "convertido";
+        p.ventaId = ventaId;
+      }
+      await demora(null);
     },
   },
 

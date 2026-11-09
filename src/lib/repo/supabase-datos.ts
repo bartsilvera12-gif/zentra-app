@@ -13,6 +13,7 @@ import type {
   InvProducto,
   Iva,
   Movimiento,
+  Presupuesto,
   Producto,
   Proveedor,
   Venta,
@@ -25,6 +26,8 @@ import type {
   CompraInput,
   ComprasRepo,
   InventarioRepo,
+  PresupuestoInput,
+  PresupuestosRepo,
   ProductoInput,
   ProveedorInput,
   ProveedoresRepo,
@@ -736,6 +739,159 @@ export const ventasRepo: VentasRepo = {
     const creada = await ventasRepo.get(ventaId);
     if (!creada) throw new AuthError("La venta se registró pero no se pudo leer de vuelta.");
     return creada;
+  },
+};
+
+/* ----------------------------------------------------------- presupuestos */
+
+interface FilaPresupuesto {
+  id: string;
+  numero: string;
+  cliente_id: string | null;
+  cliente_texto: string;
+  cliente_doc: string;
+  fecha: string;
+  valido_hasta: string;
+  estado: Presupuesto["estado"];
+  notas: string | null;
+  venta_id: string | null;
+  presupuesto_lineas: {
+    producto_id: string | null;
+    nombre: string;
+    cantidad: number;
+    precio: number;
+    iva: Presupuesto["lineas"][0]["iva"];
+  }[];
+}
+
+function aPresupuesto(f: FilaPresupuesto): Presupuesto {
+  const d = new Date(f.fecha + "T12:00:00");
+  return {
+    id: f.id,
+    numero: f.numero,
+    iso: f.fecha,
+    fecha: isNaN(d.getTime()) ? f.fecha : `${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()}`,
+    validoHasta: f.valido_hasta,
+    cliId: f.cliente_id,
+    cliente: f.cliente_texto,
+    doc: f.cliente_doc,
+    estado: f.estado,
+    notas: f.notas ?? "",
+    ventaId: f.venta_id,
+    lineas: (f.presupuesto_lineas ?? []).map((l) => ({
+      prodId: l.producto_id,
+      nombre: l.nombre,
+      qty: Number(l.cantidad),
+      precio: Number(l.precio),
+      iva: l.iva,
+    })),
+  };
+}
+
+const SELECT_PRESUPUESTO =
+  "id, numero, cliente_id, cliente_texto, cliente_doc, fecha, valido_hasta, estado, notas, venta_id, presupuesto_lineas(producto_id, nombre, cantidad, precio, iva)";
+
+/** `yyyy-mm-dd` de hoy más `dias`, en la hora del teléfono. */
+function diaMas(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export const presupuestosRepo: PresupuestosRepo = {
+  async list(params) {
+    const { data, error } = await sb()
+      .from("presupuestos")
+      .select(SELECT_PRESUPUESTO)
+      .order("fecha", { ascending: false })
+      .order("numero", { ascending: false });
+    if (error) reventar("listando presupuestos", error);
+    let lista = (data as unknown as FilaPresupuesto[]).map(aPresupuesto);
+    if (params?.q?.trim()) {
+      const t = params.q.trim().toLowerCase();
+      lista = lista.filter((p) =>
+        (p.numero + " " + p.cliente + " " + p.lineas.map((l) => l.nombre).join(" ")).toLowerCase().includes(t),
+      );
+    }
+    return lista;
+  },
+
+  async get(id) {
+    const { data, error } = await sb().from("presupuestos").select(SELECT_PRESUPUESTO).eq("id", id).maybeSingle();
+    if (error) reventar("leyendo el presupuesto", error);
+    return data ? aPresupuesto(data as unknown as FilaPresupuesto) : null;
+  },
+
+  async create(input: PresupuestoInput) {
+    const emp = await empresaId();
+
+    let cliNombre = "Sin nombre";
+    let cliDoc = "Sin documento";
+    if (input.clienteId) {
+      const c = await clientesRepo.get(input.clienteId);
+      if (c) {
+        cliNombre = c.nombre;
+        cliDoc = c.doc;
+      }
+    }
+
+    // "pre" y no "presupuesto": `siguiente_numero` usa el tipo en mayúsculas
+    // como prefijo, y PRE-000001 se lee; PRESUPUESTO-000001 no entra en un
+    // ticket de 58 mm.
+    const { data: numero, error: eNum } = await sb().rpc("siguiente_numero", { p_empresa: emp, p_tipo: "pre" });
+    if (eNum) reventar("asignando el número del presupuesto", eNum);
+
+    const { data: cab, error } = await sb()
+      .from("presupuestos")
+      .insert({
+        empresa_id: emp,
+        numero: numero as string,
+        cliente_id: input.clienteId,
+        cliente_texto: cliNombre,
+        cliente_doc: cliDoc,
+        valido_hasta: diaMas(Math.max(0, input.validezDias)),
+        notas: input.notas.trim(),
+      })
+      .select("id")
+      .single();
+    if (error) reventar("guardando el presupuesto", error);
+
+    const id = (cab as { id: string }).id;
+    const nombres = new Map((await ventasRepo.productos()).map((p) => [p.id, p.nombre]));
+    const { error: eLineas } = await sb().from("presupuesto_lineas").insert(
+      input.lineas.map((l) => ({
+        presupuesto_id: id,
+        producto_id: l.prodId,
+        nombre: nombres.get(l.prodId) ?? "",
+        cantidad: l.cantidad,
+        precio: l.precio,
+        iva: l.iva,
+      })),
+    );
+    // Sin líneas, el presupuesto no dice nada: se borra la cabecera para no
+    // dejar un PRE-000007 vacío en la lista. No mueve stock ni plata, así que
+    // borrarlo no deja nada a medias.
+    if (eLineas) {
+      await sb().from("presupuestos").delete().eq("id", id);
+      reventar("guardando los productos del presupuesto", eLineas);
+    }
+
+    const creado = await presupuestosRepo.get(id);
+    if (!creado) throw new AuthError("El presupuesto se guardó pero no se pudo leer de vuelta.");
+    return creado;
+  },
+
+  async cambiarEstado(id, estado) {
+    const { error } = await sb().from("presupuestos").update({ estado }).eq("id", id).neq("estado", "convertido");
+    if (error) reventar("cambiando el estado del presupuesto", error);
+    const p = await presupuestosRepo.get(id);
+    if (!p) throw new AuthError("No se encontró el presupuesto.");
+    return p;
+  },
+
+  async marcarConvertido(id, ventaId) {
+    const { error } = await sb().from("presupuestos").update({ estado: "convertido", venta_id: ventaId }).eq("id", id);
+    if (error) reventar("marcando el presupuesto como vendido", error);
   },
 };
 

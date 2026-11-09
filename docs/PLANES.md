@@ -31,7 +31,8 @@ viendo todo lo que cargó y no puede escribir más de lo que este plan permite.
 | Ventas | Sí | Sí | Sí |
 | Compras | No | Sí | Sí |
 | Proveedores | No | Sí | Sí |
-| Conversaciones (chat) | No | No | Sí |
+| Presupuestos | No | Sí | Sí |
+| Conversaciones (chat) | Sólo con ERP | Sólo con ERP | Sólo con ERP |
 | **Dashboards** | | | |
 | De ventas | Sí | Sí | Sí |
 | De compras | No | Sí | Sí |
@@ -97,6 +98,9 @@ Están implementados como **Sí para Max**, que es lo que dice la tabla:
 - Inventario sin tope de productos.
 - Actualización de stock libre, sin la espera mensual.
 - Factura electrónica.
-- Conversaciones (chat).
+- Conversaciones (chat): sólo para quien trabaja con su ERP. Los mensajes
+  llegan por el ERP, y sin él la pantalla no tiene nada que mostrar, así que
+  sin ERP Inicio muestra Presupuestos en su lugar. Con ERP no hay plan que
+  mirar, por eso no se vende en ninguno.
 - "Asignar categoría · Parcial" en Emprendedor: hoy puede asignar una categoría
   existente, y crear una nueva desde la carga es de Max.

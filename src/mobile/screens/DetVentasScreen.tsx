@@ -4,8 +4,7 @@ import { useEffect } from "react";
 import { esNativo } from "@/lib/nativo";
 import { anchoGuardado, imprimirTicket, impresoraGuardada } from "@/lib/impresora";
 import { MARCA } from "@/lib/theme";
-import { CHATS } from "@/lib/data";
-import { repo, usaApiDelErp } from "@/lib/repo";
+import { repo } from "@/lib/repo";
 import { useRemoto } from "./useRemoto";
 import { Cargando, Falla } from "../ui/Estado";
 import { detalleVenta, ivaVenta, totalVenta } from "@/lib/calc";
@@ -67,7 +66,7 @@ const AVISOS: Record<string, string> = {
 };
 
 export function DetVentasScreen() {
-  const { s, t, set, pushMsg, abrirChat, plan } = useApp();
+  const { s, t, set, plan } = useApp();
   // Quién factura: del tenant y la sesión, no escrito a mano acá.
   const emisor = datosEmisor(tenantEnUso(), s.sesion?.empresa);
   // Imprimir el comprobante es lo que el plan vende como "facturación con
@@ -239,21 +238,10 @@ export function DetVentasScreen() {
    */
   const enviarWhatsapp = () => {
     if (!det) return;
-    // Con ERP no hay conversaciones conectadas: buscar acá mandaría la factura
-    // de un cliente al chat de ejemplo de otro.
-    const chat = usaApiDelErp() ? undefined : CHATS.find((c) => c.refId === det.cliId);
-    if (chat) {
-      pushMsg(chat.id, {
-        de: "yo",
-        // La hora del reloj, no una fija: un mensaje que sale a las 19:30 y
-        // dice 11:42 es un dato falso más.
-        hora: new Date().toTimeString().slice(0, 5),
-        tick: "✓",
-        texto: textoComprobante(),
-      });
-      abrirChat(chat.id);
-      return;
-    }
+    // Siempre por compartir. Antes, sin ERP, buscaba el chat del cliente en
+    // las conversaciones de EJEMPLO y le "mandaba" el comprobante ahí: con
+    // una cuenta real nunca lo encontraba, y en la demo lo mandaba a un chat
+    // que no existe. Sin ERP no hay conversaciones; con ERP nunca entró acá.
     set({ dvAccion: "whatsapp" });
   };
 

@@ -36,7 +36,14 @@ export type Accion =
   | "proveedores.modulo"
   | "proveedores.alta"
   | "proveedores.editar"
+  /**
+   * El chat de WhatsApp. Sólo existe con ERP propio —los mensajes llegan por
+   * el ERP—, y con ERP no hay plan que mirar: por eso no aparece en lo que se
+   * vende de ningún plan. Sin ERP, Inicio ni siquiera muestra el botón.
+   */
   | "chat.modulo"
+  /** Armar presupuestos y mandarlos por WhatsApp. */
+  | "presupuestos.modulo"
   | "dashboard.inventario"
   | "dashboard.compras"
   /**
@@ -105,6 +112,7 @@ const FREE: Accion[] = ["inventario.alta", "inventario.ajuste"];
 const EMPRENDEDOR: Accion[] = [
   ...FREE,
   "compras.modulo",
+  "presupuestos.modulo",
   "proveedores.modulo",
   "proveedores.alta",
   "dashboard.compras",
@@ -145,6 +153,7 @@ export const PLANES: Record<Plan, DefinicionPlan> = {
     resumen: [
       "Inventario hasta 50 productos",
       "Compras y proveedores",
+      "Presupuestos por WhatsApp",
       "Dashboard de compras",
       "Facturación con auto-impresor",
     ],
@@ -155,7 +164,6 @@ export const PLANES: Record<Plan, DefinicionPlan> = {
     permite: new Set(MAX),
     resumen: [
       "Inventario sin tope y sin espera",
-      "Chat de WhatsApp",
       "Ventas a crédito y compras en dólares",
       "Stock mínimo, código de barras y vencimiento",
       "Factura electrónica",

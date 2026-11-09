@@ -23,6 +23,7 @@ import type {
   Iva,
   MovTipo,
   Movimiento,
+  Presupuesto,
   Producto,
   Proveedor,
   RepTab,
@@ -203,6 +204,28 @@ export interface VentasRepo {
   create(input: VentaInput): Promise<Venta>;
 }
 
+/* ---------- presupuestos ---------- */
+
+export interface PresupuestoInput {
+  /** null para presupuesto sin cliente cargado. */
+  clienteId: string | null;
+  lineas: VentaLineaInput[];
+  /** Cuántos días vale el precio desde hoy. */
+  validezDias: number;
+  notas: string;
+}
+
+export interface PresupuestosRepo {
+  list(params?: { q?: string }): Promise<Presupuesto[]>;
+  get(id: string): Promise<Presupuesto | null>;
+  /** El número (PRE-000001) lo asigna el backend, igual que en las ventas. */
+  create(input: PresupuestoInput): Promise<Presupuesto>;
+  /** Aceptado o rechazado por el cliente, o de vuelta a pendiente. */
+  cambiarEstado(id: string, estado: "pendiente" | "aceptado" | "rechazado"): Promise<Presupuesto>;
+  /** Se convirtió en esta venta. Va aparte porque exige la venta. */
+  marcarConvertido(id: string, ventaId: string): Promise<void>;
+}
+
 /* ---------- compras ---------- */
 
 export interface CompraInput {
@@ -353,6 +376,7 @@ export interface Repo {
   proveedores: ProveedoresRepo;
   inventario: InventarioRepo;
   ventas: VentasRepo;
+  presupuestos: PresupuestosRepo;
   compras: ComprasRepo;
   chats: ChatsRepo;
   reportes: ReportesRepo;

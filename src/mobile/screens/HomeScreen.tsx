@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "
 import { EMPRESA, USUARIO } from "@/lib/data";
 import { fechaDeHoy, inicialDe, nombreCorto, rolLegible } from "@/lib/nombre";
 import { usePanel } from "./usePanel";
+import { ARMADO_VACIO } from "./armado";
 import { MARCA, MODULES } from "@/lib/theme";
 import { diasParaVencer, motivoBloqueo } from "@/lib/planes";
 import { avisarVencimiento, textoVencimiento } from "@/lib/vencimiento";
@@ -17,6 +18,7 @@ import {
   IconClientes,
   IconCompras,
   IconConversaciones,
+  IconPresupuestos,
   IconFactura,
   IconFlecha,
   IconInventario,
@@ -678,7 +680,15 @@ export function HomeScreen() {
           onClick={() =>
             // El error de un intento anterior no es de esta venta: si queda, el
             // botón arranca diciendo "Reintentar" sin que haya nada que reintentar.
-            set({ screen: "venta", mod: "venta", vErrorAlta: "" })
+            // Y si lo que quedó a medias era un presupuesto, se empieza de cero:
+            // una venta no puede arrancar con lo cargado para otra cosa.
+            set({
+              ...(s.vModo === "presupuesto" ? ARMADO_VACIO : {}),
+              screen: "venta",
+              mod: "venta",
+              vModo: "venta",
+              vErrorAlta: "",
+            })
           }
         />
         <Tile
@@ -700,13 +710,26 @@ export function HomeScreen() {
           icon={<IconInventario />}
           onClick={() => set({ screen: "inventario", iSub: "lista", iSel: null })}
         />
-        <Tile
-          bloqueo={motivoBloqueo("chat.modulo", plan())}
-          k="conversaciones"
-          label="Conversaciones"
-          icon={<IconConversaciones />}
-          onClick={() => set({ screen: "conversaciones", xSub: "lista", xSel: null })}
-        />
+        {/* Conversaciones es sólo para quien trabaja con su ERP: los
+            mensajes de WhatsApp llegan por el ERP, y sin él la pantalla no
+            tiene nada que mostrar. En ese lugar, sin ERP, va Presupuestos. */}
+        {usaApiDelErp() ? (
+          <Tile
+            bloqueo={motivoBloqueo("chat.modulo", plan())}
+            k="conversaciones"
+            label="Conversaciones"
+            icon={<IconConversaciones />}
+            onClick={() => set({ screen: "conversaciones", xSub: "lista", xSel: null })}
+          />
+        ) : (
+          <Tile
+            bloqueo={motivoBloqueo("presupuestos.modulo", plan())}
+            k="presupuestos"
+            label="Presupuestos"
+            icon={<IconPresupuestos />}
+            onClick={() => set({ screen: "presupuestos", pSub: "lista", pSel: null })}
+          />
+        )}
         <Tile
           bloqueo={motivoBloqueo("proveedores.modulo", plan())}
           k="proveedores"

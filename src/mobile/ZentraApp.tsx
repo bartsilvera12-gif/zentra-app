@@ -14,6 +14,7 @@ import { HomeScreen } from "./screens/HomeScreen";
 import { InventarioScreen } from "./screens/InventarioScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { ModuleScreen } from "./screens/ModuleScreen";
+import { PresupuestosScreen } from "./screens/PresupuestosScreen";
 import { ProveedoresScreen } from "./screens/ProveedoresScreen";
 import { RecuperoScreen } from "./screens/RecuperoScreen";
 import { ReportesScreen } from "./screens/ReportesScreen";
@@ -47,6 +48,8 @@ function CurrentScreen() {
       return <ReportesScreen />;
     case "detventas":
       return <DetVentasScreen />;
+    case "presupuestos":
+      return <PresupuestosScreen />;
     case "module":
       return <ModuleScreen />;
     default:

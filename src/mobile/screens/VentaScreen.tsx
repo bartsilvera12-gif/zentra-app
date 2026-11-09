@@ -5,6 +5,8 @@ import { MARCA } from "@/lib/theme";
 import { esNativo } from "@/lib/nativo";
 import { anchoGuardado, imprimirTicket, impresoraGuardada } from "@/lib/impresora";
 import { METODOS, PASOS_VENTA } from "@/lib/data";
+import { VALIDECES } from "@/lib/presupuestos";
+import { ARMADO_VACIO } from "./armado";
 import { repo } from "@/lib/repo";
 import { Sku } from "../ui/Sku";
 import { useRemoto } from "./useRemoto";
@@ -64,15 +66,21 @@ export function VentaScreen() {
   const { datos: PRODUCTOS, cargando, error, recargar } = useRemoto(() => repo.ventas.productos(), []);
   const todos = clientesErp.concat(s.cExtra);
   const cli = todos.find((c) => c.id === s.vCliente) ?? null;
-  const idxPaso = Math.max(0, PASOS_VENTA.findIndex((x) => x.id === s.vPaso));
+  // Un presupuesto usa los mismos pasos que una venta menos el cobro: no se
+  // cobra nada, se guarda. Reusar el armado es lo que hace que el cliente,
+  // el precio mayorista y el IVA salgan iguales en los dos.
+  const esPresupuesto = s.vModo === "presupuesto";
+  const PASOS = esPresupuesto ? PASOS_VENTA.filter((p) => p.id !== "pago") : PASOS_VENTA;
+  const idxPaso = Math.max(0, PASOS.findIndex((x) => x.id === s.vPaso));
 
   // Cart lines, with IVA extracted from the (tax-inclusive) price.
   const lineas = PRODUCTOS.filter((pr) => (s.vCart[pr.id] || 0) > 0).map((pr) => {
     const q = s.vCart[pr.id]!;
     const ivaTipo = s.vIva[pr.id] || "10%";
     const rate = ivaTipo === "10%" ? 0.1 : ivaTipo === "5%" ? 0.05 : 0;
-    // El precio sale de la lista del cliente, no del producto a secas.
-    const precio = precioPara(pr, cli);
+    // El precio sale de la lista del cliente, no del producto a secas; salvo
+    // que venga fijado de un presupuesto aceptado: ahí manda lo prometido.
+    const precio = s.vPrecio[pr.id] ?? precioPara(pr, cli);
     const tot = q * precio;
     return { id: pr.id, nombre: pr.nombre, qty: q, precio, total: tot, ivaTipo, iva: ivaContenido(tot, rate) };
   });
@@ -112,8 +120,17 @@ export function VentaScreen() {
   // El título también depende de si esto puede ser una factura: con el RUC sin
   // cargar es un comprobante interno, y el encabezado no puede decir otra cosa
   // que el aviso de abajo.
-  const vTitulo =
-    s.vPaso === "listo" ? "Venta realizada" : s.vPaso === "factura" ? tituloComprobante(emisor) : "Nueva venta";
+  const vTitulo = esPresupuesto
+    ? s.vDePresupuesto
+      ? "Venta del presupuesto"
+      : "Nuevo presupuesto"
+    : s.vPaso === "listo"
+      ? "Venta realizada"
+      : s.vPaso === "factura"
+        ? tituloComprobante(emisor)
+        : s.vDePresupuesto
+          ? "Venta del presupuesto"
+          : "Nueva venta";
 
   // El número y la fecha son los que devolvió el backend. Mientras no haya
   // venta no hay número: poner uno sería decirle al vendedor que ya facturó.
@@ -165,8 +182,10 @@ export function VentaScreen() {
 
   const back = () => {
     if (s.vPaso === "factura") return set({ vPaso: "listo" });
+    // Un presupuesto se arma desde su lista: volver es volver ahí, no a Inicio.
+    if (esPresupuesto && s.vPaso === "cliente") return set({ screen: "presupuestos", pSub: "lista" });
     if (s.vPaso === "cliente" || s.vPaso === "listo") return set({ screen: "home" });
-    set({ vPaso: PASOS_VENTA[Math.max(0, idxPaso - 1)]!.id as typeof s.vPaso });
+    set({ vPaso: PASOS[Math.max(0, idxPaso - 1)]!.id as typeof s.vPaso });
   };
 
   /**
@@ -198,7 +217,14 @@ export function VentaScreen() {
           : { tipo: "contado", metodo: metodoErp(s.vMetodo) },
         moneda: s.vMonedaUsd ? "USD" : "PYG",
       });
-      set({ vVenta: venta, vGuardando: false, vPaso: "listo" });
+      // Si la venta sale de un presupuesto, el presupuesto queda como vendido
+      // y apuntando a esta venta. Si eso falla, la venta igual está hecha y no
+      // se deshace por esto: lo peor es que el presupuesto siga figurando
+      // como aceptado, y eso se ve y se corrige; una venta perdida no.
+      if (s.vDePresupuesto) {
+        await repo.presupuestos.marcarConvertido(s.vDePresupuesto, venta.id).catch(() => {});
+      }
+      set({ vVenta: venta, vGuardando: false, vPaso: "listo", vDePresupuesto: null });
     } catch (e) {
       set({
         vGuardando: false,
@@ -208,10 +234,42 @@ export function VentaScreen() {
     }
   };
 
+  /**
+   * Guarda el presupuesto. No mueve stock ni plata: es una propuesta.
+   *
+   * Al terminar va directo al presupuesto guardado, que es donde está el botón
+   * para mandarlo por WhatsApp: lo siguiente que alguien quiere hacer con un
+   * presupuesto recién hecho es mandarlo.
+   */
+  const guardarPresupuesto = async () => {
+    if (!puede || s.vGuardando) return;
+    set({ vGuardando: true, vErrorAlta: "" });
+    try {
+      const p = await repo.presupuestos.create({
+        clienteId: cli?.id ?? null,
+        lineas: lineas.map((l) => ({
+          prodId: l.id,
+          cantidad: l.qty,
+          precio: l.precio,
+          iva: l.ivaTipo === "EXENTA" ? "Exenta" : l.ivaTipo,
+        })),
+        validezDias: s.vValidez,
+        notas: s.vNotas,
+      });
+      set({ ...ARMADO_VACIO, vModo: "venta", vGuardando: false, screen: "presupuestos", pSub: "detalle", pSel: p.id });
+    } catch (e) {
+      set({
+        vGuardando: false,
+        vErrorAlta: e instanceof Error ? e.message : "No se pudo guardar el presupuesto. Probá de nuevo.",
+      });
+    }
+  };
+
   const next = () => {
     if (!puede) return;
+    if (esPresupuesto && s.vPaso === "resumen") return void guardarPresupuesto();
     if (s.vPaso === "pago") return void registrar();
-    set({ vPaso: PASOS_VENTA[idxPaso + 1]!.id as typeof s.vPaso });
+    set({ vPaso: PASOS[idxPaso + 1]!.id as typeof s.vPaso });
   };
 
   const input = {
@@ -267,7 +325,7 @@ export function VentaScreen() {
 
         {s.vPaso !== "listo" && s.vPaso !== "factura" && (
           <WizardSteps
-            pasos={PASOS_VENTA.map((p, i) => {
+            pasos={PASOS.map((p, i) => {
               const done = i < idxPaso;
               const act = i === idxPaso;
               return {
@@ -577,7 +635,7 @@ export function VentaScreen() {
         {/* Step 3 — summary */}
         {s.vPaso === "resumen" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={uppercaseLabel}>Resumen de venta</div>
+            <div style={uppercaseLabel}>{esPresupuesto ? "Resumen del presupuesto" : "Resumen de venta"}</div>
             {lineas.map((l) => (
               <div
                 key={l.id}
@@ -684,6 +742,59 @@ export function VentaScreen() {
                 <span style={{ font: "700 21px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink }}>{vTotal}</span>
               </div>
             </div>
+            {esPresupuesto && (
+              <div
+                style={{
+                  borderRadius: 14,
+                  padding: 14,
+                  background: t.card,
+                  border: `1px solid ${t.border}`,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={uppercaseLabel}>Válido por</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {VALIDECES.map((d) => {
+                    const on = s.vValidez === d;
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => set({ vValidez: d })}
+                        style={{
+                          flex: 1,
+                          height: 40,
+                          borderRadius: 11,
+                          cursor: "pointer",
+                          font: `${on ? 700 : 500} 13.5px/1 var(--font-barlow),Barlow,sans-serif`,
+                          background: on ? MARCA.acento : t.bg,
+                          border: `1.5px solid ${on ? MARCA.acento : t.border}`,
+                          color: on ? "#fff" : t.ink,
+                        }}
+                      >
+                        {d} días
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={uppercaseLabel}>Notas para el cliente</div>
+                <textarea
+                  value={s.vNotas}
+                  onChange={(e) => set({ vNotas: e.target.value })}
+                  placeholder="Opcional · ej. entrega sin costo, pago contra entrega"
+                  rows={3}
+                  style={{
+                    ...input,
+                    height: "auto",
+                    padding: "11px 14px",
+                    resize: "none",
+                    font: "400 14px/1.4 var(--font-barlow),Barlow,sans-serif",
+                  }}
+                />
+              </div>
+            )}
+            {!esPresupuesto && (
             <button
               onClick={() => set({ vMonedaUsd: !s.vMonedaUsd })}
               style={{
@@ -699,6 +810,7 @@ export function VentaScreen() {
             >
               Moneda: {s.vMonedaUsd ? "USD" : "GS"} · cambiar
             </button>
+            )}
           </div>
         )}
 
@@ -1126,24 +1238,9 @@ export function VentaScreen() {
             </button>
             <button
               onClick={() =>
-                set({
-                  vPaso: "cliente",
-                  vCliente: null,
-                  vSinNombre: false,
-                  vCart: {},
-                  vIva: {},
-                  vMetodo: null,
-                  vCredito: false,
-                  vQuery: "",
-                  // Sin esto la venta siguiente arrancaría mostrando el número
-                  // de la anterior.
-                  vVenta: null,
-                  vErrorAlta: "",
-                  // Sin esto, la venta siguiente arrancaría mostrando cómo
-                  // salió la impresión de la anterior.
-                  impAviso: "",
-                  impAvisoGrave: false,
-                })
+                // Todo en blanco, incluido el número de la venta anterior y
+                // cómo salió su impresión: ver `ARMADO_VACIO`.
+                set({ ...ARMADO_VACIO, vModo: "venta" })
               }
               style={{
                 height: 48,
@@ -1218,7 +1315,10 @@ export function VentaScreen() {
                 color: "#7A2220",
               }}
             >
-              {s.vErrorAlta} El carrito quedó como estaba: podés volver a confirmar.
+              {s.vErrorAlta}{" "}
+              {esPresupuesto
+                ? "Lo que cargaste quedó como estaba: podés volver a guardar."
+                : "El carrito quedó como estaba: podés volver a confirmar."}
             </div>
           )}
           <button
@@ -1235,8 +1335,14 @@ export function VentaScreen() {
             }}
           >
             {s.vGuardando
-              ? "Registrando…"
-              : s.vPaso === "pago"
+              ? esPresupuesto
+                ? "Guardando…"
+                : "Registrando…"
+              : esPresupuesto && s.vPaso === "resumen"
+                ? s.vErrorAlta
+                  ? "Reintentar"
+                  : "Guardar presupuesto"
+                : s.vPaso === "pago"
                 ? s.vErrorAlta
                   ? "Reintentar"
                   : "Confirmar venta"
