@@ -13,6 +13,16 @@ struct TenantConfig: Codable, Equatable {
     /// API del ERP de esa empresa. Vacío cae a `Config.apiUrl`.
     var apiUrl: String
     var publico: Bool
+    /// Si esta empresa usa el chat de WhatsApp del ERP.
+    ///
+    /// Se pide expresamente en el directorio y por defecto es que no. Tener
+    /// ERP no significa atender WhatsApp: una florería que factura con su ERP
+    /// no tiene conversaciones, y el botón abría una bandeja vacía.
+    ///
+    /// Opcional y no `Bool` a secas para que los tenants ya guardados en el
+    /// teléfono —que no traen esta clave— se sigan leyendo en vez de fallar y
+    /// mandar a pedir el código de nuevo.
+    var chat: Bool?
     /// Qué puede escribir esta empresa. Vive en el directorio, que es nuestro,
     /// así que agregar planes no obliga a tocar el ERP de ningún cliente.
     /// Con `apiUrl` (ERP propio) el plan no se consulta: tiene todo.
@@ -177,6 +187,7 @@ enum Directorio {
             schema: (schema?.isEmpty == false ? schema! : TenantConfig.schemaPropio),
             apiUrl: (o["apiUrl"] as? String) ?? "",
             publico: false,
+            chat: (o["chat"] as? Bool) ?? false,
             // Un plan que no reconocemos se trata como `free`: ante la duda, el
             // que menos deja, no el que más.
             plan: (o["plan"] as? String).flatMap(Plan.init(rawValue:)) ?? .free,

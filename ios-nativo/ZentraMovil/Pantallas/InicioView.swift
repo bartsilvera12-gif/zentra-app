@@ -601,14 +601,25 @@ struct InicioView: View {
     /// calcula a mano y se reparte en tres: tres filas idénticas, y entre todas
     /// ocupan el alto disponible completo.
     private var grilla: some View {
-        // Conversaciones sólo con ERP propio: los mensajes de WhatsApp llegan
-        // por el ERP, y sin él la pantalla no tiene nada que mostrar. Quien usa
-        // Zentra sola tiene Presupuestos en ese lugar.
-        let tercero: Modulo = estado.conErp ? .conversaciones : .presupuestos
+        // Qué va en el tercer lugar, que es el que cambia según la empresa.
+        //
+        // Conversaciones sólo si la empresa lo pide en el directorio: los
+        // mensajes llegan por su ERP, y tener ERP no significa atender
+        // WhatsApp — una florería que factura con su ERP no tiene
+        // conversaciones, y el botón le abría una bandeja vacía.
+        //
+        // Presupuestos sólo sin ERP: la tabla vive en la base de Zentra, así
+        // que a una empresa con ERP propio le abriría una pantalla que falla.
+        //
+        // Y si no corresponde ninguno, no va nada: la fila queda con
+        // Proveedores sola. Un botón que no sirve ocupa más que un hueco.
+        let tercero: Modulo? = estado.conErp
+            ? (estado.tenant?.chat == true ? .conversaciones : nil)
+            : .presupuestos
         let filas: [[Modulo]] = [
             [.venta, .clientes],
             [.compras, .inventario],
-            [tercero, .proveedores],
+            [tercero, .proveedores].compactMap { $0 },
         ]
 
         return GeometryReader { geo in
