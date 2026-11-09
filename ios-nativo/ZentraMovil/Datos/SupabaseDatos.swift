@@ -703,6 +703,143 @@ enum SupabaseDatos {
         return numero
     }
 
+    // MARK: - Presupuestos
+
+    private static let selectPresupuesto =
+        "id,numero,cliente_id,cliente_texto,cliente_doc,fecha,valido_hasta,estado,notas,venta_id,"
+        + "presupuesto_lineas(producto_id,nombre,cantidad,precio,iva)"
+
+    static func presupuestos() async throws -> [Presupuesto] {
+        let crudo = try await pedir("GET", "/presupuestos", query: [
+            "select": selectPresupuesto, "order": "fecha.desc,creado_en.desc",
+        ])
+        return filas(crudo).map(aPresupuesto)
+    }
+
+    private static func aPresupuesto(_ p: [String: Any]) -> Presupuesto {
+        Presupuesto(
+            id: texto(p["id"]),
+            numero: (p["numero"] as? String) ?? "",
+            clienteId: (p["cliente_id"] as? String),
+            clienteTexto: (p["cliente_texto"] as? String) ?? "Sin nombre",
+            clienteDoc: (p["cliente_doc"] as? String) ?? "Sin documento",
+            fecha: (p["fecha"] as? String).flatMap(fechaISO),
+            validoHasta: (p["valido_hasta"] as? String).flatMap(fechaISO),
+            estado: (p["estado"] as? String) ?? "pendiente",
+            notas: (p["notas"] as? String) ?? "",
+            ventaId: (p["venta_id"] as? String),
+            lineas: (p["presupuesto_lineas"] as? [[String: Any]] ?? []).map { l in
+                PresupuestoLinea(
+                    productoId: l["producto_id"] as? String,
+                    nombre: (l["nombre"] as? String) ?? "",
+                    cantidad: numero(l["cantidad"]),
+                    precio: entero(l["precio"]),
+                    iva: Iva.desde(l["iva"])
+                )
+            }
+        )
+    }
+
+    /// Guarda el presupuesto. Dos viajes: la cabecera y las líneas.
+    ///
+    /// Si las líneas fallan se borra la cabecera. Un presupuesto sin líneas no
+    /// dice nada y quedaría ocupando un número; es preferible que no exista a
+    /// que exista vacío.
+    static func crearPresupuesto(
+        clienteId: String?, cliente: Cliente?,
+        lineas: [(producto: InvProducto, cantidad: Double)],
+        validezDias: Int, notas: String
+    ) async throws -> Presupuesto {
+        let empresa = try await empresaActual()
+
+        // "pre" y no "presupuesto": `siguiente_numero` arma el prefijo con el
+        // tipo en mayúsculas, así que da PRE-000001.
+        let numeroCrudo = try await pedir("POST", "/rpc/siguiente_numero",
+                                          cuerpo: ["p_empresa": empresa, "p_tipo": "pre"])
+        let numero = (numeroCrudo as? String) ?? texto(numeroCrudo)
+
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let hasta = f.string(from: Calendar.current.date(byAdding: .day, value: validezDias,
+                                                         to: Date()) ?? Date())
+
+        var cabecera: [String: Any] = [
+            "empresa_id": empresa, "numero": numero,
+            "cliente_texto": cliente?.nombre ?? "Sin nombre",
+            "cliente_doc": cliente?.doc ?? "Sin documento",
+            "valido_hasta": hasta,
+            "estado": "pendiente",
+            "notas": notas,
+        ]
+        if let clienteId, !clienteId.isEmpty { cabecera["cliente_id"] = clienteId }
+
+        let crudo = try await pedir("POST", "/presupuestos", cuerpo: [cabecera],
+                                    preferencia: "return=representation")
+        guard let cab = filas(crudo).first else {
+            throw ApiError.http(status: 200, mensaje: "La base no devolvió el presupuesto.",
+                                ruta: "/presupuestos")
+        }
+        let id = texto(cab["id"])
+
+        let filasLinea = lineas.map { l -> [String: Any] in
+            [
+                "presupuesto_id": id, "producto_id": l.producto.id,
+                "nombre": l.producto.nombre, "cantidad": l.cantidad,
+                "precio": Precios.aCobrar(l.producto, cliente),
+                "iva": l.producto.iva.rawValue,
+            ]
+        }
+        do {
+            _ = try await pedir("POST", "/presupuesto_lineas", cuerpo: filasLinea)
+        } catch {
+            _ = try? await pedir("DELETE", "/presupuestos", query: ["id": "eq.\(id)"])
+            throw error
+        }
+
+        return Presupuesto(
+            id: id, numero: numero, clienteId: clienteId,
+            clienteTexto: cliente?.nombre ?? "Sin nombre",
+            clienteDoc: cliente?.doc ?? "Sin documento",
+            fecha: Date(), validoHasta: fechaISO(hasta),
+            estado: "pendiente", notas: notas, ventaId: nil,
+            lineas: lineas.map {
+                PresupuestoLinea(productoId: $0.producto.id, nombre: $0.producto.nombre,
+                                 cantidad: $0.cantidad,
+                                 precio: Precios.aCobrar($0.producto, cliente),
+                                 iva: $0.producto.iva)
+            }
+        )
+    }
+
+    /// Qué contestó el cliente: `pendiente`, `aceptado` o `rechazado`.
+    ///
+    /// `convertido` no se pone por acá: ése lo pone la venta, junto con el id
+    /// de la venta, porque la tabla no acepta uno sin el otro.
+    /// El id de una venta a partir de su número.
+    ///
+    /// `crearVenta` devuelve el número, que es lo que se le muestra a la
+    /// persona, y la tabla de presupuestos quiere el id. Un viaje más, sólo al
+    /// convertir: cambiar lo que devuelve `crearVenta` tocaría las cuatro
+    /// pantallas que la llaman para algo que a ninguna le hace falta.
+    static func idDeVentaPorNumero(_ numero: String) async throws -> String? {
+        let crudo = try await pedir("GET", "/ventas", query: [
+            "select": "id", "numero": "eq.\(numero)", "limit": "1",
+        ])
+        return filas(crudo).first.map { texto($0["id"]) }
+    }
+
+    static func estadoPresupuesto(_ id: String, _ estado: String) async throws {
+        _ = try await pedir("PATCH", "/presupuestos", query: ["id": "eq.\(id)"],
+                            cuerpo: ["estado": estado])
+    }
+
+    /// Lo marca como vendido y lo deja apuntando a la venta.
+    static func presupuestoConvertido(_ id: String, ventaId: String) async throws {
+        _ = try await pedir("PATCH", "/presupuestos", query: ["id": "eq.\(id)"],
+                            cuerpo: ["estado": "convertido", "venta_id": ventaId])
+    }
+
     /// El id de la empresa de quien entró. Hace falta para escribir, porque las
     /// tablas lo piden; leerlo lo permite el RLS.
     private static func empresaActual() async throws -> String {

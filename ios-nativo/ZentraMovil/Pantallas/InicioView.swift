@@ -66,6 +66,7 @@ struct InicioView: View {
                 case .compras: ComprasView()
                 case .proveedores: ProveedoresView()
                 case .conversaciones: ConversacionesView()
+                case .presupuestos: PresupuestosView()
                 case .reportes: ReportesView()
                 }
             }
@@ -424,10 +425,14 @@ struct InicioView: View {
     /// calcula a mano y se reparte en tres: tres filas idénticas, y entre todas
     /// ocupan el alto disponible completo.
     private var grilla: some View {
+        // Conversaciones sólo con ERP propio: los mensajes de WhatsApp llegan
+        // por el ERP, y sin él la pantalla no tiene nada que mostrar. Quien usa
+        // Zentra sola tiene Presupuestos en ese lugar.
+        let tercero: Modulo = estado.conErp ? .conversaciones : .presupuestos
         let filas: [[Modulo]] = [
             [.venta, .clientes],
             [.compras, .inventario],
-            [.conversaciones, .proveedores],
+            [tercero, .proveedores],
         ]
 
         return GeometryReader { geo in

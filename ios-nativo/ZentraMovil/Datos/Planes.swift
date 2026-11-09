@@ -47,9 +47,13 @@ enum Plan: String, CaseIterable, Codable, Equatable {
             ["Inventario hasta 20 productos", "Ventas al contado", "Dashboard de ventas"]
         case .emprendedor:
             ["Inventario hasta 50 productos", "Compras y proveedores",
+             "Presupuestos por WhatsApp",
              "Dashboard de compras", "Facturación con auto-impresor"]
         case .max:
-            ["Inventario sin tope y sin espera", "Chat de WhatsApp",
+            // Sin "Chat de WhatsApp": sólo existe con ERP propio, y con ERP no
+            // hay plan. Venderlo en un plan era vender algo que quien lo paga
+            // no va a poder usar.
+            ["Inventario sin tope y sin espera",
              "Ventas a crédito y compras en dólares",
              "Stock mínimo, código de barras y vencimiento", "Factura electrónica"]
         }
@@ -102,7 +106,12 @@ enum Accion: String, CaseIterable {
     case proveedoresModulo = "proveedores.modulo"
     case proveedoresAlta = "proveedores.alta"
     case proveedoresEditar = "proveedores.editar"
+    /// El chat de WhatsApp. Sólo existe con ERP propio —los mensajes llegan
+    /// por el ERP—, y con ERP no hay plan que mirar. Por eso no figura en lo
+    /// que vende ningún plan: sin ERP, Inicio ni siquiera muestra el botón.
     case chatModulo = "chat.modulo"
+    /// Armar presupuestos y mandarlos por WhatsApp.
+    case presupuestosModulo = "presupuestos.modulo"
     case dashboardInventario = "dashboard.inventario"
     case dashboardCompras = "dashboard.compras"
     case facturacionAutoImpresor = "facturacion.autoImpresor"
@@ -111,7 +120,7 @@ enum Accion: String, CaseIterable {
     static let free: [Accion] = [.inventarioAlta, .inventarioAjuste]
 
     static let emprendedor: [Accion] = [
-        .comprasModulo, .proveedoresModulo, .proveedoresAlta,
+        .comprasModulo, .presupuestosModulo, .proveedoresModulo, .proveedoresAlta,
         .dashboardCompras, .facturacionAutoImpresor, .inventarioCategoria,
     ]
 }

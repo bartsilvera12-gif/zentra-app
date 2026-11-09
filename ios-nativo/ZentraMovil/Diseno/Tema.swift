@@ -134,7 +134,7 @@ enum Tint {
 /// Los siete módulos de la grilla de inicio, con sus tres colores.
 /// `fill` es el círculo que crece al tocar; `over` es la tinta encima de `color`.
 enum Modulo: String, CaseIterable, Identifiable {
-    case venta, clientes, compras, inventario, conversaciones, proveedores, reportes
+    case venta, clientes, compras, inventario, conversaciones, presupuestos, proveedores, reportes
 
     var id: String { rawValue }
 
@@ -145,6 +145,7 @@ enum Modulo: String, CaseIterable, Identifiable {
         case .compras: "Compras"
         case .inventario: "Inventario"
         case .conversaciones: "Conversaciones"
+        case .presupuestos: "Presupuestos"
         case .proveedores: "Proveedores"
         case .reportes: "Reportes"
         }
@@ -156,7 +157,9 @@ enum Modulo: String, CaseIterable, Identifiable {
         case .clientes: Color(hex: "#08A696")
         case .compras: Color(hex: "#3DBFB0")
         case .inventario: Color(hex: "#F27405")
-        case .conversaciones: Color(hex: "#F28705")
+        // Mismo lugar en la grilla que Conversaciones y mismos colores: para
+        // quien usa Zentra sola es el botón de ahí, no uno nuevo al lado.
+        case .conversaciones, .presupuestos: Color(hex: "#F28705")
         case .proveedores: Color(hex: "#F3AA20")
         case .reportes: Color(hex: "#025159")
         }
@@ -168,7 +171,7 @@ enum Modulo: String, CaseIterable, Identifiable {
         case .clientes: Color(hex: "#3DBFB0")
         case .compras: Color(hex: "#08A696")
         case .inventario: Color(hex: "#F28705")
-        case .conversaciones: Color(hex: "#F27405")
+        case .conversaciones, .presupuestos: Color(hex: "#F27405")
         case .proveedores: Color(hex: "#F28705")
         case .reportes: Color(hex: "#013B40")
         }
@@ -177,7 +180,7 @@ enum Modulo: String, CaseIterable, Identifiable {
     var over: Color {
         switch self {
         case .venta, .reportes: Color(hex: "#ffffff")
-        case .clientes, .compras, .inventario, .conversaciones, .proveedores:
+        case .clientes, .compras, .inventario, .conversaciones, .presupuestos, .proveedores:
             Color(hex: "#04212A")
         }
     }
@@ -190,6 +193,7 @@ enum Modulo: String, CaseIterable, Identifiable {
         case .compras: .comprasModulo
         case .proveedores: .proveedoresModulo
         case .conversaciones: .chatModulo
+        case .presupuestos: .presupuestosModulo
         case .venta, .clientes, .inventario, .reportes: nil
         }
     }
@@ -202,6 +206,7 @@ enum Modulo: String, CaseIterable, Identifiable {
         case .compras: "cart"
         case .inventario: "shippingbox"
         case .conversaciones: "bubble.left.and.bubble.right"
+        case .presupuestos: "doc.text.magnifyingglass"
         case .proveedores: "truck.box"
         case .reportes: "chart.bar"
         }

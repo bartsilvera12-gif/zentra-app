@@ -20,6 +20,26 @@ struct NuevaVentaView: View {
     /// sólo que vendió.
     var alRegistrar: () -> Void = {}
 
+    /// Qué se está armando.
+    ///
+    /// Los pasos son los mismos —cliente, productos, resumen— y es a propósito:
+    /// reusar el armado es lo que hace que el cliente elegido, el precio
+    /// mayorista y el IVA salgan igual que en una venta. Lo único que cambia es
+    /// que al final, en vez de cobrar, se guarda.
+    enum Modo { case venta, presupuesto }
+    var modo: Modo = .venta
+
+    /// El presupuesto que se está convirtiendo, si se está convirtiendo uno.
+    /// Al registrar la venta queda marcado como vendido y apuntando a ella.
+    var desdePresupuesto: Presupuesto?
+
+    /// Los precios que el cliente aceptó, por producto.
+    ///
+    /// Al convertir un presupuesto mandan éstos y no los de la lista de hoy: el
+    /// cliente dijo que sí a esos números y la venta no puede salir con otros.
+    /// Vacío cuando no hay nada que fijar.
+    var preciosFijos: [String: Int] = [:]
+
     @Environment(\.tema) private var t
     @Environment(\.dismiss) private var cerrar
     @Environment(Estado.self) private var estado
@@ -49,7 +69,20 @@ struct NuevaVentaView: View {
         }
     }
 
+    /// Los pasos de este armado. Un presupuesto no se cobra, así que no tiene
+    /// paso de pago: preguntar cómo se paga algo que todavía no se vendió
+    /// confunde, y la respuesta no se guarda en ningún lado.
+    private var pasosVisibles: [Paso] {
+        modo == .presupuesto ? [.cliente, .productos, .resumen] : Paso.allCases
+    }
+
+    private var ultimoPaso: Paso { pasosVisibles.last ?? .pago }
+
     @State private var paso: Paso = .cliente
+    /// Cuántos días vale el precio. Sólo en presupuesto.
+    @State private var validez = 15
+    /// Lo que se le escribe al cliente. Sólo en presupuesto.
+    @State private var notas = ""
     @State private var clientes: [Cliente] = []
     @State private var catalogo: [InvProducto] = []
     @State private var cargando = true
@@ -76,7 +109,13 @@ struct NuevaVentaView: View {
     }
 
     /// El precio que corresponde a este cliente, no el de lista a secas.
-    private func precio(_ p: InvProducto) -> Int { Precios.aCobrar(p, cliente) }
+    ///
+    /// Al convertir un presupuesto manda el precio que el cliente aceptó: si
+    /// la lista cambió entre el presupuesto y la venta, el que vale es el que
+    /// se le pasó por escrito.
+    private func precio(_ p: InvProducto) -> Int {
+        preciosFijos[p.id] ?? Precios.aCobrar(p, cliente)
+    }
 
     private var total: Int {
         lineas.reduce(0) { $0 + Int((Double(precio($1.producto)) * $1.cantidad).rounded()) }
@@ -96,11 +135,12 @@ struct NuevaVentaView: View {
     private var puedeCredito: Bool { cliente != nil }
 
     private var puedeAvanzar: Bool {
+        if guardando { return false }
         switch paso {
-        case .cliente: cliente != nil || sinNombre
-        case .productos: !lineas.isEmpty
-        case .pago: !credito || puedeCredito
-        case .resumen: !guardando
+        case .cliente: return cliente != nil || sinNombre
+        case .productos: return !lineas.isEmpty
+        case .pago: return !credito || puedeCredito
+        case .resumen: return !lineas.isEmpty
         }
     }
 
@@ -123,10 +163,11 @@ struct NuevaVentaView: View {
                 sinNombre = false
             }
         }
-        .navigationTitle("Nueva venta")
+        .navigationTitle(modo == .presupuesto ? "Nuevo presupuesto" : "Nueva venta")
         .navigationBarTitleDisplayMode(.inline)
         .task { await cargar() }
-        .alert("Venta realizada", isPresented: .constant(resultado != nil)) {
+        .alert(modo == .presupuesto ? "Presupuesto guardado" : "Venta realizada",
+               isPresented: .constant(resultado != nil)) {
             Button("Listo") { cerrar() }
         } message: {
             Text("Número \(resultado ?? "")")
@@ -135,7 +176,7 @@ struct NuevaVentaView: View {
 
     private var pasos: some View {
         HStack(spacing: 6) {
-            ForEach(Paso.allCases, id: \.self) { p in
+            ForEach(pasosVisibles, id: \.self) { p in
                 VStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(p.rawValue <= paso.rawValue ? C.cian : t.border)
@@ -349,10 +390,46 @@ struct NuevaVentaView: View {
                     }
                 }
             }
+            if modo == .presupuesto {
+                FilaCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("HASTA CUÁNDO VALE")
+                            .font(Tipo.barlow(.semibold, 10)).tracking(1.4)
+                            .foregroundStyle(t.ink2)
+                        // Una fecha y no "7 días": el cliente lee el mensaje
+                        // tres días después y tiene que saber hasta cuándo
+                        // vale sin sacar la cuenta.
+                        Picker("", selection: $validez) {
+                            ForEach(Presupuesto.valideces, id: \.self) { d in
+                                Text("\(d) días").tag(d)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Text("Válido hasta el \(TextoPresupuesto.dia(hasta))")
+                            .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
+
+                        Divider()
+
+                        Text("NOTAS PARA EL CLIENTE")
+                            .font(Tipo.barlow(.semibold, 10)).tracking(1.4)
+                            .foregroundStyle(t.ink2)
+                        TextField("Formas de pago, plazo de entrega…",
+                                  text: $notas, axis: .vertical)
+                            .font(Tipo.barlow(.regular, 14))
+                            .lineLimit(2...5)
+                    }
+                }
+            }
+
             if let error {
                 Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk)
             }
         }
+    }
+
+    /// Hasta cuándo valdría con la validez elegida.
+    private var hasta: Date {
+        Calendar.current.date(byAdding: .day, value: validez, to: Date()) ?? Date()
     }
 
     private var barra: some View {
@@ -366,12 +443,16 @@ struct NuevaVentaView: View {
                 .frame(maxWidth: .infinity).frame(height: 48)
             }
             Button {
-                if paso == .pago { Task { await registrar() } }
-                else { paso = Paso(rawValue: paso.rawValue + 1) ?? .pago; buscar = "" }
+                if paso == ultimoPaso { Task { await registrar() } }
+                else { paso = Paso(rawValue: paso.rawValue + 1) ?? ultimoPaso; buscar = "" }
             } label: {
                 ZStack {
                     if guardando { ProgressView().tint(.white) }
-                    else { Text(paso == .pago ? "Confirmar venta" : "Continuar") }
+                    else {
+                        Text(paso != ultimoPaso ? "Continuar"
+                             : modo == .presupuesto ? "Guardar presupuesto"
+                             : "Confirmar venta")
+                    }
                 }
                 .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity).frame(height: 48)
@@ -405,6 +486,22 @@ struct NuevaVentaView: View {
 
     private func registrar() async {
         guardando = true; error = nil
+        defer { guardando = false }
+
+        if modo == .presupuesto {
+            do {
+                let p = try await RepoERP.crearPresupuesto(
+                    clienteId: cliente?.id, cliente: cliente, lineas: lineas,
+                    validezDias: validez, notas: notas)
+                resultado = p.numero
+                alRegistrar()
+            } catch {
+                self.error = (error as? LocalizedError)?.errorDescription
+                    ?? "No se pudo guardar el presupuesto. Probá de nuevo."
+            }
+            return
+        }
+
         do {
             resultado = try await RepoERP.crearVenta(
                 clienteId: cliente?.id, lineas: lineas,
@@ -415,11 +512,18 @@ struct NuevaVentaView: View {
             // "Listo" pasan unos segundos, y que el panel los use para
             // recargar es gratis. Al volver, el número ya está puesto.
             alRegistrar()
+
+            // El presupuesto queda cerrado y apuntando a la venta. Si esto
+            // falla, la venta igual se hizo: lo que se pierde es la marca, no
+            // la plata, así que no se deshace nada ni se muestra un error que
+            // haría dudar de una venta que sí entró.
+            if let pre = desdePresupuesto, let numero = resultado {
+                try? await RepoERP.cerrarPresupuesto(pre.id, numeroDeVenta: numero)
+            }
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
                 ?? "No se pudo registrar la venta. Probá de nuevo."
         }
-        guardando = false
     }
 }
 

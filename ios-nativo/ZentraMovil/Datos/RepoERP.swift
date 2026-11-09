@@ -406,6 +406,42 @@ enum RepoERP {
     ///
     /// Casi todos coinciden; los que no, se traducen. `stock` no está a
     /// propósito: se mueve con un ajuste, nunca editando la fila.
+    // MARK: - Presupuestos
+    //
+    // Sólo sin ERP propio: con ERP, el lugar de Presupuestos en Inicio lo
+    // ocupa Conversaciones y esta pantalla no se abre nunca.
+
+    static func presupuestos() async throws -> [Presupuesto] {
+        try await SupabaseDatos.presupuestos()
+    }
+
+    static func crearPresupuesto(
+        clienteId: String?, cliente: Cliente?,
+        lineas: [(producto: InvProducto, cantidad: Double)],
+        validezDias: Int, notas: String
+    ) async throws -> Presupuesto {
+        try await SupabaseDatos.crearPresupuesto(
+            clienteId: clienteId, cliente: cliente, lineas: lineas,
+            validezDias: validezDias, notas: notas)
+    }
+
+    static func estadoPresupuesto(_ id: String, _ estado: String) async throws {
+        try await SupabaseDatos.estadoPresupuesto(id, estado)
+    }
+
+    static func presupuestoConvertido(_ id: String, ventaId: String) async throws {
+        try await SupabaseDatos.presupuestoConvertido(id, ventaId: ventaId)
+    }
+
+    /// Cierra el presupuesto con la venta en que se convirtió, buscando el id
+    /// por el número que devolvió `crearVenta`.
+    static func cerrarPresupuesto(_ id: String, numeroDeVenta: String) async throws {
+        guard let ventaId = try await SupabaseDatos.idDeVentaPorNumero(numeroDeVenta) else {
+            return
+        }
+        try await SupabaseDatos.presupuestoConvertido(id, ventaId: ventaId)
+    }
+
     /// Fija o suelta un producto: si queda a la vista cuando el plan no
     /// alcanza para todos. Sólo tiene sentido sin ERP propio, que es donde hay
     /// tope.
