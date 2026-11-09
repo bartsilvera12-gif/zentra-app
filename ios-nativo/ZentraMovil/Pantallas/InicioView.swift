@@ -27,6 +27,8 @@ struct InicioView: View {
     @State private var aviso: String?
 
     @State private var confirmarSalir = false
+    /// La bienvenida de la prueba gratis, que se muestra una sola vez.
+    @State private var verBienvenida = false
 
     /// La pila de navegación, manejada a mano.
     ///
@@ -86,6 +88,18 @@ struct InicioView: View {
         .refreshable { await panel.cargar(forzar: true) }
         // El número sobre la baldosa y el globito del ícono de la app.
         .task { await avisador.refrescar() }
+        // Lo primero que hay que decirle a quien recién se dio de alta es qué
+        // tiene y hasta cuándo. Antes no se lo decía nadie: Configuración está
+        // a tres toques y la franja de abajo recién aparece a los 3 días, así
+        // que la primera semana la usaba sin saber que estaba probando.
+        .task { mirarBienvenida() }
+        .onChange(of: estado.tenant?.pruebaHasta) { _, _ in mirarBienvenida() }
+        .sheet(isPresented: $verBienvenida) {
+            bienvenida
+                .presentationDetents([.height(400)])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(t.bg)
+        }
         .latido(cada: 45, activo: true) { await avisador.refrescar() }
         // Dos veces lo mismo a propósito. `onChange` atiende el aviso tocado
         // con la app abierta; `task` atiende el que ya estaba guardado cuando
@@ -113,6 +127,85 @@ struct InicioView: View {
         // el botón de volver llevaría al anterior en vez de a Inicio.
         ruta = NavigationPath()
         ruta.append(d)
+    }
+
+    /// Una sola vez por prueba. Se marca con la fecha y no con un booleano: si
+    /// mañana se le extiende la prueba, es una prueba distinta y corresponde
+    /// volver a avisar.
+    private func mirarBienvenida() {
+        guard !estado.conErp,
+              let hasta = estado.tenant?.pruebaHasta,
+              Planes.pruebaVigente(hasta)
+        else { return }
+
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        let marca = "zentra.pruebaAvisada"
+        let clave = f.string(from: hasta)
+        guard UserDefaults.standard.string(forKey: marca) != clave else { return }
+        UserDefaults.standard.set(clave, forKey: marca)
+        verBienvenida = true
+    }
+
+    private var bienvenida: some View {
+        let hasta = estado.tenant?.pruebaHasta
+        let dias = Vencimiento.dias(hasta) ?? 0
+
+        return VStack(spacing: 0) {
+            VStack(spacing: 14) {
+                Image(systemName: "gift.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(.white)
+                    .frame(width: 68, height: 68)
+                    .background(C.azulMedio, in: .circle)
+
+                Text("Tenés el plan Max, gratis")
+                    .font(Tipo.barlow(.bold, 21))
+                    .foregroundStyle(t.ink)
+                    .multilineTextAlignment(.center)
+
+                // La fecha entera y grande: es el dato por el que se abre esta
+                // hoja. "7 días" obliga a sacar la cuenta, y sacada mal se
+                // reclama después.
+                VStack(spacing: 3) {
+                    Text("HASTA EL")
+                        .font(Tipo.barlow(.semibold, 10)).tracking(1.4)
+                        .foregroundStyle(t.ink2)
+                    Text(Self.dia(hasta))
+                        .font(Tipo.barlow(.bold, 24)).foregroundStyle(t.marca)
+                    Text(dias == 0 ? "Hoy es el último día"
+                         : dias == 1 ? "Queda 1 día"
+                         : "Quedan \(dias) días")
+                        .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink2)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(t.card, in: .rect(cornerRadius: 12))
+
+                // Lo que pasa después, dicho antes. Es la mitad de lo que hay
+                // que avisar: que termina, y que no se le cobra ni se le borra
+                // nada. Sin esto, el día 8 la llamada es "me sacaron todo".
+                Text("No pusiste tarjeta y no se te va a cobrar nada. Cuando termine seguís con el plan Gratis y no se borra nada de lo que hayas cargado.")
+                    .font(Tipo.barlow(.regular, 13))
+                    .foregroundStyle(t.ink2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 22)
+
+            Spacer(minLength: 14)
+
+            Button { verBienvenida = false } label: {
+                Text("Empezar")
+                    .font(Tipo.barlow(.semibold, 15)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).frame(height: 50)
+                    .background(C.azulMedio, in: .rect(cornerRadius: 13))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 10)
+        }
     }
 
     // MARK: - Encabezado
