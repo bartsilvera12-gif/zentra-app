@@ -12,6 +12,7 @@
  *     revisaba nada. Un botón apagado no es un límite: el formulario se puede
  *     dejar abierto, cambiar de plan, volver y guardar.
  */
+import { readFileSync } from "node:fs";
 import { categoriaConocida, motivoCategoria } from "../src/lib/inventario.ts";
 import { motivoBloqueo } from "../src/lib/planes.ts";
 
@@ -30,6 +31,31 @@ t("en Gratis no se puede crear una categoría que no existe", () => {
 t("en Gratis sí se puede elegir una categoría que ya está", () => {
   if (motivoCategoria("Bebidas", ["Bebidas", "Limpieza"], SIN_CATEGORIA))
     throw new Error("elegir una que ya existe no crea nada");
+});
+
+t("el motivo dice que el problema es la categoría, no el producto", () => {
+  // Antes era el genérico del plan, "Tu plan Gratis no incluye esto", y quien
+  // sólo quería cargar un producto creía que cargar productos no estaba en
+  // su plan. Lo reportó un verificador.
+  const conAlgunas = motivoCategoria("Fiambrería", ["Bebidas"], SIN_CATEGORIA);
+  if (!/categoría/i.test(conAlgunas) || !/dejá la categoría vacía/i.test(conAlgunas)) {
+    throw new Error("no dice qué hacer: " + conAlgunas);
+  }
+  // Una cuenta gratis nueva no tiene categorías: el motivo no puede mandarla
+  // a elegir una "de las que ya tenés".
+  const sinNinguna = motivoCategoria("Bebidas", [], SIN_CATEGORIA);
+  if (/ya tenés/.test(sinNinguna)) throw new Error("manda a elegir entre ninguna: " + sinNinguna);
+  if (!/se guarda igual/.test(sinNinguna)) throw new Error("no dice que el producto se guarda: " + sinNinguna);
+});
+
+t("en Gratis el formulario no ofrece escribir una categoría", () => {
+  // El campo de texto invitaba a escribir y el guardado lo rechazaba. Con un
+  // plan que no crea categorías, se eligen tocando las que hay, y si no hay
+  // ninguna el campo no aparece.
+  const pantalla = readFileSync("src/mobile/screens/InventarioScreen.tsx", "utf8");
+  if (!/\{!sinCategoria \?\s*\(\s*<>\s*<FormField\s+label="Categoría"/.test(pantalla)) {
+    throw new Error("el campo de texto de la categoría ya no depende del plan");
+  }
 });
 
 t("dejar la categoría vacía no es crear una categoría", () => {

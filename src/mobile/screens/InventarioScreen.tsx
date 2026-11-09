@@ -944,23 +944,57 @@ export function InventarioScreen() {
                   escribir una nueva. Antes era texto libre a secas: cada
                   persona escribía "Bebidas", "bebidas" y "Bebida", y la
                   categoría dejaba de servir para agrupar. */}
-              <FormField
-                label="Categoría"
-                value={s.npCategoria}
-                onChange={(v) => set({ npCategoria: v })}
-                placeholder="Bebidas"
-                lista="zt-categorias"
-              />
-              <datalist id="zt-categorias">
-                {categorias.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-              {sinCategoria && (
-                <div style={{ font: "400 11px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
-                  Crear una categoría nueva es de los planes pagos. Podés elegir una de las que ya hay.
+              {/* Con un plan que no crea categorías, el campo de texto era una
+                  trampa: invitaba a escribir "Bebidas" y después el guardado
+                  lo rechazaba con un cartel que no decía por qué. Y en una
+                  cuenta gratis nueva no hay ninguna categoría para elegir, así
+                  que no había forma de usarlo bien. Ahora, en ese plan, se
+                  eligen tocando las que ya hay; si no hay, el campo no está. */}
+              {!sinCategoria ? (
+                <>
+                  <FormField
+                    label="Categoría"
+                    value={s.npCategoria}
+                    onChange={(v) => set({ npCategoria: v })}
+                    placeholder="Bebidas"
+                    lista="zt-categorias"
+                  />
+                  <datalist id="zt-categorias">
+                    {categorias.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </>
+              ) : categorias.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <span style={{ font: "600 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink2 }}>Categoría</span>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                    {["", ...categorias].map((c) => {
+                      const on = norm(s.npCategoria.trim()) === norm(c);
+                      return (
+                        <button
+                          key={c || "-"}
+                          onClick={() => set({ npCategoria: c })}
+                          style={{
+                            borderRadius: 999,
+                            padding: "8px 13px",
+                            cursor: "pointer",
+                            font: "600 12px/1 var(--font-barlow),Barlow,sans-serif",
+                            background: on ? "#E2F0F4" : t.card,
+                            color: on ? "#04617A" : t.ink2,
+                            border: `1px solid ${on ? "#04617A" : t.border}`,
+                          }}
+                        >
+                          {c || "Sin categoría"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ font: "400 11px/1.4 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>
+                    Crear categorías nuevas es de los planes pagos.
+                  </div>
                 </div>
-              )}
+              ) : null}
             </Card>
 
             <Card gap={12}>

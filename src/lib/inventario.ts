@@ -43,5 +43,11 @@ export function motivoCategoria(
 ): Motivo {
   if (!bloqueo) return null;
   if (categoriaConocida(categoria, existentes)) return null;
-  return bloqueo;
+  // El motivo dice qué hacer, no sólo que no se puede. Antes devolvía el
+  // genérico del plan —"Tu plan Gratis no incluye esto"— y quien sólo quería
+  // cargar un producto no tenía forma de saber que el problema era la
+  // categoría: creía que cargar productos no estaba en su plan.
+  return existentes.length
+    ? "Crear una categoría nueva es de los planes pagos. Elegí una de las que ya tenés, o dejá la categoría vacía."
+    : "Crear categorías es de los planes pagos. Dejá la categoría vacía y el producto se guarda igual.";
 }
