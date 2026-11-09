@@ -18,7 +18,7 @@ import { MODULES, THEME } from "@/lib/theme";
 import { escucharTemaDelSistema, leerPreferencia, temaDelSistema } from "@/lib/tema";
 import { olvidarPreciosDePlanes } from "@/lib/precios-planes";
 import { repo, usaApiDelErp, usaSupabase } from "@/lib/repo";
-import type { Contexto } from "@/lib/planes";
+import { planConPrueba, type Contexto } from "@/lib/planes";
 import { activarTenant } from "@/lib/supabase/client";
 import { resolverTenant } from "@/lib/tenant/directory";
 import { restaurarSesion } from "@/lib/sesion";
@@ -410,8 +410,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // sola, con los datos del lado nuestro, y ahí la suscripción vive en la
       // empresa del backend. El directorio es para las empresas que entran con
       // su propio ERP, que no tienen plan que mirar.
-      plan: s.sesion?.plan ?? s.tenant?.plan ?? "free",
-      vence: s.sesion?.vence ?? null,
+      // Con la prueba gratis vigente se trabaja como Max; terminada, vuelve
+      // sola a lo de siempre. La regla vive en `planConPrueba`.
+      ...planConPrueba(s.sesion?.plan ?? s.tenant?.plan ?? "free", s.sesion?.vence, s.sesion?.pruebaHasta),
+      pruebaHasta: s.sesion?.pruebaHasta ?? null,
       ...extra,
     }),
     [s.tenant, s.sesion],

@@ -6,7 +6,7 @@ import { avisarCompra, comprarPlan, consultarPlanes, razonDe, type PlanDePlay } 
 import { esNativo } from "@/lib/nativo";
 import { repo } from "@/lib/repo";
 import { gs } from "@/lib/format";
-import { ORDEN_PLANES, PLANES, type Plan } from "@/lib/planes";
+import { ORDEN_PLANES, PLANES, planEfectivo, pruebaVigente, type Plan } from "@/lib/planes";
 import { preciosDePlanes, type PreciosDePlan } from "@/lib/precios-planes";
 import { MARCA } from "@/lib/theme";
 import { useApp } from "@/store/AppContext";
@@ -88,7 +88,12 @@ export function AvisoPlan() {
 
   if (!abierto) return null;
 
-  const actual: Plan = plan().plan;
+  // El plan que la persona tiene PAGO, no el de la prueba. Durante la prueba
+  // la app trabaja como Max, pero marcar Max como "Tu plan" escondería su
+  // botón de compra: nadie podría pagar Max antes de que termine la prueba,
+  // que es justo cuando más sentido tiene. La prueba se marca aparte.
+  const enPrueba = pruebaVigente(plan().pruebaHasta);
+  const actual: Plan = enPrueba ? planEfectivo(s.sesion?.plan ?? "free", s.sesion?.vence) : plan().plan;
   const cerrar = () => set({ avisoPlan: null });
 
   /**
@@ -238,6 +243,21 @@ export function AvisoPlan() {
                       }}
                     >
                       Tu plan
+                    </span>
+                  )}
+                  {enPrueba && codigo === "max" && !esElTuyo && (
+                    <span
+                      style={{
+                        font: "600 10px/1 var(--font-barlow),Barlow,sans-serif",
+                        letterSpacing: ".1em",
+                        textTransform: "uppercase",
+                        padding: "4px 7px",
+                        borderRadius: 999,
+                        border: `1px solid ${MARCA.acento}`,
+                        color: MARCA.acento,
+                      }}
+                    >
+                      En prueba
                     </span>
                   )}
                   <span

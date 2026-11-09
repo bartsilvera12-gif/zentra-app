@@ -116,13 +116,23 @@ async function leerPerfil(userId: string, reintentar = true): Promise<Sesion["us
   let empresa = "";
   let plan: Plan | undefined;
   let vence: string | null | undefined;
+  let pruebaHasta: string | null | undefined;
   if (fila.empresa_id) {
-    const { data: emp } = await sb()
+    // `prueba_hasta` llega con `17_prueba_gratis.sql`. Si una instalación
+    // todavía no lo corrió, pedir la columna hace fallar la consulta entera
+    // y la persona entraría sin plan: se vuelve a pedir sin ella. Una prueba
+    // que no se ve es mucho mejor que un plan pago que desaparece.
+    let consulta = await sb()
       .from("empresas")
-      .select("nombre, plan, vence")
+      .select("nombre, plan, vence, prueba_hasta")
       .eq("id", fila.empresa_id)
       .maybeSingle();
-    const e = emp as { nombre?: string; plan?: string; vence?: string | null } | null;
+    if (consulta.error) {
+      consulta = await sb().from("empresas").select("nombre, plan, vence").eq("id", fila.empresa_id).maybeSingle();
+    }
+    const emp = consulta.data;
+    const e = emp as { nombre?: string; plan?: string; vence?: string | null; prueba_hasta?: string | null } | null;
+    pruebaHasta = e?.prueba_hasta ?? null;
     empresa = e?.nombre || "";
     // Un plan que no reconocemos se ignora en vez de tratarse como Free: el
     // directorio sigue mandando, y nadie pierde lo que pagó por un valor raro
@@ -138,6 +148,7 @@ async function leerPerfil(userId: string, reintentar = true): Promise<Sesion["us
     empresa,
     ...(plan ? { plan } : {}),
     ...(vence !== undefined ? { vence } : {}),
+    ...(pruebaHasta ? { pruebaHasta } : {}),
   };
 }
 

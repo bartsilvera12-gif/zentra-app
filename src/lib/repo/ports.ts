@@ -51,6 +51,13 @@ export interface Sesion {
     plan?: Plan;
     /** Hasta cuándo está pago, en ISO corto. Nulo es sin vencimiento. */
     vence?: string | null;
+    /**
+     * Hasta cuándo dura la prueba gratis de Max, en ISO corto. Va aparte de
+     * `vence` a propósito: `vence` es lo pagado, y con él salen los avisos de
+     * "renová" y las notificaciones de cobro, que no tienen nada que ver con
+     * una prueba. Nulo o ausente es que no hay prueba.
+     */
+    pruebaHasta?: string | null;
   };
 }
 

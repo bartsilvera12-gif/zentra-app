@@ -78,6 +78,8 @@ export interface AppState {
     plan?: Plan;
     /** Hasta cuándo está pago. Nulo o ausente es sin vencimiento. */
     vence?: string | null;
+    /** Hasta cuándo dura la prueba gratis de Max. Ver `pruebaHasta` en `ports.ts`. */
+    pruebaHasta?: string | null;
   } | null;
   /** Mensaje de error de autenticación, listo para mostrar. */
   authError: string;

@@ -115,7 +115,7 @@ export function ConfigScreen() {
 
   const suscripcion = (() => {
     const ctx = plan();
-    return estadoDeSuscripcion({ conErp: ctx.conErp, plan: ctx.plan, vence: ctx.vence });
+    return estadoDeSuscripcion({ conErp: ctx.conErp, plan: ctx.plan, vence: ctx.vence, pruebaHasta: ctx.pruebaHasta });
   })();
 
   /** A labelled switch row. */

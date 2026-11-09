@@ -8,7 +8,7 @@
  * vencer se sigue viendo todo pero no se escribe, y el tope se cuenta al dar
  * de alta y nunca al listar.
  */
-import { cupoProductos, diasParaVencer, estadoDeSuscripcion, fechaVencida, motivoBloqueo, planEfectivo, puedeEscribir } from "../src/lib/planes.ts";
+import { cupoProductos, diasParaVencer, estadoDeSuscripcion, fechaVencida, motivoBloqueo, planConPrueba, planEfectivo, pruebaVigente, puedeEscribir } from "../src/lib/planes.ts";
 
 const casos = [];
 const t = (nombre, fn) => casos.push([nombre, fn]);
@@ -231,6 +231,59 @@ t("al Free le explica por que no puede imprimir, sin botón gris y mudo", () => 
 t("la factura electronica es solo de Max", () => {
   if (puedeEscribir("facturacion.electronica", base({ plan: "emprendedor" }))) throw new Error("no es de Emprendedor");
   if (!puedeEscribir("facturacion.electronica", base({ plan: "max" }))) throw new Error("sí es de Max");
+});
+
+// ---------- la prueba gratis ----------
+const HOY = new Date(2026, 10, 9); // 9 de noviembre de 2026
+
+t("la prueba vale hasta su último día inclusive, como el vencimiento", () => {
+  if (!pruebaVigente("2026-11-15", HOY)) throw new Error("con días por delante no está vigente");
+  if (!pruebaVigente("2026-11-09", HOY)) throw new Error("el último día ya no cuenta");
+  if (pruebaVigente("2026-11-08", HOY)) throw new Error("terminada ayer sigue vigente");
+  if (pruebaVigente(null, HOY) || pruebaVigente(undefined, HOY)) throw new Error("sin fecha hay prueba");
+});
+
+t("en prueba se trabaja como Max, aunque el plan sea Gratis", () => {
+  const r = planConPrueba("free", null, "2026-11-15", HOY);
+  if (r.plan !== "max") throw new Error("no es Max: " + r.plan);
+  const ctx = base({ ...r });
+  for (const a of ["ventas.credito", "chat.modulo", "compras.modulo", "inventario.editar"]) {
+    if (!puedeEscribir(a, ctx)) throw new Error("en prueba bloqueó " + a);
+  }
+});
+
+t("terminada la prueba vuelve sola a Gratis, con el motivo de Gratis", () => {
+  const r = planConPrueba("free", null, "2026-11-08", HOY);
+  if (r.plan !== "free") throw new Error("siguió en " + r.plan);
+  const m = motivoBloqueo("ventas.credito", base({ ...r, ahora: HOY }));
+  // No "tu plan venció": nunca pagó nada. Es el plan gratis, y lo dice así.
+  if (!m || /venci/.test(m) || !/Gratis/.test(m)) throw new Error("motivo equivocado: " + m);
+});
+
+t("terminada la prueba, el que pagó sigue con lo suyo", () => {
+  const r = planConPrueba("emprendedor", "2026-12-01", "2026-11-08", HOY);
+  if (r.plan !== "emprendedor" || r.vence !== "2026-12-01") throw new Error(JSON.stringify(r));
+});
+
+t("comprar Emprendedor en medio de la prueba no le quita Max", () => {
+  const r = planConPrueba("emprendedor", "2026-12-09", "2026-11-12", HOY);
+  if (r.plan !== "max") throw new Error("le sacó Max a mitad de la prueba");
+});
+
+t("en prueba no se ve un vencimiento: ni avisos de renovar ni bloqueo por un pago viejo", () => {
+  // Un plan pago vencido de antes no puede bloquear a quien está en prueba.
+  const r = planConPrueba("max", "2026-10-01", "2026-11-12", HOY);
+  if (r.vence !== null) throw new Error("dejó pasar el vencimiento: " + r.vence);
+  if (!puedeEscribir("ventas.credito", base({ ...r, ahora: HOY }))) throw new Error("bloqueó en prueba");
+});
+
+t("Configuración dice 'prueba gratis', no 'vence' ni 'renová'", () => {
+  const e = estadoDeSuscripcion({ conErp: false, plan: "max", vence: null, pruebaHasta: "2026-11-15", ahora: HOY });
+  if (!e || !/Prueba gratis · 6 días/.test(e.estado)) throw new Error("estado: " + e?.estado);
+  if (/renov|venc/i.test(e.estado + e.detalle)) throw new Error("habla de vencer o renovar: " + e.detalle);
+  if (!/15\/11\/2026/.test(e.detalle)) throw new Error("no dice hasta cuándo: " + e.detalle);
+  const ultimo = estadoDeSuscripcion({ conErp: false, plan: "max", vence: null, pruebaHasta: "2026-11-09", ahora: HOY });
+  if (!/termina hoy/.test(ultimo.estado)) throw new Error("último día: " + ultimo.estado);
 });
 
 let malas = 0;

@@ -181,6 +181,8 @@ export interface Contexto {
    * suscripción de verdad.
    */
   vence?: string | null;
+  /** Hasta cuándo dura la prueba gratis, si hay una. Ver `pruebaVigente`. */
+  pruebaHasta?: string | null;
   /** Cuándo se ajustó por última vez ese producto, en ISO. Para el cooldown. */
   ultimoAjuste?: string | null;
   /** Hoy, para poder probar el cooldown sin esperar un mes. */
@@ -362,9 +364,23 @@ export function estadoDeSuscripcion(ctx: {
   conErp: boolean;
   plan: Plan;
   vence: string | null | undefined;
+  pruebaHasta?: string | null;
   ahora?: Date;
 }): { plan: string; estado: string; detalle: string; urgente: boolean } | null {
   if (ctx.conErp) return null;
+
+  // En prueba no se habla de vencer ni de renovar: no pagó nada, y "vence en
+  // 3 días" a alguien que nunca pagó se lee como una deuda. Se dice qué tiene
+  // y qué pasa después, que es lo que esa persona quiere saber.
+  if (pruebaVigente(ctx.pruebaHasta, ctx.ahora)) {
+    const d = diasParaVencer(ctx.pruebaHasta, ctx.ahora) ?? 0;
+    return {
+      plan: PLANES.max.nombre,
+      estado: d === 0 ? "Prueba gratis · termina hoy" : d === 1 ? "Prueba gratis · termina mañana" : `Prueba gratis · ${d} días`,
+      detalle: `Tenés todo lo de Max hasta el ${formatoDia(ctx.pruebaHasta)}. Después seguís en tu plan, sin perder nada de lo cargado.`,
+      urgente: false,
+    };
+  }
 
   const def = PLANES[ctx.plan];
   const dias = diasParaVencer(ctx.vence, ctx.ahora);
@@ -408,6 +424,38 @@ export function estadoDeSuscripcion(ctx: {
     detalle: `Pagado hasta el ${formatoDia(ctx.vence)}.`,
     urgente: dias <= 7,
   };
+}
+
+/**
+ * Si la prueba gratis sigue vigente.
+ *
+ * Usa la misma regla que el vencimiento de un plan pago —`fechaVencida`—
+ * para que las dos fechas se comporten igual: el último día todavía cuenta.
+ * Sin fecha no hay prueba.
+ */
+export function pruebaVigente(pruebaHasta: string | null | undefined, ahora?: Date): boolean {
+  return Boolean(pruebaHasta) && fechaVencida(pruebaHasta, ahora) === null;
+}
+
+/**
+ * El plan con el que se trabaja, contando la prueba.
+ *
+ * Mientras dura la prueba es Max, pague lo que pague: comprar Emprendedor en
+ * el medio de la prueba no puede quitarle lo que estaba usando. Y durante la
+ * prueba el vencimiento se oculta (`vence: null`): si no, con un plan pago
+ * vencido de antes la app bloquearía a alguien que está en prueba.
+ *
+ * Terminada la prueba, todo vuelve a ser lo de siempre sin que nadie toque
+ * nada: el plan pago si lo hay, y si no, el gratis.
+ */
+export function planConPrueba(
+  plan: Plan,
+  vence: string | null | undefined,
+  pruebaHasta: string | null | undefined,
+  ahora?: Date,
+): { plan: Plan; vence: string | null } {
+  if (pruebaVigente(pruebaHasta, ahora)) return { plan: "max", vence: null };
+  return { plan, vence: vence ?? null };
 }
 
 /** `2026-11-15` → `15/11/2026`. Como se escribe una fecha acá. */
