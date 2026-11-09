@@ -263,6 +263,48 @@ enum Planes {
                 dias <= 7)
     }
 
+    /// Cuáles productos se ven cuando el plan no alcanza para todos.
+    ///
+    /// Lo que sobra **no se borra**: se esconde, y vuelve solo el día que el
+    /// plan lo permita. Alguien que cargó 500 en la prueba de Max y vuelve a
+    /// Gratis sigue teniendo sus 500 en la base.
+    ///
+    /// La regla de cuáles quedan: los fijados primero —son los que el cliente
+    /// eligió— y el resto por antigüedad, los que cargó primero. Es la única
+    /// que no depende de nada y que se explica en una línea. Cualquier otra
+    /// —los más vendidos, los de más stock— cambia sola de un día para el
+    /// otro, y un inventario que se reordena mientras uno trabaja no sirve.
+    ///
+    /// Sin tope están todos: con ERP propio y con el plan que no topea.
+    static func visibles(_ productos: [InvProducto], tope: Int?) -> [InvProducto] {
+        guard let tope, productos.count > tope else { return productos }
+
+        let orden = productos.sorted { a, b in
+            if a.fijado != b.fijado { return a.fijado }
+            // Sin fecha va al final: un producto sin `creado_en` es raro, y
+            // ante la duda es mejor esconderlo que esconder uno con historia.
+            switch (a.creado, b.creado) {
+            case let (x?, y?): return x < y
+            case (nil, _?): return false
+            case (_?, nil): return true
+            case (nil, nil): return a.id < b.id
+            }
+        }
+        let aLaVista = Set(orden.prefix(tope).map(\.id))
+        // Se devuelven en el orden en que venían, no en el del corte: el
+        // listado ya viene ordenado por nombre y reordenarlo acá sería mover
+        // el inventario de lugar cada vez que se mira.
+        return productos.filter { aLaVista.contains($0.id) }
+    }
+
+    /// Cuántos quedaron escondidos. Para decirlo en pantalla: un inventario
+    /// que de golpe tiene 20 de los 500 que se cargaron, sin explicación, se
+    /// lee como que la app perdió los datos.
+    static func escondidos(_ productos: [InvProducto], tope: Int?) -> Int {
+        guard let tope else { return 0 }
+        return max(productos.count - tope, 0)
+    }
+
     /// Cuántos productos más entran: para mostrar "12 de 20" y que el tope
     /// avise antes de llegar, no de golpe cuando ya no se puede.
     static func cupoProductos(_ ctx: ContextoPlan) -> (usados: Int, tope: Int?) {

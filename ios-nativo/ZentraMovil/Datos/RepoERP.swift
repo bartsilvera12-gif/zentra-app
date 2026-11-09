@@ -38,6 +38,12 @@ struct InvProducto: Identifiable, Equatable {
     /// No se redondea: se vende por kilo y hay medios kilos.
     var stock: Double
     var minimo: Double
+    /// El cliente lo eligió para que quede a la vista cuando el plan no
+    /// alcanza para todos. Ver `Planes.visibles`.
+    var fijado: Bool = false
+    /// Cuándo se cargó. Es el desempate del orden: a igualdad de fijados,
+    /// quedan a la vista los que cargó primero.
+    var creado: Date?
 }
 
 struct VentaLinea: Equatable {
@@ -400,6 +406,14 @@ enum RepoERP {
     ///
     /// Casi todos coinciden; los que no, se traducen. `stock` no está a
     /// propósito: se mueve con un ajuste, nunca editando la fila.
+    /// Fija o suelta un producto: si queda a la vista cuando el plan no
+    /// alcanza para todos. Sólo tiene sentido sin ERP propio, que es donde hay
+    /// tope.
+    @discardableResult
+    static func fijarProducto(_ id: String, _ fijado: Bool) async throws -> InvProducto {
+        try await SupabaseDatos.editarProducto(id, ["fijado": fijado])
+    }
+
     private static func aColumnasLocales(_ c: [String: Any]) -> [String: Any] {
         var r: [String: Any] = [:]
         for k in ["nombre", "sku", "barras", "unidad", "costo", "precio", "minimo",
@@ -427,10 +441,39 @@ enum RepoERP {
         !((await Auth.shared.tenantActivo()?.apiUrl) ?? "").isEmpty
     }
 
+    /// El inventario que se puede usar.
+    ///
+    /// Lo que no entra en el plan no sale de acá: no aparece en el listado, ni
+    /// en el buscador, ni al armar una venta, ni en los totales del panel.
+    /// Está en la base y vuelve solo el día que el plan lo permita.
+    ///
+    /// Se filtra acá, en el único lugar por donde pasa todo, y no en cada
+    /// pantalla: siete pantallas que se acuerden cada una por su lado es
+    /// siete oportunidades de que una se olvide.
     static func inventario(q: String? = nil) async throws -> [InvProducto] {
-        if await !conErp() { return try await SupabaseDatos.inventario() }
+        if await !conErp() {
+            return Planes.visibles(try await SupabaseDatos.inventario(),
+                                   tope: await topeDeProductos())
+        }
         let crudo = try await ApiERP.get("/productos", query: ["q": q]) { $0 }
         return try ApiERP.comoLista(crudo, clave: "productos", ruta: "/productos").map(aProducto)
+    }
+
+    /// Todo el inventario, escondido incluido. Sólo para la pantalla que deja
+    /// elegir cuáles quedan a la vista: en cualquier otro lado sería mostrar
+    /// lo que se acaba de esconder.
+    static func inventarioCompleto() async throws -> [InvProducto] {
+        if await conErp() { return try await inventario() }
+        return try await SupabaseDatos.inventario()
+    }
+
+    /// Cuántos productos permite el plan de esta cuenta. `nil` es sin tope:
+    /// con ERP propio, y con el plan que no topea.
+    static func topeDeProductos() async -> Int? {
+        guard let t = await Auth.shared.tenantActivo() else { return nil }
+        if !t.apiUrl.isEmpty { return nil }
+        return Planes.conPrueba(plan: t.plan, vence: t.vence,
+                                pruebaHasta: t.pruebaHasta).plan.topeProductos
     }
 
     static func clientes(q: String? = nil) async throws -> [Cliente] {

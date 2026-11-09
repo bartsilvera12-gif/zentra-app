@@ -254,7 +254,9 @@ enum SupabaseDatos {
             iva: Iva.desde(p["iva"]),
             // El stock no se redondea: hay productos por kilo.
             stock: numero(p["stock"]),
-            minimo: numero(p["minimo"])
+            minimo: numero(p["minimo"]),
+            fijado: (p["fijado"] as? Bool) ?? false,
+            creado: (p["creado_en"] as? String).flatMap(fechaISO)
         )
     }
 

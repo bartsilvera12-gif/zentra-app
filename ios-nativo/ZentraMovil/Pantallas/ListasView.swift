@@ -128,6 +128,9 @@ struct InventarioView: View {
     @State private var nuevoProd = false
     @State private var ajuste = false
     @State private var aviso: String?
+    /// Todo lo cargado, escondido incluido. `filas` es sólo lo que se ve.
+    @State private var todas: [InvProducto] = []
+    @State private var elegirVisibles = false
 
     /// Cuánto vale lo que hay en el depósito, a costo.
     private var valuacion: Int {
@@ -150,6 +153,10 @@ struct InventarioView: View {
         guard let tope = c.tope else { return "\(filas.count) productos · \(u) unidades" }
         return "\(c.usados) de \(tope) productos · \(u) unidades"
     }
+
+    /// Cuántos no entran en el plan. No están borrados: están guardados y
+    /// vuelven el día que el plan los permita.
+    private var escondidos: Int { max(todas.count - filas.count, 0) }
 
     private var bloqueoAlta: String? {
         Planes.motivoBloqueo(.inventarioAlta, estado.contextoPlan(productos: filas.count))
@@ -185,6 +192,29 @@ struct InventarioView: View {
                 : "Probá con otro término o cambiá el filtro.",
               encabezado: {
                   VStack(spacing: 10) {
+                  // Un inventario que de golpe muestra 20 de los 500 que se
+                  // cargaron, sin decir nada, se lee como que la app perdió
+                  // los datos. Lo primero que hay que aclarar es que están.
+                  if escondidos > 0 {
+                      Button { elegirVisibles = true } label: {
+                          VStack(alignment: .leading, spacing: 3) {
+                              Text(escondidos == 1
+                                   ? "Hay 1 producto escondido"
+                                   : "Hay \(escondidos) productos escondidos")
+                                  .font(Tipo.barlow(.bold, 13.5))
+                              Text("Están guardados y no se borran. Tu plan muestra \(todas.count - escondidos) a la vez. Tocá para elegir cuáles.")
+                                  .font(Tipo.barlow(.regular, 12.5))
+                                  .fixedSize(horizontal: false, vertical: true)
+                          }
+                          .foregroundStyle(Tint.avisoInk)
+                          .frame(maxWidth: .infinity, alignment: .leading)
+                          .padding(.horizontal, 12).padding(.vertical, 10)
+                          .background(Tint.avisoBg, in: .rect(cornerRadius: 10))
+                      }
+                      .buttonStyle(.plain)
+                      .padding(.horizontal, 14)
+                  }
+
                   HStack(spacing: 10) {
                       Kpi(rotulo: "VALUACIÓN", valor: Panel.gs(valuacion))
                       Kpi(rotulo: "BAJO MÍNIMO", valor: "\(bajoMinimo) prod.",
@@ -274,6 +304,10 @@ struct InventarioView: View {
             NuevoProductoView { p in filas.insert(p, at: 0) }
         }
         .sheet(isPresented: $ajuste) { ElegirProductoAjusteView(productos: filas) }
+        .sheet(isPresented: $elegirVisibles) {
+            ElegirVisiblesView(productos: todas,
+                               tope: todas.count - escondidos) { await cargar() }
+        }
         .avisoPlan($aviso)
         .task { await cargar() }
         .refreshable { await cargar() }
@@ -297,7 +331,10 @@ struct InventarioView: View {
     private func cargar() async {
         cargando = filas.isEmpty
         do {
-            filas = try await RepoERP.inventario()
+            // Esta pantalla es la única que pide todo: es la que tiene que
+            // poder decir cuántos quedaron afuera y dejar elegir cuáles.
+            todas = try await RepoERP.inventarioCompleto()
+            filas = Planes.visibles(todas, tope: await RepoERP.topeDeProductos())
             error = nil
             // Aviso local: lo arma el teléfono con lo que acaba de leer. No
             // reemplaza un aviso del servidor, sirve para enterarse al abrir.
