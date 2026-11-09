@@ -381,10 +381,14 @@ export function estadoDeSuscripcion(ctx: {
   // 3 días" a alguien que nunca pagó se lee como una deuda. Se dice qué tiene
   // y qué pasa después, que es lo que esa persona quiere saber.
   if (pruebaVigente(ctx.pruebaHasta, ctx.ahora)) {
-    const d = diasParaVencer(ctx.pruebaHasta, ctx.ahora) ?? 0;
+    // +1: `prueba_hasta` es el último día INCLUSIVE, así que quien se da de
+    // alta hoy la tiene hasta dentro de seis y eso son siete días. Restar las
+    // dos fechas da seis, y "te quedan 6 días" el mismo día que arrancó una
+    // prueba de 7 se lee como que ya perdió uno.
+    const d = (diasParaVencer(ctx.pruebaHasta, ctx.ahora) ?? 0) + 1;
     return {
       plan: PLANES.max.nombre,
-      estado: d === 0 ? "Prueba gratis · termina hoy" : d === 1 ? "Prueba gratis · termina mañana" : `Prueba gratis · ${d} días`,
+      estado: d <= 1 ? "Prueba gratis · último día" : `Prueba gratis · ${d} días`,
       detalle: `Tenés todo lo de Max hasta el ${formatoDia(ctx.pruebaHasta)}. Después seguís en tu plan, sin perder nada de lo cargado.`,
       urgente: false,
     };

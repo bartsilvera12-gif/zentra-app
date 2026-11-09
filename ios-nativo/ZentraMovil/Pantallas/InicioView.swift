@@ -149,7 +149,7 @@ struct InicioView: View {
 
     private var bienvenida: some View {
         let hasta = estado.tenant?.pruebaHasta
-        let dias = Vencimiento.dias(hasta) ?? 0
+        let dias = Planes.diasDePrueba(hasta)
 
         return VStack(spacing: 0) {
             VStack(spacing: 14) {
@@ -173,9 +173,7 @@ struct InicioView: View {
                         .foregroundStyle(t.ink2)
                     Text(Self.dia(hasta))
                         .font(Tipo.barlow(.bold, 24)).foregroundStyle(t.marca)
-                    Text(dias == 0 ? "Hoy es el último día"
-                         : dias == 1 ? "Queda 1 día"
-                         : "Quedan \(dias) días")
+                    Text(dias <= 1 ? "Hoy es el último día" : "Quedan \(dias) días")
                         .font(Tipo.barlow(.regular, 12.5)).foregroundStyle(t.ink2)
                 }
                 .frame(maxWidth: .infinity)
@@ -211,6 +209,91 @@ struct InicioView: View {
     // MARK: - Encabezado
 
     private var encabezado: some View {
+        VStack(spacing: 0) {
+            barraEncabezado
+            cintaPrueba
+        }
+    }
+
+    /// La cinta de la prueba, pegada bajo el encabezado.
+    ///
+    /// Va de lado a lado y no como una chapita al lado del nombre: arriba
+    /// están el negocio, la fecha, el usuario, el rol, la lupa, la campana y
+    /// la inicial. Una cosa más ahí dentro no se lee, y ésta tiene que leerse.
+    ///
+    /// Se mueve —el regalito late y un brillo la cruza cada tanto— porque es
+    /// lo único de la pantalla que tiene fecha de vencimiento. Un reposo largo
+    /// entre pasadas a propósito: algo que parpadea todo el tiempo deja de
+    /// mirarse a los dos minutos, que es justo lo contrario de lo que se busca.
+    ///
+    /// Tocándola vuelve a salir la hoja con la fecha y con lo que pasa después.
+    @ViewBuilder
+    private var cintaPrueba: some View {
+        if !estado.conErp, Planes.pruebaVigente(estado.tenant?.pruebaHasta) {
+            let d = Planes.diasDePrueba(estado.tenant?.pruebaHasta)
+            Button { verBienvenida = true } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "gift.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .scaleEffect(late ? 1.18 : 1)
+                        .animation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true),
+                                   value: late)
+
+                    Text("Probando el plan Max")
+                        .font(Tipo.barlow(.semibold, 12.5))
+
+                    Text("·").opacity(0.5)
+
+                    // El número de días va en su propia cápsula: es el dato
+                    // que cambia y el que hace mirar la cinta de nuevo.
+                    Text(d <= 1 ? "último día" : "\(d) días")
+                        .font(Tipo.barlow(.bold, 12))
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(.white.opacity(0.22), in: .capsule)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .opacity(0.8)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).frame(height: 36)
+                .frame(maxWidth: .infinity)
+                .background {
+                    LinearGradient(colors: [C.azulMedio, C.cian, C.teal],
+                                   startPoint: .leading, endPoint: .trailing)
+                }
+                // El brillo que la cruza. Va de overlay y recortado a la
+                // cinta: si no, el destello se sale por los costados.
+                .overlay {
+                    LinearGradient(
+                        colors: [.clear, .white.opacity(0.35), .clear],
+                        startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 110)
+                        .offset(x: brillo)
+                        .blendMode(.plusLighter)
+                }
+                .clipped()
+            }
+            .buttonStyle(.plain)
+            .task(id: estado.tenant?.pruebaHasta) {
+                late = true
+                // El destello, cada cinco segundos. Con el reposo corto la
+                // cinta parece un cartel de oferta y cansa.
+                while !Task.isCancelled {
+                    brillo = -260
+                    withAnimation(.easeInOut(duration: 1.1)) { brillo = 260 }
+                    try? await Task.sleep(for: .seconds(5))
+                }
+            }
+        }
+    }
+
+    @State private var late = false
+    @State private var brillo: CGFloat = -260
+
+    private var barraEncabezado: some View {
         HStack(spacing: 12) {
             HStack(spacing: 9) {
                 Image("MarcaTeal")
@@ -312,15 +395,15 @@ struct InicioView: View {
         if estado.conErp {
             EmptyView()
         } else if Planes.pruebaVigente(estado.tenant?.pruebaHasta),
-                  let d = Vencimiento.dias(estado.tenant?.pruebaHasta), d <= 3 {
+                  case let d = Planes.diasDePrueba(estado.tenant?.pruebaHasta), d <= 3 {
             // Recién a los 3 días y no a los 7 como el vencimiento. La prueba
             // dura 7: una franja desde el primer día es una alarma que suena
             // toda la semana, y ésas dejan de verse al segundo día.
             //
             // La fecha va escrita entera. "Te quedan 3 días" obliga a sacar la
             // cuenta, y sacada mal se reclama después.
-            franja(titulo: d == 0 ? "Hoy termina tu prueba"
-                        : d == 1 ? "Mañana termina tu prueba"
+            franja(titulo: d <= 1 ? "Hoy termina tu prueba"
+                        : d == 2 ? "Mañana termina tu prueba"
                         : "Te quedan \(d) días de prueba",
                    cuerpo: "Tenés todo lo de Max hasta el \(Self.dia(estado.tenant?.pruebaHasta)). Después seguís viendo todo lo cargado.",
                    rojo: false)

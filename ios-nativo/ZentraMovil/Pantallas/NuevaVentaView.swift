@@ -214,6 +214,8 @@ struct NuevaVentaView: View {
 
     private var pasoCliente: some View {
         VStack(spacing: 10) {
+            buscador("Buscar por nombre, RUC o CI…")
+
             Button { sinNombre = true; cliente = nil } label: {
                 FilaCard {
                     HStack(spacing: 12) {
@@ -288,11 +290,12 @@ struct NuevaVentaView: View {
                 .buttonStyle(.plain)
             }
         }
-        .searchable(text: $buscar, prompt: "Buscar por nombre, RUC o CI…")
     }
 
     private var pasoProductos: some View {
         VStack(spacing: 10) {
+            buscador("Buscar producto…")
+
             if catalogo.isEmpty {
                 Aviso(texto: "No hay stock disponible para vender.", bg: t.card, ink: t.ink2)
             }
@@ -322,7 +325,6 @@ struct NuevaVentaView: View {
                 }
             }
         }
-        .searchable(text: $buscar, prompt: "Buscar producto…")
     }
 
     private var pasoPago: some View {
@@ -463,6 +465,37 @@ struct NuevaVentaView: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .background(t.card)
+    }
+
+    /// El buscador del paso, adentro del contenido.
+    ///
+    /// Era un `.searchable` y no puede serlo: `.searchable` cuelga de la barra
+    /// de navegación, y esta pantalla tiene su propia barra de pasos ahí
+    /// arriba. iOS lo dibujaba flotando encima de "Cliente · Productos ·
+    /// Resumen", sobre todo mientras cargaba. Un campo común no se mueve de
+    /// donde se lo pone.
+    private func buscador(_ texto: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(t.ink3)
+            TextField(texto, text: $buscar)
+                .font(Tipo.barlow(.regular, 14.5))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if !buscar.isEmpty {
+                Button { buscar = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(t.ink3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12).frame(height: 42)
+        .background(t.card, in: .rect(cornerRadius: 11))
+        .overlay { RoundedRectangle(cornerRadius: 11).stroke(t.border) }
+        .padding(.horizontal, 14)
     }
 
     private func fila(_ k: String, _ v: String) -> some View {

@@ -279,11 +279,14 @@ t("en prueba no se ve un vencimiento: ni avisos de renovar ni bloqueo por un pag
 
 t("Configuración dice 'prueba gratis', no 'vence' ni 'renová'", () => {
   const e = estadoDeSuscripcion({ conErp: false, plan: "max", vence: null, pruebaHasta: "2026-11-15", ahora: HOY });
-  if (!e || !/Prueba gratis · 6 días/.test(e.estado)) throw new Error("estado: " + e?.estado);
+  // 7 y no 6: `prueba_hasta` es el último día inclusive, así que hoy cuenta.
+  // Decirle "6 días" el día que arrancó una prueba de 7 se lee como que ya
+  // perdió uno.
+  if (!e || !/Prueba gratis · 7 días/.test(e.estado)) throw new Error("estado: " + e?.estado);
   if (/renov|venc/i.test(e.estado + e.detalle)) throw new Error("habla de vencer o renovar: " + e.detalle);
   if (!/15\/11\/2026/.test(e.detalle)) throw new Error("no dice hasta cuándo: " + e.detalle);
   const ultimo = estadoDeSuscripcion({ conErp: false, plan: "max", vence: null, pruebaHasta: "2026-11-09", ahora: HOY });
-  if (!/termina hoy/.test(ultimo.estado)) throw new Error("último día: " + ultimo.estado);
+  if (!/último día/.test(ultimo.estado)) throw new Error("último día: " + ultimo.estado);
 });
 
 let malas = 0;

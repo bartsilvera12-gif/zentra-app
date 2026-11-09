@@ -187,6 +187,17 @@ enum Planes {
         return d >= 0
     }
 
+    /// Cuántos días de prueba quedan, contando hoy.
+    ///
+    /// `prueba_hasta` es el último día **inclusive**: quien se da de alta hoy
+    /// la tiene hasta dentro de seis, y eso son siete días de prueba. Restar
+    /// las dos fechas da seis, y "te quedan 6 días" el mismo día que se dio de
+    /// alta a una prueba de 7 se lee como que ya perdió uno.
+    static func diasDePrueba(_ pruebaHasta: Date?, _ ahora: Date = Date()) -> Int {
+        guard let d = Vencimiento.dias(pruebaHasta, ahora), d >= 0 else { return 0 }
+        return d + 1
+    }
+
     /// El plan con el que se trabaja, contando la prueba.
     ///
     /// Mientras dura es Max, pague lo que pague: comprar Emprendedor en el
@@ -218,13 +229,12 @@ enum Planes {
         // Se le dice qué tiene, hasta cuándo —con la fecha escrita, no "en 3
         // días"— y qué pasa después, que es lo que quiere saber.
         if pruebaVigente(pruebaHasta, ahora) {
-            let d = Vencimiento.dias(pruebaHasta, ahora) ?? 0
+            let d = diasDePrueba(pruebaHasta, ahora)
             let f = DateFormatter()
             f.dateFormat = "dd/MM/yyyy"
             let hasta = pruebaHasta.map { f.string(from: $0) } ?? ""
             return (Plan.max.nombre,
-                    d == 0 ? "Prueba gratis · termina hoy"
-                        : d == 1 ? "Prueba gratis · termina mañana"
+                    d <= 1 ? "Prueba gratis · último día"
                         : "Prueba gratis · \(d) días",
                     "Tenés todo lo de Max hasta el \(hasta). Después seguís en tu plan, sin perder nada de lo cargado.",
                     // Nunca en rojo: no debe nada. El rojo es para una deuda.
