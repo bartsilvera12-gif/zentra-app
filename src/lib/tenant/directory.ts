@@ -123,7 +123,9 @@ async function consultarPorRed(codigo: string): Promise<TenantConfig> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), config.timeoutMs);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+    // Sin caché: una empresa recién sumada al archivo tiene que encontrarse ya,
+    // no cuando venza la copia que el navegador guardó del archivo anterior.
+    const res = await fetch(url, { signal: ctrl.signal, cache: "no-store", headers: { Accept: "application/json" } });
     if (res.status === 404 && !esArchivo) {
       throw new TenantError("no_encontrado", `Código ${codigo} no existe`);
     }
@@ -146,11 +148,21 @@ async function consultarPorRed(codigo: string): Promise<TenantConfig> {
 }
 
 async function consultarDirectorio(codigo: string): Promise<TenantConfig> {
-  // Lo que está en el paquete gana: no depende de la red ni se puede caer.
   const local = buscarEnJson(codigo);
-  if (local) return local;
 
-  if (config.directorioUrl) return consultarPorRed(codigo);
+  // Con directorio por red, manda la red: es lo que se cambia sin publicar una
+  // versión nueva de la app. Antes ganaba lo del paquete, y una empresa nueva
+  // (o un cambio en una existente) esperaba a que Apple aprobara otra versión.
+  // Lo del paquete queda de respaldo si la red falla o el archivo no la tiene.
+  if (config.directorioUrl) {
+    try {
+      return await consultarPorRed(codigo);
+    } catch (e) {
+      if (local) return local;
+      throw e;
+    }
+  }
+  if (local) return local;
 
   // Sin directorio configurado, ningún código existe.
   //

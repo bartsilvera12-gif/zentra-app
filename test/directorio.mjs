@@ -104,17 +104,28 @@ t("endpoint por código: pide la ruta con el código", async () => {
   if (pedido !== "https://dir.ejemplo/empresas/JM") throw new Error("pidió " + pedido);
 });
 
-t("el JSON del paquete gana sobre la red", async () => {
+t("con directorio por red, la red gana y el paquete queda de respaldo", async () => {
   const { resolverTenant } = await cargar({
     NEXT_PUBLIC_BACKEND: "supabase",
     NEXT_PUBLIC_DIRECTORIO_JSON: JSON_DIR,
-    NEXT_PUBLIC_DIRECTORIO_URL: "https://dir.ejemplo/empresas",
+    NEXT_PUBLIC_DIRECTORIO_URL: "https://dir.ejemplo/empresas.json",
   });
-  let tocóLaRed = false;
-  globalThis.fetch = async () => { tocóLaRed = true; throw new Error("no debería"); };
+  // La red trae un dato distinto del paquete: tiene que ganar la red, que es lo
+  // que se cambia sin publicar otra versión de la app.
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ JM: { nombre: "JM red", supabaseUrl: "https://jm-red.supabase.co", anonKey: "k" } }), { status: 200 });
   const a = await resolverTenant("JM");
-  if (tocóLaRed) throw new Error("fue a la red teniendo el código en el paquete");
-  if (a.supabaseUrl !== "https://jm.supabase.co") throw new Error(a.supabaseUrl);
+  if (a.supabaseUrl !== "https://jm-red.supabase.co") throw new Error("no ganó la red: " + a.supabaseUrl);
+
+  // Sin red, sale lo del paquete.
+  globalThis.fetch = async () => { throw new Error("sin red"); };
+  const b = await resolverTenant("JM");
+  if (b.supabaseUrl !== "https://jm.supabase.co") throw new Error("sin red no usó el paquete: " + b.supabaseUrl);
+
+  // El archivo de la red no la tiene: también sale lo del paquete.
+  globalThis.fetch = async () => new Response(JSON.stringify({ OTRA: {} }), { status: 200 });
+  const c = await resolverTenant("JM");
+  if (c.supabaseUrl !== "https://jm.supabase.co") throw new Error("sin la entrada no usó el paquete: " + c.supabaseUrl);
 });
 
 t("una entrada incompleta se reporta como configuración mala", async () => {

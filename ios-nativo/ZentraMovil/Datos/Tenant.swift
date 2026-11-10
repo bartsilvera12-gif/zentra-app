@@ -115,9 +115,18 @@ enum Directorio {
     }
 
     private static func consultar(_ codigo: String) async throws -> TenantConfig {
-        // Lo del paquete gana: no depende de la red ni se puede caer.
-        if let local = enJson(codigo) { return local }
-        if !Config.directorioUrl.isEmpty { return try await porRed(codigo) }
+        let local = enJson(codigo)
+        // Con directorio por red, manda la red: es lo que se cambia sin sacar
+        // una versión nueva. Antes ganaba lo del paquete y una empresa nueva
+        // esperaba a que Apple aprobara otra versión. Lo del paquete queda de
+        // respaldo si la red falla o el archivo no la tiene.
+        if !Config.directorioUrl.isEmpty {
+            do { return try await porRed(codigo) } catch {
+                if let local { return local }
+                throw error
+            }
+        }
+        if let local { return local }
         // Sin directorio configurado, ningún código existe. Nada de códigos de
         // demostración que fallan más tarde culpando a la conexión.
         throw TenantError.noEncontrado(codigo)
@@ -141,7 +150,8 @@ enum Directorio {
             : "\(Config.directorioUrl)/\(codigo.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? codigo)"
         guard let url = URL(string: txt) else { throw TenantError.respuestaInvalida }
 
-        var req = URLRequest(url: url, timeoutInterval: Config.timeout)
+        // Sin caché: una empresa recién sumada al archivo tiene que encontrarse ya.
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Config.timeout)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let datos: Data
