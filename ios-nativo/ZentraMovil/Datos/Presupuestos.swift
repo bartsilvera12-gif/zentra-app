@@ -123,3 +123,30 @@ enum TextoPresupuesto {
         return df.string(from: f)
     }
 }
+
+
+/// Los ajustes del catálogo público de un negocio.
+///
+/// La dirección se reserva al crear la cuenta, así que siempre hay una: lo que
+/// falta para prenderlo es el WhatsApp a donde llegan los pedidos. Sin ese
+/// número el catálogo sería una vidriera sin puerta, y la base directamente no
+/// lo publica.
+struct Catalogo: Equatable {
+    var negocio: String
+    var activo: Bool
+    var direccion: String
+    var color: String
+    var whatsapp: String
+    var mensaje: String
+
+    /// Dónde vive el catálogo. Un solo sitio para todos los negocios: quién es
+    /// cada uno lo dice la dirección.
+    static let sitio = "https://bartsilvera12-gif.github.io/zentra-catalogo"
+
+    var enlace: String { "\(Self.sitio)/\(direccion)" }
+
+    /// Prender sin WhatsApp no se puede: la vista pública exige el número, así
+    /// que el catálogo saldría apagado igual y el negocio no entendería por
+    /// qué. Mejor decirlo antes.
+    var faltaWhatsapp: Bool { whatsapp.trimmingCharacters(in: .whitespaces).isEmpty }
+}

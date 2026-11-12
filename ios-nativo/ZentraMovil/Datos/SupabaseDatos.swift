@@ -703,6 +703,42 @@ enum SupabaseDatos {
         return numero
     }
 
+    // MARK: - Catálogo público
+
+    /// Lee los ajustes del catálogo de la empresa de quien entró.
+    static func catalogo() async throws -> Catalogo {
+        let crudo = try await pedir("GET", "/empresas", query: [
+            "select": "id,nombre,catalogo_activo,catalogo_slug,catalogo_color,catalogo_whatsapp,catalogo_mensaje",
+            "limit": "1",
+        ])
+        guard let e = filas(crudo).first else {
+            throw ApiError.http(status: 404, mensaje: "No encontramos tu empresa.", ruta: "/empresas")
+        }
+        return Catalogo(
+            negocio: (e["nombre"] as? String) ?? "",
+            activo: (e["catalogo_activo"] as? Bool) ?? false,
+            direccion: (e["catalogo_slug"] as? String) ?? "",
+            color: (e["catalogo_color"] as? String) ?? "",
+            whatsapp: (e["catalogo_whatsapp"] as? String) ?? "",
+            mensaje: (e["catalogo_mensaje"] as? String) ?? ""
+        )
+    }
+
+    /// Guarda los ajustes. El RLS de `empresas` ya acota a la propia.
+    static func guardarCatalogo(_ c: Catalogo) async throws {
+        let empresa = try await empresaActual()
+        var cuerpo: [String: Any] = [
+            "catalogo_activo": c.activo,
+            "catalogo_color": c.color.isEmpty ? NSNull() : c.color,
+            "catalogo_whatsapp": c.whatsapp.isEmpty ? NSNull() : c.whatsapp,
+            "catalogo_mensaje": c.mensaje.isEmpty ? NSNull() : c.mensaje,
+        ]
+        // La dirección sólo si viene: mandarla vacía la borraría, y con ella
+        // todos los enlaces que el negocio ya repartió.
+        if !c.direccion.isEmpty { cuerpo["catalogo_slug"] = c.direccion }
+        _ = try await pedir("PATCH", "/empresas", query: ["id": "eq.\(empresa)"], cuerpo: cuerpo)
+    }
+
     // MARK: - Presupuestos
 
     private static let selectPresupuesto =

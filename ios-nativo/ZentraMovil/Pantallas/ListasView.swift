@@ -250,6 +250,14 @@ struct InventarioView: View {
                       Button { ajuste = true } label: {
                           Text("Ajustar stock").frame(maxWidth: .infinity)
                       }
+                      // Sólo sin ERP propio: los productos del catálogo salen
+                      // de nuestra base, así que una empresa con su propio ERP
+                      // no tiene nada que publicar por acá.
+                      if !estado.conErp {
+                          NavigationLink { CatalogoView() } label: {
+                              Text("Catálogo").frame(maxWidth: .infinity)
+                          }
+                      }
                   }
                   .font(Tipo.barlow(.semibold, 13))
                   .foregroundStyle(t.ink)

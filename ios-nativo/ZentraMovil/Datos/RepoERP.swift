@@ -418,6 +418,19 @@ enum RepoERP {
     ///
     /// Casi todos coinciden; los que no, se traducen. `stock` no está a
     /// propósito: se mueve con un ajuste, nunca editando la fila.
+    // MARK: - Catálogo público
+    //
+    // Sólo sin ERP propio: los productos del catálogo salen de `zentra`, así
+    // que una empresa con su propio ERP no tiene nada que publicar por acá.
+
+    static func catalogo() async throws -> Catalogo {
+        try await SupabaseDatos.catalogo()
+    }
+
+    static func guardarCatalogo(_ c: Catalogo) async throws {
+        try await SupabaseDatos.guardarCatalogo(c)
+    }
+
     // MARK: - Presupuestos
     //
     // Sólo sin ERP propio: con ERP, el lugar de Presupuestos en Inicio lo
