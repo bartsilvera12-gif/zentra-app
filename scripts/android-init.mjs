@@ -715,6 +715,40 @@ function verificarAssets() {
 
 verificarAssets();
 
+/**
+ * Que una versión firmada para la tienda no salga en modo demostración.
+ *
+ * Ya pasó: la versión 16 se armó en una máquina sin `.env.local`, y como
+ * `NEXT_PUBLIC_BACKEND` cae a "mock" cuando no está, salió la demo —datos de
+ * ejemplo, ningún Supabase, ningún directorio de empresas— firmada y lista
+ * para subir. Compiló sin un error y nadie lo notó hasta que una persona no
+ * pudo entrar con su código de empresa.
+ *
+ * Next escribe el valor de las variables `NEXT_PUBLIC_*` adentro del código
+ * al compilar. Si la variable no estaba, queda la expresión con el "mock" de
+ * respaldo, y eso es lo que se busca. Sólo frena con la llave de la tienda:
+ * para probar en el teléfono, la demo está bien.
+ */
+function verificarQueNoEsDemo() {
+  if (!process.env.ZENTRA_LLAVE) return;
+  const dir = join("android", "app", "src", "main", "assets", "public");
+  const demo = execSync(
+    platform() === "win32"
+      ? `findstr /s /m /c:"NEXT_PUBLIC_BACKEND||" "${dir}\\*.js"`
+      : `grep -rlE 'NEXT_PUBLIC_BACKEND\|\|"mock"|backend:"mock"' "${dir}" || true`,
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+  ).trim();
+  if (demo) {
+    console.log("\nERROR: esta versión va firmada para la tienda y está en MODO DEMOSTRACIÓN.");
+    console.log("Falta la configuración de producción (NEXT_PUBLIC_BACKEND, Supabase, directorio).");
+    console.log("Revisá .env.production o .env.local y volvé a compilar con `npm run build`.");
+    process.exit(1);
+  }
+  console.log("\nOK: la versión firmada no es la demo.");
+}
+
+verificarQueNoEsDemo();
+
 console.log(`
 Listo. Ahora:
 

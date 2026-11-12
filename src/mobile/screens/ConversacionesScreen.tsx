@@ -225,6 +225,21 @@ function Visor({ src, tipo, onCerrar }: { src: string; tipo: "foto" | "video"; o
 }
 
 /**
+ * La identidad de un mensaje en la lista.
+ *
+ * Antes era la posición (`key={i}`). Cuando entraba un mensaje nuevo o se
+ * cargaban los anteriores, las posiciones se corrían y React le pasaba a cada
+ * globo los datos de otro: el reproductor que estaba sonando recibía otro
+ * audio y se cortaba a la mitad. "Los audios no se reproducen completos" era
+ * eso. El id de WhatsApp no cambia; el local es el del mensaje propio que
+ * todavía no confirmó el ERP. La posición queda sólo para lo que no tiene
+ * ninguno de los dos.
+ */
+function claveDe(m: ChatMsg, i: number): string {
+  return m.wamid ? `w:${m.wamid}` : m.localId ? `l:${m.localId}` : `i:${i}`;
+}
+
+/**
  * Una nota de voz que se puede escuchar.
  *
  * Antes era un dibujo: una onda fija y un `▶` que no hacía nada, porque el
@@ -256,6 +271,21 @@ function NotaDeVoz({
   const [sonando, setSonando] = useState(false);
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);
+  // El archivo que se está usando, que puede no ser el último `url` que llegó.
+  // Un audio recién recibido viene primero con el enlace de WhatsApp y, unos
+  // segundos después, el ERP lo pasa a su almacenamiento y el enlace cambia.
+  // Cambiarle el `src` al reproductor lo recarga desde cero y corta lo que
+  // estaba sonando. Así que mientras suena se queda con el que tiene, y el
+  // nuevo se toma recién al pausar o terminar.
+  const [src, setSrc] = useState(url);
+  useEffect(() => {
+    if (!url || url === src) return;
+    const a = ref.current;
+    if (!a || a.paused) setSrc(url);
+  }, [url, src]);
+  const tomarElNuevo = () => {
+    if (url && url !== src) setSrc(url);
+  };
 
   // Un webm sin índice puede declarar duración `Infinity` hasta que termina de
   // leerse. Mostrar eso es peor que no mostrar nada.
@@ -277,19 +307,23 @@ function NotaDeVoz({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 170 }}>
-      {url && (
+      {src && (
         <audio
           ref={ref}
-          src={url}
+          src={src}
           preload="metadata"
           onLoadedMetadata={(e) => setDur(e.currentTarget.duration)}
           onDurationChange={(e) => setDur(e.currentTarget.duration)}
           onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)}
           onPlay={() => setSonando(true)}
-          onPause={() => setSonando(false)}
+          onPause={() => {
+            setSonando(false);
+            tomarElNuevo();
+          }}
           onEnded={() => {
             setSonando(false);
             setPos(0);
+            tomarElNuevo();
           }}
         />
       )}
@@ -1101,7 +1135,7 @@ export function ConversacionesScreen() {
   const topBg = s.xSub === "lista" ? t.card : VIOLETA;
 
   /** One message bubble. Handles text, order cards, stickers, voice notes and files. */
-  const burbuja = (m: ChatMsg, i: number) => {
+  const burbuja = (m: ChatMsg, i: number, clave: string) => {
     const mio = m.de === "yo";
     const esSticker = !!m.sticker;
     // Una foto sola va sin globo; una foto con pie, no. La regla está en
@@ -1125,7 +1159,7 @@ export function ConversacionesScreen() {
         // `marginTop: -11` se come ese hueco y suma un poco de solape, que es
         // como se ve en WhatsApp.
         <div
-          key={i}
+          key={clave}
           style={{
             display: "flex",
             justifyContent: ladoDerecho ? "flex-end" : "flex-start",
@@ -1173,7 +1207,7 @@ export function ConversacionesScreen() {
 
     return (
       <div
-        key={i}
+        key={clave}
         style={{ display: "flex", flexDirection: "column", alignItems: mio ? "flex-end" : "flex-start" }}
         onTouchStart={(e) => {
           inicio.x = e.touches[0].clientX;
@@ -2036,7 +2070,19 @@ export function ConversacionesScreen() {
                 es la que se mide para saber que el hilo creció. */}
             <div ref={contenido} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               <div style={{ textAlign: "center", font: "500 11.5px/1 var(--font-barlow),Barlow,sans-serif", color: t.ink3 }}>Hoy</div>
-              {detMsgs.map(burbuja)}
+              {(() => {
+                // Si el mismo mensaje viniera dos veces —el provisorio y el
+                // confirmado juntos un instante—, dos globos con la misma
+                // clave confunden a React. El segundo se distingue por la
+                // posición.
+                const vistas = new Set<string>();
+                return detMsgs.map((m, i) => {
+                  let k = claveDe(m, i);
+                  if (vistas.has(k)) k = `${k}#${i}`;
+                  vistas.add(k);
+                  return burbuja(m, i, k);
+                });
+              })()}
             </div>
           </div>
 
