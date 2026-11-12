@@ -15,6 +15,7 @@ struct CatalogoView: View {
     @State private var error: String?
     @State private var copiado = false
     @State private var cuantos: Int?
+    @State private var verAyuda = false
 
     /// Los colores que se ofrecen.
     ///
@@ -33,6 +34,18 @@ struct CatalogoView: View {
             if let c {
                 contenido(c)
             }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { verAyuda = true } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .accessibilityLabel("Cómo funciona el catálogo")
+            }
+        }
+        .sheet(isPresented: $verAyuda) {
+            AyudaCatalogoView()
+                .presentationDragIndicator(.visible)
         }
         .task { await cargar() }
         .refreshable { await cargar() }
@@ -260,6 +273,114 @@ struct CatalogoView: View {
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
                 ?? "No pudimos guardar el cambio."
+        }
+    }
+}
+
+
+/// Qué es el catálogo, en el orden en que a alguien le aparecen las dudas.
+///
+/// Va como hoja aparte y no como textos sueltos en la pantalla de ajustes: ahí
+/// estorban al que ya entendió, y a este lo lee una vez quien recién lo abre.
+///
+/// Está escrito desde el lado del negocio —qué hago, qué ve mi cliente, qué me
+/// llega— y no desde cómo está construido. Nadie necesita saber que hay una
+/// vista de Postgres.
+struct AyudaCatalogoView: View {
+    @Environment(\.tema) private var t
+    @Environment(\.dismiss) private var cerrar
+
+    private struct Paso: Identifiable {
+        let id = UUID()
+        let simbolo: String
+        let titulo: String
+        let cuerpo: String
+    }
+
+    private let pasos: [Paso] = [
+        .init(simbolo: "link",
+              titulo: "Tu catálogo es un enlace",
+              cuerpo: "Una página con tus productos que vive en internet. Se la mandás al cliente por WhatsApp o la pegás en la bio de tu Instagram."),
+        .init(simbolo: "arrow.triangle.2.circlepath",
+              titulo: "Se actualiza solo",
+              cuerpo: "Muestra lo que tenés cargado en Inventario, en vivo. Cambiás un precio acá y el cliente ve el nuevo, sin que tengas que mandar nada otra vez."),
+        .init(simbolo: "cart",
+              titulo: "El cliente arma su pedido",
+              cuerpo: "Elige productos, pone cuántos quiere y deja una nota si hace falta. Todo desde su teléfono, sin bajar ninguna app ni crearse una cuenta."),
+        .init(simbolo: "paperplane.fill",
+              titulo: "Y te llega por WhatsApp",
+              cuerpo: "El pedido te llega como un mensaje, con lo que pidió, el total, su nombre y su teléfono. No se guarda en ningún lado: lo atendés donde ya atendés todo."),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 14) {
+                    ForEach(pasos) { p in
+                        FilaCard {
+                            HStack(alignment: .top, spacing: 13) {
+                                Image(systemName: p.simbolo)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 38, height: 38)
+                                    .background(C.azulMedio, in: .rect(cornerRadius: 11))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(p.titulo)
+                                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(t.ink)
+                                    Text(p.cuerpo)
+                                        .font(Tipo.barlow(.regular, 13.5)).foregroundStyle(t.ink2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+
+                    // Las tres preguntas que llegan igual, contestadas antes.
+                    FilaCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("LO QUE SUELEN PREGUNTAR")
+                                .font(Tipo.barlow(.semibold, 10)).tracking(1.4)
+                                .foregroundStyle(t.ink2)
+
+                            duda("¿Ven mis costos o mi stock?",
+                                 "No. Sólo el nombre, la foto, el precio y la categoría. El costo, el stock y tus proveedores no salen de la app.")
+                            duda("¿Por qué no aparece un producto?",
+                                 "Porque no tiene precio cargado, o porque le apagaste “Mostrarlo en el catálogo” en su ficha.")
+                            duda("¿Puedo cerrarlo?",
+                                 "Cuando quieras. Quien entre al enlace ve que no está disponible, y no se borra nada. Lo volvés a abrir y vuelve igual.")
+                        }
+                    }
+
+                    FilaCard {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("PARA QUE SE VEA BIEN")
+                                .font(Tipo.barlow(.semibold, 10)).tracking(1.4)
+                                .foregroundStyle(t.ink2)
+                            Text("Ponele foto y descripción a cada producto, desde Inventario. Un catálogo con fotos se mira; uno sin fotos se cierra.")
+                                .font(Tipo.barlow(.regular, 13.5)).foregroundStyle(t.ink2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(.vertical, 12)
+            }
+            .background(t.bg)
+            .navigationTitle("Cómo funciona")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Listo") { cerrar() }
+                }
+            }
+        }
+    }
+
+    private func duda(_ q: String, _ a: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(q).font(Tipo.barlow(.semibold, 13.5)).foregroundStyle(t.ink)
+            Text(a).font(Tipo.barlow(.regular, 13)).foregroundStyle(t.ink2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
