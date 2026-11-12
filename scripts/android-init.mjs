@@ -735,7 +735,10 @@ function verificarQueNoEsDemo() {
   const demo = execSync(
     platform() === "win32"
       ? `findstr /s /m /c:"NEXT_PUBLIC_BACKEND||" "${dir}\\*.js"`
-      : `grep -rlE 'NEXT_PUBLIC_BACKEND\|\|"mock"|backend:"mock"' "${dir}" || true`,
+      // Texto exacto (-F): con -E, el `|` es "o", y bastaba la palabra "mock"
+      // en cualquier parte del código —que la hay— para frenar una versión
+      // buena.
+      : `grep -rlF -e 'NEXT_PUBLIC_BACKEND||"mock"' -e 'backend:"mock"' "${dir}" || true`,
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   ).trim();
   if (demo) {
