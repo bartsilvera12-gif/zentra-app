@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// El aviso de lo que todavía no llega al ERP.
@@ -325,6 +326,21 @@ struct NuevoProductoView: View {
     @State private var guardando = false
     @State private var error: String?
 
+    // ---- Lo que hace falta para la vidriera ----
+    @State private var descripcion = ""
+    @State private var enCatalogo = true
+    /// La foto elegida en este rato, todavía sin subir.
+    @State private var fotoNueva: UIImage?
+    @State private var eligiendoFoto: PhotosPickerItem?
+    @State private var subiendo = false
+    /// El camino de la que ya está subida.
+    @State private var fotoPath = ""
+    @State private var fotoUrl: URL?
+
+    /// La ficha del catálogo sólo donde hay catálogo: una empresa con su
+    /// propio ERP no publica desde acá.
+    private var hayCatalogo: Bool { !estado.conErp }
+
     /// Lo que el plan no incluye se esconde, no se muestra con candado.
     ///
     /// Estas dos reglas estaban escritas en `Planes.swift` desde el principio
@@ -411,7 +427,22 @@ struct NuevoProductoView: View {
                 VStack(spacing: 12) {
                     Bloque(titulo: "PRODUCTO") {
                         campo("Nombre", $nombre)
-                        campo("Código / SKU", $sku, codigo: true)
+                        HStack(alignment: .bottom, spacing: 8) {
+                            campo("Código / SKU", $sku, codigo: true)
+                            // Un código no se piensa, se pone. El que escribe
+                            // "5000" porque el campo lo obliga termina con dos
+                            // productos con el mismo código.
+                            Button { sku = Self.codigoDe(nombre) } label: {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(t.marca)
+                                    .frame(width: 44, height: 44)
+                                    .background(t.bg, in: .rect(cornerRadius: 11))
+                                    .overlay { RoundedRectangle(cornerRadius: 11).stroke(t.border) }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Generar un código")
+                        }
                         if !sinBarras { campo("Código de barras", $barras, codigo: true) }
                         if !categorias.isEmpty {
                             Picker("Categoría", selection: $categoriaId) {
@@ -446,6 +477,8 @@ struct NuevoProductoView: View {
                             Dato(k: "Margen sobre el neto", v: "\(margen) %")
                         }
                     }
+
+                    if hayCatalogo { bloqueCatalogo }
 
                     Bloque(titulo: "STOCK") {
                         // Al editar no está: el stock se mueve con un ajuste,
@@ -504,6 +537,10 @@ struct NuevoProductoView: View {
         precio = e.precio > 0 ? "\(e.precio)" : ""
         minimo = e.minimo > 0 ? Formato.miles(e.minimo) : ""
         iva = e.iva
+        descripcion = e.descripcion
+        enCatalogo = e.enCatalogo
+        fotoPath = e.imagenPath
+        Task { fotoUrl = await RepoERP.urlDeFoto(e.imagenPath) }
     }
 
     /// Lo que cambió respecto del producto original.
@@ -524,7 +561,162 @@ struct NuevoProductoView: View {
         if Int(self.p.rounded()) != e.precio { c["precio"] = Int(self.p.rounded()) }
         let m = Double(minimo.replacingOccurrences(of: ",", with: ".")) ?? 0
         if m != e.minimo { c["minimo"] = m }
+        let d = descripcion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if d != e.descripcion { c["descripcion"] = d }
+        if enCatalogo != e.enCatalogo { c["en_catalogo"] = enCatalogo }
+        if fotoPath != e.imagenPath { c["imagen_path"] = fotoPath }
         return c
+    }
+
+    /// Lo que hace falta para que la ficha sirva de aviso: la foto, lo que se
+    /// lee debajo, y si se publica.
+    ///
+    /// Va en su propio bloque y no mezclado con los precios porque es otra
+    /// cosa: acá se arma lo que ve un cliente que no entró nunca al local.
+    private var bloqueCatalogo: some View {
+        Bloque(titulo: "CATÁLOGO") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    PhotosPicker(selection: $eligiendoFoto, matching: .images) {
+                        ZStack {
+                            if let fotoNueva {
+                                Image(uiImage: fotoNueva).resizable().scaledToFill()
+                            } else if let fotoUrl {
+                                AsyncImage(url: fotoUrl) { $0.resizable().scaledToFill() }
+                                    placeholder: { ProgressView() }
+                            } else {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "camera").font(.system(size: 18))
+                                    Text("Foto").font(Tipo.barlow(.semibold, 11))
+                                }
+                                .foregroundStyle(t.ink3)
+                            }
+                            if subiendo {
+                                Color.black.opacity(0.35)
+                                ProgressView().tint(.white)
+                            }
+                        }
+                        .frame(width: 84, height: 84)
+                        .background(t.bg)
+                        .clipShape(.rect(cornerRadius: 12))
+                        .overlay { RoundedRectangle(cornerRadius: 12).stroke(t.border) }
+                    }
+                    .disabled(subiendo || !esEdicion)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        if esEdicion {
+                            Text(fotoPath.isEmpty ? "Sin foto" : "Con foto")
+                                .font(Tipo.barlow(.semibold, 13)).foregroundStyle(t.ink)
+                            Text("Se sube sola al elegirla. Sin foto, el catálogo muestra la inicial del producto.")
+                                .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            // El camino de la foto cuelga del id del producto,
+                            // y el id no existe hasta que se guarda. Decirlo
+                            // es mejor que un botón que falla.
+                            Text("Guardá el producto y después le ponés la foto.")
+                                .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !fotoPath.isEmpty && esEdicion {
+                            Button("Sacar la foto") {
+                                fotoPath = ""; fotoNueva = nil; fotoUrl = nil
+                            }
+                            .font(Tipo.barlow(.semibold, 12))
+                            .foregroundStyle(Tint.errorInk)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("DESCRIPCIÓN")
+                        .font(Tipo.barlow(.semibold, 10)).tracking(1.4).foregroundStyle(t.ink2)
+                    TextField("Lo que se lee debajo del nombre en el catálogo",
+                              text: $descripcion, axis: .vertical)
+                        .font(Tipo.barlow(.regular, 14))
+                        .lineLimit(2...5)
+                        .padding(12)
+                        .background(t.bg, in: .rect(cornerRadius: 11))
+                        .overlay { RoundedRectangle(cornerRadius: 11).stroke(t.border) }
+                }
+
+                Toggle(isOn: $enCatalogo) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Mostrarlo en el catálogo")
+                            .font(Tipo.barlow(.semibold, 14)).foregroundStyle(t.ink)
+                        Text("Apagalo para lo que usás adentro y no vendés.")
+                            .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink2)
+                    }
+                }
+                .tint(C.azulMedio)
+            }
+        }
+        .onChange(of: eligiendoFoto) { _, nueva in
+            guard let nueva else { return }
+            Task { await ponerFoto(nueva) }
+        }
+    }
+
+    /// Achica la foto y la sube.
+    ///
+    /// Se achica antes de mandarla: una foto de un iPhone son cinco megas, y
+    /// en el catálogo se ve a 300 puntos de ancho. Subirla entera gasta los
+    /// datos de quien la sube y los de cada cliente que entra a mirar.
+    private func ponerFoto(_ item: PhotosPickerItem) async {
+        guard let e = editando else { return }
+        subiendo = true
+        defer { subiendo = false; eligiendoFoto = nil }
+
+        guard let datos = try? await item.loadTransferable(type: Data.self),
+              let img = UIImage(data: datos) else {
+            error = "No pudimos leer esa foto."
+            return
+        }
+        let chica = Self.achicar(img, lado: 1000)
+        guard let jpeg = chica.jpegData(compressionQuality: 0.8) else {
+            error = "No pudimos preparar esa foto."
+            return
+        }
+        do {
+            fotoPath = try await RepoERP.subirFoto(jpeg, productoId: e.id)
+            fotoNueva = chica
+            fotoUrl = nil
+            error = nil
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos subir la foto."
+        }
+    }
+
+    /// Cuadrada y de lado fijo: en una grilla las fotas de distinto alto
+    /// dejan huecos, y recortar al centro es lo que hace cualquier tienda.
+    static func achicar(_ img: UIImage, lado: CGFloat) -> UIImage {
+        let corte = min(img.size.width, img.size.height)
+        let origen = CGRect(x: (img.size.width - corte) / 2,
+                            y: (img.size.height - corte) / 2,
+                            width: corte, height: corte)
+        let cuadrada = img.cgImage?.cropping(to: origen).map {
+            UIImage(cgImage: $0, scale: img.scale, orientation: img.imageOrientation)
+        } ?? img
+
+        let destino = CGSize(width: lado, height: lado)
+        return UIGraphicsImageRenderer(size: destino).image { _ in
+            cuadrada.draw(in: CGRect(origin: .zero, size: destino))
+        }
+    }
+
+    /// Un código a partir del nombre: las letras del nombre y cuatro dígitos.
+    ///
+    /// "Airpods" → `AIR-4821`. Las letras para reconocerlo en una lista, el
+    /// número para que no choque con otro parecido. Sin nombre, sólo el
+    /// número: un producto sin nombre no se va a guardar igual.
+    static func codigoDe(_ nombre: String) -> String {
+        let letras = nombre.uppercased().unicodeScalars
+            .filter { CharacterSet.letters.contains($0) }
+            .prefix(3)
+        let n = Int.random(in: 1000...9999)
+        return letras.isEmpty ? "\(n)" : "\(String(String.UnicodeScalarView(letras)))-\(n)"
     }
 
     private func guardar() async {

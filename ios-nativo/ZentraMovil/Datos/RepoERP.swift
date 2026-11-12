@@ -41,6 +41,13 @@ struct InvProducto: Identifiable, Equatable {
     /// El cliente lo eligió para que quede a la vista cuando el plan no
     /// alcanza para todos. Ver `Planes.visibles`.
     var fijado: Bool = false
+    /// Lo que se lee bajo el nombre en el catálogo público.
+    var descripcion: String = ""
+    /// Si se publica en el catálogo. Nada que ver con darlo de baja: un
+    /// negocio tiene insumos y envases que usa adentro y no vende.
+    var enCatalogo: Bool = true
+    /// El camino de la foto dentro del bucket. Vacío = sin foto.
+    var imagenPath: String = ""
     /// Cuándo se cargó. Es el desempate del orden: a igualdad de fijados,
     /// quedan a la vista los que cargó primero.
     var creado: Date?
@@ -418,6 +425,17 @@ enum RepoERP {
     ///
     /// Casi todos coinciden; los que no, se traducen. `stock` no está a
     /// propósito: se mueve con un ajuste, nunca editando la fila.
+    /// Sube la foto de un producto y devuelve su camino en el bucket.
+    static func subirFoto(_ jpeg: Data, productoId: String) async throws -> String {
+        try await SupabaseDatos.subirFoto(jpeg, productoId: productoId)
+    }
+
+    /// La dirección pública de una foto ya subida.
+    static func urlDeFoto(_ camino: String) async -> URL? {
+        guard let t = await Auth.shared.tenantActivo() else { return nil }
+        return SupabaseDatos.urlDeFoto(camino, t)
+    }
+
     // MARK: - Catálogo público
     //
     // Sólo sin ERP propio: los productos del catálogo salen de `zentra`, así
@@ -478,7 +496,8 @@ enum RepoERP {
     private static func aColumnasLocales(_ c: [String: Any]) -> [String: Any] {
         var r: [String: Any] = [:]
         for k in ["nombre", "sku", "barras", "unidad", "costo", "precio", "minimo",
-                  "categoria", "deposito"] where c[k] != nil {
+                  "categoria", "deposito", "descripcion", "en_catalogo", "imagen_path"]
+        where c[k] != nil {
             r[k] = c[k]
         }
         return r

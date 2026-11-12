@@ -256,6 +256,9 @@ enum SupabaseDatos {
             stock: numero(p["stock"]),
             minimo: numero(p["minimo"]),
             fijado: (p["fijado"] as? Bool) ?? false,
+            descripcion: (p["descripcion"] as? String) ?? "",
+            enCatalogo: (p["en_catalogo"] as? Bool) ?? true,
+            imagenPath: (p["imagen_path"] as? String) ?? "",
             creado: (p["creado_en"] as? String).flatMap(fechaISO)
         )
     }
@@ -701,6 +704,62 @@ enum SupabaseDatos {
         _ = try await pedir("POST", "/movimientos", cuerpo: movs)
 
         return numero
+    }
+
+    // MARK: - Fotos del catálogo
+
+    /// Sube la foto de un producto y devuelve su camino dentro del bucket.
+    ///
+    /// La carpeta es el id de la empresa porque es lo que pide la política del
+    /// storage: el bucket es uno solo para todos los negocios y el nombre del
+    /// archivo lo elige el cliente, así que sin esa carpeta cualquiera con
+    /// sesión podría pisar las fotos de otro.
+    ///
+    /// El nombre lleva la hora: subir una foto nueva al mismo producto no
+    /// puede quedar tapada por la que el teléfono o el navegador del cliente
+    /// ya tenían guardada con ese nombre.
+    static func subirFoto(_ jpeg: Data, productoId: String) async throws -> String {
+        guard let t = await Auth.shared.tenantActivo(), !t.supabaseUrl.isEmpty else {
+            throw ApiError.sinApi
+        }
+        let empresa = try await empresaActual()
+        let camino = "\(empresa)/\(productoId)-\(Int(Date().timeIntervalSince1970)).jpg"
+
+        guard let url = URL(string: "\(t.supabaseUrl)/storage/v1/object/catalogo/\(camino)")
+        else { throw ApiError.sinApi }
+
+        var req = URLRequest(url: url, timeoutInterval: 60)
+        req.httpMethod = "POST"
+        req.setValue(t.anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        // Sin esto, volver a subir contesta 409 en vez de reemplazar.
+        req.setValue("true", forHTTPHeaderField: "x-upsert")
+        guard let token = await Auth.shared.tokenVigente() else {
+            throw ApiError.http(status: 401, mensaje: "Volvé a entrar para subir la foto.",
+                                ruta: "/storage")
+        }
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = jpeg
+
+        let datos: Data
+        let resp: URLResponse
+        do { (datos, resp) = try await URLSession.shared.data(for: req) }
+        catch { throw ApiError.deRed(error) }
+
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else {
+            let detalle = String(data: datos, encoding: .utf8) ?? ""
+            throw ApiError.http(status: code,
+                                mensaje: detalle.isEmpty ? "No pudimos subir la foto." : detalle,
+                                ruta: "/storage")
+        }
+        return camino
+    }
+
+    /// La dirección pública de una foto, para mostrarla.
+    static func urlDeFoto(_ camino: String, _ t: TenantConfig) -> URL? {
+        guard !camino.isEmpty else { return nil }
+        return URL(string: "\(t.supabaseUrl)/storage/v1/object/public/catalogo/\(camino)")
     }
 
     // MARK: - Catálogo público

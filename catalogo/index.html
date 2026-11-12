@@ -105,7 +105,18 @@
   .card .cuerpo { padding: 10px 11px 12px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
   .card .nom { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
   .card .precio { font-size: 15px; font-weight: 700; margin-top: auto; padding-top: 6px; }
-  .card .cat { font-size: 11px; color: var(--tinta3); }
+  /* En la tarjeta la descripción va recortada a dos líneas: si una es larga
+     y otra corta, las tarjetas quedan de distinto alto y la grilla se rompe.
+     Entera se lee al abrir el producto. */
+  .card .cat {
+    font-size: 11px; color: var(--tinta3);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .hoja .desc {
+    margin: 10px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--tinta2);
+    white-space: pre-wrap;
+  }
 
   /* ---------- hoja de producto ---------- */
   .velo {
@@ -351,7 +362,8 @@ function tarjeta(a) {
           : `<div class="sinfoto">${esc(a.nombre.trim()[0] || "·")}</div>`}
       <div class="cuerpo">
         <div class="nom">${esc(a.nombre)}</div>
-        ${a.categoria ? `<div class="cat">${esc(a.categoria)}</div>` : ""}
+        ${a.descripcion ? `<div class="cat">${esc(a.descripcion)}</div>`
+                      : a.categoria ? `<div class="cat">${esc(a.categoria)}</div>` : ""}
         <div class="precio">${gs(a.precio)}</div>
       </div>
     </button>`;
@@ -372,6 +384,7 @@ function abrirProducto(id) {
     <h2>${esc(a.nombre)}</h2>
     ${a.categoria ? `<div class="cat" style="color:var(--tinta3);font-size:12.5px">${esc(a.categoria)}</div>` : ""}
     <div class="precio">${gs(a.precio)}</div>
+    ${a.descripcion ? `<p class="desc">${esc(a.descripcion)}</p>` : ""}
 
     <div class="contador">
       <button id="menos" aria-label="Menos">−</button>
