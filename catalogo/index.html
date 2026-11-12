@@ -194,7 +194,14 @@ function waNumero(t) {
 
 async function leer(vista, query) {
   const r = await fetch(`${SUPABASE}/rest/v1/${vista}?${query}`, {
-    headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${ANON}`,
+      // El schema va en la cabecera y no en la ruta. Sin esto PostgREST busca
+      // en `public`, que es donde no está nada de esto, y contesta "no
+      // encontré la tabla" con un 404 que parece un catálogo inexistente.
+      "Accept-Profile": "zentra",
+    },
   });
   if (!r.ok) throw new Error(`${vista}: ${r.status}`);
   return r.json();
@@ -202,7 +209,31 @@ async function leer(vista, query) {
 
 // ---------- estado ----------
 
-const slug = new URLSearchParams(location.search).get("e")?.trim().toLowerCase() || "";
+/**
+ * De dónde sale a qué negocio corresponde esta página.
+ *
+ * De la dirección: `catalogo.neura.com.py/velas-ana`. Se dicta por teléfono y
+ * se pega en la bio de Instagram, así que tiene que leerse como un nombre y no
+ * como una consulta con signos.
+ *
+ * `BASE` es lo que hay que sacarle adelante cuando el sitio no vive en la raíz
+ * del dominio —en GitHub Pages cuelga del nombre del repo—. Con dominio propio
+ * queda en "".
+ *
+ * `?e=` sigue andando: es lo que se usa para probar y lo que queda escrito en
+ * cualquier enlace viejo.
+ */
+const BASE = "__BASE__";
+
+const slug = (() => {
+  const q = new URLSearchParams(location.search).get("e");
+  if (q) return q.trim().toLowerCase();
+  let ruta = location.pathname;
+  if (BASE && ruta.startsWith(BASE)) ruta = ruta.slice(BASE.length);
+  const ultimo = ruta.split("/").filter(Boolean).pop() || "";
+  // `index.html` es la raíz, no un negocio llamado así.
+  return /^[a-z0-9][a-z0-9-]*$/.test(ultimo) ? ultimo : "";
+})();
 let negocio = null;
 let articulos = [];
 let categoria = "Todos";
@@ -222,7 +253,7 @@ const total = () => items().reduce((a, l) => a + l.precio * l.qty, 0);
 // ---------- arranque ----------
 
 (async function iniciar() {
-  if (!slug) return vacio("Falta el código del negocio", "La dirección tiene que terminar en <code>?e=</code> y el nombre del negocio.");
+  if (!slug) return vacio("Falta el código del negocio", "La dirección tiene que terminar con el nombre del negocio.");
 
   try {
     const [negocios, arts] = await Promise.all([

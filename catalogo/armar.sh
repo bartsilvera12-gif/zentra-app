@@ -18,9 +18,20 @@ PLIST=../ios-nativo/ZentraMovil/Recursos/Secretos.plist
 KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPABASE_ANON_KEY" "$PLIST")
 URL=$(/usr/libexec/PlistBuddy -c "Print :SUPABASE_URL" "$PLIST")
 
+# Lo que hay que sacarle adelante a la dirección cuando el sitio no vive en la
+# raíz del dominio. En GitHub Pages cuelga del nombre del repo; con dominio
+# propio va vacío. Se pasa como primer argumento.
+BASE="${1-}"
+
 mkdir -p dist
 sed -e "s|__ANON__|$KEY|" \
+    -e "s|__BASE__|$BASE|" \
     -e "s|https://db-zentra.neura.com.py|$URL|" \
     index.html > dist/index.html
 
-echo "dist/index.html listo · Supabase: $URL"
+# La misma página como 404: un hosting estático no sabe qué es `/velas-ana`,
+# así que contesta con la de "no encontrado" — y si esa página es ésta, la
+# dirección limpia funciona sin que haya que crear un archivo por cliente.
+cp dist/index.html dist/404.html
+
+echo "dist listo · Supabase: $URL · base: ${BASE:-(raíz)}"
