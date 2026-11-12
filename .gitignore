@@ -76,3 +76,6 @@ ios-nativo/ZentraMovil/Recursos/GoogleService-Info.plist
 # una copia entera del repo adentro del repo.
 .claude/worktrees/
 build-sim/
+
+# El catálogo armado lleva la anon key adentro: se genera, no se versiona.
+catalogo/dist/
