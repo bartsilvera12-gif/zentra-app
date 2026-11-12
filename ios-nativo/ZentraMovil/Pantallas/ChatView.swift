@@ -47,7 +47,7 @@ struct ChatView: View {
 
     /// El mensaje al que acabamos de saltar desde una cita, para destacarlo un
     /// segundo. Sin esto se llega al mensaje sin saber a cuál se llegó.
-    @State private var destacado: UUID?
+    @State private var destacado: String?
 
     /// El anuncio del que vino este contacto, si vino de uno.
     @State private var pauta: Pauta?
@@ -239,7 +239,7 @@ struct ChatView: View {
 
     /// A qué mensaje hay que saltar. Lo pone `irALaCita` y lo consume la lista,
     /// que es la única que tiene el `ScrollViewProxy`.
-    @State private var saltarA: UUID?
+    @State private var saltarA: String?
 
     /// El rótulo del día si este mensaje abre uno nuevo; `nil` si sigue el mismo.
     private func diaSiCambia(en i: Int) -> String? {
@@ -374,8 +374,13 @@ struct ChatView: View {
 
                 // Una foto con pie vuelve a tener globo; sin pie, va sola.
                 if !m.texto.isEmpty || !m.epigrafe.isEmpty {
-                    Text(TextoConEnlaces.armar(m.texto.isEmpty ? m.epigrafe : m.texto, claro: m.mio))
+                    let cuerpo = m.texto.isEmpty ? m.epigrafe : m.texto
+                    let largo = !abiertos.contains(m.id) && Self.esLargo(cuerpo)
+
+                    Text(TextoConEnlaces.armar(largo ? Self.recortar(cuerpo) : cuerpo,
+                                               claro: m.mio))
                         .font(Tipo.barlow(.regular, 14))
+                        .lineLimit(largo ? Self.lineasCortadas : nil)
                         .tint(m.mio ? .white : C.azulMedio)
                         .foregroundStyle(m.mio ? .white : t.ink)
                         .multilineTextAlignment(.leading)
@@ -393,6 +398,18 @@ struct ChatView: View {
                         // Seleccionable: copiar un número o una dirección de un
                         // mensaje es de las cosas que más se hacen en un chat.
                         .textSelection(.enabled)
+
+                    if largo {
+                        Button {
+                            withAnimation(.snappy(duration: 0.22)) { abiertos.insert(m.id) }
+                        } label: {
+                            Text("Ver más")
+                                .font(Tipo.barlow(.semibold, 12.5))
+                                .foregroundStyle(m.mio ? .white : C.azulMedio)
+                                .underline()
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 HStack(spacing: 4) {
@@ -431,11 +448,42 @@ struct ChatView: View {
         .simultaneousGesture(gestoResponder(m))
     }
 
+    /// Los mensajes largos que la persona decidió abrir.
+    ///
+    /// Vive en la pantalla y no en el mensaje: abrir uno es algo de este rato,
+    /// no un dato que haya que guardar. Al salir del chat se olvida, que es lo
+    /// que uno espera.
+    @State private var abiertos: Set<String> = []
+
+    /// Cuántas líneas se muestran antes de cortar.
+    ///
+    /// Ocho: un saludo largo o un mensaje de bienvenida entra entero, y lo que
+    /// se corta es de verdad un texto largo. Con menos, se corta todo y el
+    /// "Ver más" se vuelve un trámite en cada globo.
+    private static let lineasCortadas = 8
+
+    /// A partir de cuánto se corta. Se mira el largo y los renglones: un
+    /// mensaje de veinte líneas cortas también es largo aunque tenga pocas
+    /// letras.
+    static func esLargo(_ t: String) -> Bool {
+        t.count > 420 || t.components(separatedBy: "\n").count > lineasCortadas + 2
+    }
+
+    /// El recorte, por si `lineLimit` no alcanza.
+    ///
+    /// `lineLimit` sólo esconde; el texto completo sigue midiéndose y en un
+    /// mensaje de miles de caracteres eso se nota al desplazar. Cortarlo
+    /// además mantiene el globo liviano.
+    static func recortar(_ t: String) -> String {
+        guard t.count > 600 else { return t }
+        return String(t.prefix(600)) + "…"
+    }
+
     /// Hasta dónde hay que arrastrar para que quede citado.
     private static let umbralCita: CGFloat = 56
 
     /// Cuál globo se está arrastrando, y cuánto. Uno solo a la vez.
-    @State private var arrastrado: UUID?
+    @State private var arrastrado: String?
     @State private var dx: CGFloat = 0
     /// El dedo está moviendo la barra de un audio. Los dos gestos son
     /// horizontales y conviven por `simultaneousGesture`, así que el del globo

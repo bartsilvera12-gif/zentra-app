@@ -141,7 +141,19 @@ struct Compra: Identifiable, Equatable {
 }
 
 struct Mensaje: Identifiable, Equatable {
-    var id = UUID()
+    /// Identidad del mensaje, **estable entre lecturas**.
+    ///
+    /// Era un `UUID()` nuevo en cada parseo, y eso rompía dos cosas a la vez.
+    /// El chat se relee cada 8 segundos: con ids nuevos, `nuevos != msgs`
+    /// daba distinto siempre aunque no hubiera llegado nada, así que la lista
+    /// se reemplazaba entera y SwiftUI rehacía todos los globos. Ahí se perdía
+    /// el reproductor de audio a mitad de una nota de voz — "se corta en
+    /// lugares random" era, siempre, a los 8 segundos de haberle dado play.
+    ///
+    /// Sale del `wamid` cuando está, que es el identificador del mensaje en
+    /// WhatsApp. Cuando no —algunos avisos del sistema no lo traen— se arma
+    /// con lo que no cambia entre dos lecturas del mismo mensaje.
+    var id: String = UUID().uuidString
     var mio: Bool
     var texto: String
     var hora: String
@@ -1308,6 +1320,7 @@ enum RepoERP {
         var base = Mensaje(mio: mio, texto: "", hora: hora(m["created_at"]),
                            fecha: fecha(m["created_at"]), tick: "")
         base.wamid = noVacio(m["wa_message_id"]) ?? ""
+        base.id = identidad(m, base)
         if let c = cita(crudo) {
             base.citaTexto = c.texto
             base.citaMia = c.mio
@@ -1370,6 +1383,19 @@ enum RepoERP {
             base.tick = estado.contains("read") ? "✓✓" : "✓"
         }
         return base
+    }
+
+    /// Lo que identifica a este mensaje entre dos lecturas.
+    ///
+    /// El `wamid` primero. Si no vino, el id de la fila en la base. Y si
+    /// tampoco —no debería pasar—, lo que no cambia: de quién es, la hora, y
+    /// el principio de lo que dice. Nunca algo al azar: un id al azar hace que
+    /// el mensaje parezca otro cada vez que se lee.
+    private static func identidad(_ m: [String: Any], _ base: Mensaje) -> String {
+        if !base.wamid.isEmpty { return "w:" + base.wamid }
+        if let fila = noVacio(m["id"]) { return "f:" + fila }
+        let cuerpo = base.texto.isEmpty ? base.epigrafe : base.texto
+        return "x:\(base.mio):\(base.hora):\(cuerpo.prefix(40))"
     }
 
     /// A qué mensaje responde éste. WhatsApp lo manda en el contexto del sobre.
