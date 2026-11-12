@@ -132,6 +132,15 @@ enum Directorio {
         throw TenantError.noEncontrado(codigo)
     }
 
+    /// La empresa tal como viene escrita en el paquete, si está.
+    ///
+    /// Es la verdad: viaja adentro del `.ipa`, no depende de la red y se
+    /// actualiza con cada versión de la app. Lo guardado en el teléfono es
+    /// sólo un respaldo para cuando el directorio de red no contesta.
+    static func delPaquete(_ codigo: String) -> TenantConfig? {
+        enJson(normalizar(codigo))
+    }
+
     private static func enJson(_ codigo: String) -> TenantConfig? {
         guard !Config.directorioJson.isEmpty,
               let d = Config.directorioJson.data(using: .utf8),

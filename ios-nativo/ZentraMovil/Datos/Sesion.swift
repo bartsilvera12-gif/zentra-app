@@ -64,7 +64,26 @@ final class Estado {
     func reanudar() async {
         guard await Auth.shared.haySesion() else { return }
         let codigo = Guardado.ultimoCodigo
-        guard let t = codigo.isEmpty ? Directorio.publico() : Guardado.leer(codigo) else { return }
+        // El paquete manda sobre lo guardado.
+        //
+        // Esto leía sólo lo guardado en el teléfono, y lo guardado se escribió
+        // con la versión de la app que estaba instalada ese día. Cualquier
+        // campo que agreguemos después queda vacío ahí para siempre: quien
+        // entró una vez y no volvió a escribir el código nunca se entera del
+        // cambio.
+        //
+        // Pasó con el chat. Conversaciones se volvió algo que la empresa pide
+        // en el directorio, y a los asesores de Neura —que entraron hace
+        // meses y la app les reanuda sola— el botón les desapareció: su copia
+        // guardada no tenía la clave.
+        //
+        // Lo guardado sigue existiendo para la empresa que no viene en el
+        // paquete y cuyo directorio de red no contesta. Ése es su trabajo.
+        let delPaquete = codigo.isEmpty ? Directorio.publico() : Directorio.delPaquete(codigo)
+        guard let t = delPaquete ?? Guardado.leer(codigo) else { return }
+        // Se vuelve a guardar: la próxima vez ya está al día aunque esto no
+        // llegue a correr.
+        if !codigo.isEmpty { Guardado.guardar(t) }
         await Auth.shared.activar(t)
         tenant = t
         // Si el perfil falla, la sesión venció o se revocó: se vuelve al login
