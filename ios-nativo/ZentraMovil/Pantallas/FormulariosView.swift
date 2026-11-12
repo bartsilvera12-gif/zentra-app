@@ -701,7 +701,13 @@ struct NuevoProductoView: View {
         } ?? img
 
         let destino = CGSize(width: lado, height: lado)
-        return UIGraphicsImageRenderer(size: destino).image { _ in
+        // `scale = 1` y no la de la pantalla. El dibujo usa por defecto la del
+        // teléfono —3× en un iPhone—, así que pedir mil puntos devolvía una
+        // imagen de tres mil píxeles y un mega. Acá los puntos son píxeles:
+        // lo que se sube es exactamente lo que se pidió.
+        let formato = UIGraphicsImageRendererFormat.default()
+        formato.scale = 1
+        return UIGraphicsImageRenderer(size: destino, format: formato).image { _ in
             cuadrada.draw(in: CGRect(origin: .zero, size: destino))
         }
     }
