@@ -29,14 +29,20 @@ comment on column zentra.productos.en_catalogo is
 
 -- ---------- la vista pública, con lo nuevo ----------
 --
--- Se reescribe entera porque una vista no se parchea. Lo que cambia: sale la
--- descripción, y un producto marcado para no publicarse no aparece.
+-- Se borra y se rehace, no se reemplaza: `create or replace view` sólo deja
+-- agregar columnas al final, y la descripción va al lado del nombre, que es
+-- donde se lee. Reemplazarla corta con "cannot change name of view column".
+--
+-- Lo que cambia: sale la descripción, y un producto marcado para no publicarse
+-- no aparece.
 --
 -- Lo que NO cambia, y conviene releer cada vez que se toca esto: acá no entran
 -- el costo, el stock ni el proveedor. Es la única puerta abierta y lo que salga
 -- por ella lo ve cualquiera.
 
-create or replace view zentra.catalogo_articulos as
+drop view if exists zentra.catalogo_articulos;
+
+create view zentra.catalogo_articulos as
   select e.catalogo_slug  as slug,
          p.id,
          p.nombre,
