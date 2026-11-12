@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Catálogo</title>
 <meta name="description" content="Mirá los productos y pedí por WhatsApp.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;800&display=swap">
 <!--
   El catálogo público de un negocio.
 
@@ -14,171 +17,323 @@
   que son lo único que `anon` puede leer. Por eso la anon key viaja a la
   vista: es pública por diseño y no abre nada que las vistas no abran.
 
-  A qué negocio corresponde sale de `?e=` en la dirección. Sin eso no hay
-  página: no hay un catálogo "de todos".
+  A qué negocio corresponde sale de la dirección: `catalogo.neura.com.py/velas-ana`.
 
   El pedido no se guarda en ningún lado. Se arma un texto y se abre WhatsApp.
   Eso es el producto entero: el negocio atiende el pedido donde ya atiende
   todo lo demás, y no hay una bandeja más que alguien tenga que mirar.
+
+  ── Sobre el diseño ──
+
+  El color lo elige cada negocio de una paleta de seis, así que la página no
+  puede apoyarse en él: tiene que verse igual de bien con el rosa de una
+  velería que con el azul de una ferretería. Por eso el color aparece en tres
+  lugares contados —el botón del pedido, la categoría elegida, el punto al
+  lado del nombre— y todo lo demás es papel, tinta y una línea fina.
+
+  Lo que manda es la foto del producto. Las tarjetas no tienen marco, ni
+  sombra, ni fondo: una foto cuadrada, el nombre y el precio. En una grilla de
+  veinte productos, veinte marcos compiten entre sí y no gana ninguno.
+
+  Una sola familia tipográfica con mucho rango de peso. Dos familias en una
+  vidriera es una decisión que se nota, y acá lo que tiene que notarse es lo
+  que se vende.
 -->
 <style>
+  /* Vitrina: barra fija arriba con el pedido, y abajo una grilla de fotos sin
+     marco. El color del negocio sólo en lo que se toca. */
   :root {
     --marca: #04617A;
-    --tinta: #141a2e;
-    --tinta2: #65707f;
-    --tinta3: #8b96a5;
-    --borde: #e6e9ef;
-    --fondo: #f5f6f9;
-    --tarjeta: #ffffff;
-    --radio: 14px;
-    --sombra: 0 1px 2px rgba(20,26,46,.05), 0 8px 24px rgba(20,26,46,.06);
+    /* Sobre el color del negocio siempre va blanco: los seis de la paleta son
+       oscuros y saturados, elegidos para eso. */
+    --sobre-marca: #ffffff;
+
+    --papel: #ffffff;
+    --papel-2: #f7f7f8;
+    --tinta: #16181d;
+    --tinta-2: #5f646e;
+    --tinta-3: #9aa0ab;
+    --linea: #e8e9ec;
+
+    --radio: 10px;
+    --gutter: 18px;
+
+    --tipo: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --papel: #111216;
+      --papel-2: #191a1f;
+      --tinta: #f2f3f5;
+      --tinta-2: #a5abb6;
+      --tinta-3: #6e7682;
+      --linea: #26282e;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --papel: #111216;
+    --papel-2: #191a1f;
+    --tinta: #f2f3f5;
+    --tinta-2: #a5abb6;
+    --tinta-3: #6e7682;
+    --linea: #26282e;
+    color-scheme: dark;
+  }
+
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; }
   body {
-    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--tipo);
+    font-size: 15px;
+    line-height: 1.5;
     color: var(--tinta);
-    background: var(--fondo);
-    padding-bottom: 92px;
+    background: var(--papel);
+    -webkit-font-smoothing: antialiased;
   }
   img { display: block; max-width: 100%; }
-  button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--marca); outline-offset: 2px; }
 
-  /* ---------- encabezado ---------- */
-  .tapa { background: var(--marca); color: #fff; padding: 20px 16px 22px; }
-  .tapa .fila { display: flex; align-items: center; gap: 12px; }
-  .tapa img.logo {
-    width: 54px; height: 54px; border-radius: 13px; object-fit: cover;
-    background: rgba(255,255,255,.18); flex: 0 0 auto;
+  .ancho {
+    max-width: 1080px; margin: 0 auto;
+    padding-left: max(var(--gutter), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--gutter), env(safe-area-inset-right, 0px));
   }
-  .tapa h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
-  .tapa .sub { margin: 2px 0 0; font-size: 13px; opacity: .85; }
+
+  /* ---------- barra de arriba ---------- */
+
+  .barra {
+    position: sticky; top: 0; z-index: 30;
+    background: var(--papel);
+    border-bottom: 1px solid var(--linea);
+  }
+  @supports (backdrop-filter: blur(1px)) {
+    .barra {
+      background: color-mix(in srgb, var(--papel) 86%, transparent);
+      backdrop-filter: saturate(1.6) blur(14px);
+    }
+  }
+  .barra .ancho {
+    display: flex; align-items: center; gap: 12px;
+    padding-block: 11px;
+    padding-top: max(11px, env(safe-area-inset-top, 0px));
+  }
+  .marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .marca img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
+  /* Sin logo, un punto del color del negocio. Alcanza para que el nombre deje
+     de ser texto suelto y se lea como una marca. */
+  .punto { width: 9px; height: 9px; border-radius: 999px; background: var(--marca); flex: 0 0 auto; }
+  .marca h1 {
+    margin: 0; font-size: 16.5px; font-weight: 800; letter-spacing: -.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .pedido {
+    margin-left: auto; flex: 0 0 auto;
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px; border-radius: 999px;
+    background: var(--marca); color: var(--sobre-marca);
+    font-size: 13.5px; font-weight: 600;
+    transition: transform .16s ease;
+  }
+  .pedido:active { transform: scale(.96); }
+  .pedido .n {
+    font-variant-numeric: tabular-nums; font-weight: 800;
+    background: color-mix(in srgb, var(--sobre-marca) 24%, transparent);
+    border-radius: 999px; padding: 1px 7px;
+  }
+  /* Vacío queda como contorno: un botón sólido que no lleva a ningún lado
+     promete algo que todavía no existe. */
+  .pedido[data-vacio="si"] {
+    background: none; color: var(--tinta-2);
+    box-shadow: inset 0 0 0 1px var(--linea);
+  }
+
+  /* ---------- presentación ---------- */
+
+  .tapa { padding-block: 26px 4px; }
+  .tapa h2 {
+    margin: 0; font-size: clamp(26px, 7vw, 38px); font-weight: 800;
+    letter-spacing: -.035em; line-height: 1.08; text-wrap: balance;
+  }
+  .tapa .donde { margin: 7px 0 0; font-size: 14px; color: var(--tinta-3); }
   .tapa .nota {
-    margin: 14px 0 0; font-size: 13px; line-height: 1.5;
-    background: rgba(255,255,255,.14); padding: 10px 12px; border-radius: 10px;
+    margin: 16px 0 0; font-size: 14px; color: var(--tinta-2);
+    max-width: 62ch; white-space: pre-wrap;
+    padding-left: 13px; border-left: 2px solid var(--marca);
   }
 
   /* ---------- filtros ---------- */
-  .barra { position: sticky; top: 0; z-index: 20; background: var(--fondo); padding: 12px 0 8px; }
+
+  .filtros { padding-block: 22px 6px; display: flex; flex-direction: column; gap: 14px; }
   .buscador {
-    margin: 0 16px; display: flex; align-items: center; gap: 9px;
-    padding: 0 14px; border: 1px solid var(--borde); border-radius: 11px;
-    background: var(--tarjeta);
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 14px; height: 46px;
+    border-radius: var(--radio); background: var(--papel-2);
+    box-shadow: inset 0 0 0 1px var(--linea);
   }
+  .buscador:focus-within { box-shadow: inset 0 0 0 1.5px var(--marca); }
+  .buscador svg { flex: 0 0 auto; color: var(--tinta-3); }
   .buscador input {
-    flex: 1; min-width: 0; font-size: 16px; padding: 11px 0;
-    border: 0; background: none; color: var(--tinta); outline: none;
-    /* Safari le dibuja su propio marco al campo igual que se le saque el
-       borde: sin esto queda una cajita adentro de la caja. */
+    flex: 1; min-width: 0; height: 100%;
+    font: inherit; font-size: 16px; color: var(--tinta);
+    border: 0; background: none; outline: none;
     appearance: none; -webkit-appearance: none;
   }
-  .buscador svg { flex: 0 0 auto; opacity: .45; }
-  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px 2px; scrollbar-width: none; }
+  .buscador input::placeholder { color: var(--tinta-3); }
+
+  .chips {
+    display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 calc(var(--gutter) * -1); padding: 0 var(--gutter);
+  }
   .chips::-webkit-scrollbar { display: none; }
   .chip {
-    flex: 0 0 auto; padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
-    background: var(--tarjeta); border: 1px solid var(--borde); color: var(--tinta2);
+    flex: 0 0 auto; padding: 7px 13px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; color: var(--tinta-2);
+    box-shadow: inset 0 0 0 1px var(--linea);
+    transition: color .15s ease, box-shadow .15s ease, background .15s ease;
   }
-  .chip[aria-pressed="true"] { background: var(--marca); border-color: var(--marca); color: #fff; }
+  .chip[aria-pressed="true"] { background: var(--marca); color: var(--sobre-marca); box-shadow: none; }
 
-  /* ---------- grilla ---------- */
+  /* ---------- la grilla ---------- */
+
   .grilla {
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px 16px;
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    column-gap: 14px; row-gap: 28px;
+    padding-block: 22px 56px;
   }
-  @media (min-width: 620px) { .grilla { grid-template-columns: repeat(3, 1fr); } }
-  @media (min-width: 900px) {
-    .grilla { grid-template-columns: repeat(4, 1fr); max-width: 1100px; margin: 0 auto; }
-    .tapa .fila, .buscador, .chips { max-width: 1100px; margin-left: auto; margin-right: auto; }
+  @media (min-width: 560px) { .grilla { grid-template-columns: repeat(3, 1fr); column-gap: 20px; row-gap: 36px; } }
+  @media (min-width: 860px) { .grilla { grid-template-columns: repeat(4, 1fr); } }
+
+  /* Sin marco, sin sombra, sin fondo: en una grilla de veinte productos,
+     veinte marcos compiten entre sí y no gana ninguno. */
+  .art { text-align: left; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .art .marco {
+    position: relative; aspect-ratio: 1; width: 100%; max-width: 100%;
+    border-radius: var(--radio); overflow: hidden; background: var(--papel-2);
   }
-  .card {
-    background: var(--tarjeta); border-radius: var(--radio); overflow: hidden;
-    box-shadow: var(--sombra); display: flex; flex-direction: column; text-align: left;
+  .art .marco img { width: 100%; height: 100%; object-fit: cover; transition: transform .45s cubic-bezier(.2,.7,.3,1); }
+  .art:hover .marco img { transform: scale(1.035); }
+  .sinfoto { width: 100%; height: 100%; display: grid; place-items: center;
+             font-size: 26px; font-weight: 300; color: var(--tinta-3); }
+  .art h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; }
+  .art .desc {
+    margin: 0; font-size: 12.5px; color: var(--tinta-3); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .card .foto { aspect-ratio: 1; width: 100%; object-fit: cover; background: #eef1f5; }
-  /* Sin foto no se deja un hueco gris: va la inicial, grande, sobre el color
-     de la marca. Un catálogo sin fotos tiene que verse decidido, no roto. */
-  .card .sinfoto {
-    aspect-ratio: 1; display: grid; place-items: center;
-    font-size: 34px; font-weight: 700; color: #fff; opacity: .95;
-    background: var(--marca);
-  }
-  .card .cuerpo { padding: 10px 11px 12px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
-  .card .nom { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
-  .card .precio { font-size: 15px; font-weight: 700; margin-top: auto; padding-top: 6px; }
-  /* En la tarjeta la descripción va recortada a dos líneas: si una es larga
-     y otra corta, las tarjetas quedan de distinto alto y la grilla se rompe.
-     Entera se lee al abrir el producto. */
-  .card .cat {
-    font-size: 11px; color: var(--tinta3);
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .hoja .desc {
-    margin: 10px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--tinta2);
-    white-space: pre-wrap;
+  .art .precio { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  /* La marca de lo que ya está en el pedido. Un número y no un tilde: lo que
+     se quiere saber al volver a la grilla es cuántos llevo. */
+  .art .llevo {
+    position: absolute; top: 8px; right: 8px;
+    min-width: 24px; height: 24px; padding: 0 7px;
+    display: grid; place-items: center; border-radius: 999px;
+    background: var(--marca); color: var(--sobre-marca);
+    font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
   }
 
-  /* ---------- hoja de producto ---------- */
+  /* ---------- hoja ---------- */
+
   .velo {
-    position: fixed; inset: 0; background: rgba(10,16,30,.55); z-index: 40;
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(12, 14, 20, .45);
     display: grid; align-items: end; justify-items: center;
+    animation: aparecer .18s ease;
   }
   .hoja {
-    background: var(--tarjeta); width: 100%; max-width: 520px;
-    border-radius: 18px 18px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
-    max-height: 92vh; overflow: auto;
+    background: var(--papel); width: 100%; max-width: 540px;
+    border-radius: 20px 20px 0 0;
+    max-height: 92vh; overflow-y: auto; overscroll-behavior: contain;
+    animation: subir .26s cubic-bezier(.2,.8,.25,1);
   }
-  @media (min-width: 620px) { .velo { align-items: center; } .hoja { border-radius: 18px; } }
-  .hoja .foto, .hoja .sinfoto { border-radius: 12px; aspect-ratio: 1; width: 100%; object-fit: cover; }
-  .hoja .sinfoto { display: grid; place-items: center; font-size: 56px; font-weight: 700; color: #fff; background: var(--marca); }
-  .hoja h2 { margin: 14px 0 2px; font-size: 19px; }
-  .hoja .precio { font-size: 21px; font-weight: 700; }
-  .contador { display: flex; align-items: center; gap: 16px; margin: 16px 0 12px; }
-  .contador button {
-    width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--borde);
-    font-size: 19px; line-height: 1; background: var(--fondo);
+  .hoja > .cuerpo {
+    padding: 18px;
+    padding-bottom: max(18px, calc(18px + env(safe-area-inset-bottom, 0px)));
   }
-  .contador span { font-size: 18px; font-weight: 700; min-width: 26px; text-align: center; }
-  textarea, input[type="text"], input[type="tel"] {
-    width: 100%; font: inherit; font-size: 16px; padding: 11px 12px;
-    border: 1px solid var(--borde); border-radius: 11px; background: var(--fondo); color: var(--tinta);
+  @media (min-width: 560px) {
+    .velo { align-items: center; }
+    .hoja { border-radius: 18px; }
   }
-  textarea { resize: vertical; min-height: 64px; }
-  label { display: block; font-size: 12px; font-weight: 600; color: var(--tinta2); margin: 12px 0 5px; }
-  .primario {
-    width: 100%; background: var(--marca); color: #fff; font-weight: 700; font-size: 16px;
-    padding: 15px; border-radius: 13px; margin-top: 14px;
+  @keyframes aparecer { from { opacity: 0 } }
+  @keyframes subir { from { transform: translateY(14px) } }
+  @media (prefers-reduced-motion: reduce) {
+    .velo, .hoja { animation: none; }
+    .art .marco img { transition: none; }
   }
-  .secundario { width: 100%; padding: 13px; color: var(--tinta2); font-weight: 600; }
 
-  /* ---------- carrito ---------- */
-  .pie {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-    background: rgba(255,255,255,.92); backdrop-filter: blur(12px);
-    border-top: 1px solid var(--borde);
+  .hoja .grande { aspect-ratio: 1; width: 100%; border-radius: 14px; overflow: hidden; background: var(--papel-2); }
+  .hoja .grande img { width: 100%; height: 100%; object-fit: cover; }
+  .hoja h2 { margin: 16px 0 3px; font-size: 21px; font-weight: 800; letter-spacing: -.02em; text-wrap: balance; }
+  .hoja .cat { font-size: 12.5px; color: var(--tinta-3); }
+  .hoja .precio-g { margin-top: 6px; font-size: 24px; font-weight: 800;
+                    font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .hoja .texto { margin: 12px 0 0; font-size: 14px; color: var(--tinta-2); white-space: pre-wrap; }
+
+  .contador { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
+  .contador button {
+    width: 42px; height: 42px; border-radius: 999px;
+    font-size: 19px; line-height: 1;
+    box-shadow: inset 0 0 0 1px var(--linea);
+    transition: transform .14s ease;
   }
-  .pie button { width: 100%; max-width: 520px; margin: 0 auto; display: flex; justify-content: space-between;
-    align-items: center; background: var(--marca); color: #fff; font-weight: 700;
-    padding: 15px 18px; border-radius: 13px; font-size: 15px; }
-  .linea { display: flex; gap: 11px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--borde); }
-  .linea .mini { width: 50px; height: 50px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; background: #eef1f5; }
-  .linea .minisin { width: 50px; height: 50px; border-radius: 9px; flex: 0 0 auto; display: grid; place-items: center;
-    background: var(--marca); color: #fff; font-weight: 700; }
+  .contador button:active { transform: scale(.92); }
+  .contador .q { font-size: 18px; font-weight: 800; min-width: 30px; text-align: center;
+                 font-variant-numeric: tabular-nums; }
+  .contador .sub { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  label { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .06em;
+          text-transform: uppercase; color: var(--tinta-3); margin: 18px 0 7px; }
+  textarea, input[type="text"], input[type="tel"] {
+    width: 100%; font: inherit; font-size: 16px; padding: 12px 13px;
+    color: var(--tinta); background: var(--papel-2);
+    border: 0; border-radius: var(--radio); outline: none;
+    box-shadow: inset 0 0 0 1px var(--linea);
+    appearance: none; -webkit-appearance: none;
+  }
+  textarea:focus, input:focus { box-shadow: inset 0 0 0 1.5px var(--marca); }
+  textarea { resize: vertical; min-height: 68px; }
+
+  .primario {
+    width: 100%; margin-top: 20px; padding: 16px;
+    border-radius: 13px; font-size: 15.5px; font-weight: 700;
+    background: var(--marca); color: var(--sobre-marca);
+    transition: transform .14s ease;
+  }
+  .primario:active { transform: scale(.985); }
+  .secundario { width: 100%; padding: 14px; margin-top: 2px; color: var(--tinta-3);
+                font-weight: 600; font-size: 14px; }
+
+  /* ---------- el pedido ---------- */
+
+  .linea { display: flex; gap: 12px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--linea); }
+  .linea .mini { width: 52px; height: 52px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; background: var(--papel-2); }
+  .linea .minisin { width: 52px; height: 52px; border-radius: 9px; flex: 0 0 auto; display: grid; place-items: center;
+                    background: var(--papel-2); color: var(--tinta-3); font-weight: 300; font-size: 17px; }
   .linea .info { flex: 1; min-width: 0; }
   .linea .info b { display: block; font-size: 13.5px; font-weight: 600; }
-  .linea .info small { color: var(--tinta2); font-size: 12px; }
-  .quitar { color: #8C2F2B; font-size: 12.5px; font-weight: 600; padding: 4px; }
+  .linea .info small { display: block; color: var(--tinta-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .quitar { color: var(--tinta-3); font-size: 12.5px; font-weight: 600; padding: 6px 2px; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; padding: 18px 0 2px; font-weight: 800; }
+  .total .n { font-size: 22px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 
-  .aviso { padding: 48px 24px; text-align: center; color: var(--tinta2); }
-  .aviso b { display: block; color: var(--tinta); font-size: 17px; margin-bottom: 6px; }
-  .oculto { display: none !important; }
+  /* ---------- avisos ---------- */
+
+  .aviso { padding: 72px 0; text-align: center; color: var(--tinta-2); }
+  .aviso b { display: block; color: var(--tinta); font-size: 19px; font-weight: 800;
+             letter-spacing: -.02em; margin-bottom: 7px; }
+  .aviso p { margin: 0 auto; font-size: 14px; max-width: 42ch; }
+
+  .pie { padding-block: 34px 44px; border-top: 1px solid var(--linea); text-align: center; }
+  .pie small { font-size: 12px; color: var(--tinta-3); }
 </style>
 </head>
 <body>
 
-<div id="app"></div>
-<div id="pie"></div>
+<div id="barra"></div>
+<main id="app" class="ancho"></main>
 <div id="capa"></div>
 
 <script>
@@ -194,6 +349,9 @@ const gs = (n) => "Gs " + Math.round(Number(n) || 0).toLocaleString("es-PY");
 
 /** La foto, armada desde el camino guardado. Nulo cuando no hay. */
 const foto = (p) => p ? `${SUPABASE}/storage/v1/object/public/catalogo/${p}` : null;
+
+/** La inicial, para el lugar de la foto que no hay. */
+const inicial = (n) => (String(n || "").trim()[0] || "·").toUpperCase();
 
 /** `0981 123 456` → `595981123456`. WhatsApp quiere el internacional sin el cero. */
 function waNumero(t) {
@@ -245,6 +403,7 @@ const slug = (() => {
   // `index.html` es la raíz, no un negocio llamado así.
   return /^[a-z0-9][a-z0-9-]*$/.test(ultimo) ? ultimo : "";
 })();
+
 let negocio = null;
 let articulos = [];
 let categoria = "Todos";
@@ -259,12 +418,14 @@ const guardar = () => {
 };
 
 const items = () => Object.values(carrito).filter((l) => l.qty > 0);
+const cuantos = () => items().reduce((a, l) => a + l.qty, 0);
 const total = () => items().reduce((a, l) => a + l.precio * l.qty, 0);
 
 // ---------- arranque ----------
 
 (async function iniciar() {
-  if (!slug) return vacio("Falta el código del negocio", "La dirección tiene que terminar con el nombre del negocio.");
+  if (!slug) return vacio("Falta el nombre del negocio",
+                          "La dirección tiene que terminar con el nombre del negocio.");
 
   try {
     const [negocios, arts] = await Promise.all([
@@ -273,11 +434,12 @@ const total = () => items().reduce((a, l) => a + l.precio * l.qty, 0);
     ]);
     negocio = negocios[0];
     articulos = arts;
-  } catch (e) {
+  } catch {
     return vacio("No pudimos cargar el catálogo", "Revisá tu conexión y volvé a intentar.");
   }
 
-  if (!negocio) return vacio("No encontramos ese catálogo", "Puede que el negocio lo haya apagado, o que la dirección esté mal escrita.");
+  if (!negocio) return vacio("No encontramos ese catálogo",
+                             "Puede que el negocio lo haya apagado, o que la dirección esté mal escrita.");
 
   document.title = negocio.nombre + " · Catálogo";
   if (negocio.color) document.documentElement.style.setProperty("--marca", negocio.color);
@@ -285,7 +447,7 @@ const total = () => items().reduce((a, l) => a + l.precio * l.qty, 0);
 })();
 
 function vacio(titulo, texto) {
-  $("#app").innerHTML = `<div class="aviso"><b>${esc(titulo)}</b>${texto}</div>`;
+  $("#app").innerHTML = `<div class="aviso"><b>${esc(titulo)}</b><p>${esc(texto)}</p></div>`;
 }
 
 // ---------- pantalla ----------
@@ -299,32 +461,29 @@ function visibles() {
   const q = busqueda.trim().toLowerCase();
   return articulos.filter((a) => {
     if (categoria !== "Todos" && (a.categoria || "").trim() !== categoria) return false;
-    return !q || a.nombre.toLowerCase().includes(q);
+    if (!q) return true;
+    return a.nombre.toLowerCase().includes(q)
+        || (a.descripcion || "").toLowerCase().includes(q);
   });
 }
 
 function dibujar() {
+  barra();
+
   const cats = categorias();
   const lista = visibles();
 
   $("#app").innerHTML = `
     <header class="tapa">
-      <div class="fila">
-        ${negocio.logo_path
-          ? `<img class="logo" src="${esc(foto(negocio.logo_path))}" alt="">`
-          : `<div class="logo"></div>`}
-        <div>
-          <h1>${esc(negocio.nombre)}</h1>
-          ${negocio.ciudad ? `<p class="sub">${esc(negocio.ciudad)}</p>` : ""}
-        </div>
-      </div>
+      <h2>${esc(negocio.nombre)}</h2>
+      ${negocio.ciudad ? `<p class="donde">${esc(negocio.ciudad)}</p>` : ""}
       ${negocio.mensaje ? `<p class="nota">${esc(negocio.mensaje)}</p>` : ""}
     </header>
 
-    <div class="barra">
+    <div class="filtros">
       <div class="buscador">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
         </svg>
         <input id="q" type="text" placeholder="Buscar producto" value="${esc(busqueda)}"
                autocomplete="off" enterkeyhint="search">
@@ -335,8 +494,11 @@ function dibujar() {
 
     ${lista.length
       ? `<div class="grilla">${lista.map(tarjeta).join("")}</div>`
-      : `<div class="aviso"><b>No hay productos</b>${busqueda || categoria !== "Todos"
-          ? "Probá con otro nombre o cambiá la categoría." : "Este negocio todavía no cargó ninguno."}</div>`}
+      : `<div class="aviso"><b>No hay productos</b><p>${busqueda || categoria !== "Todos"
+          ? "Probá con otro nombre o cambiá la categoría."
+          : "Este negocio todavía no cargó ninguno."}</p></div>`}
+
+    <footer class="pie"><small>Pedidos por WhatsApp</small></footer>
   `;
 
   const q = $("#q");
@@ -350,22 +512,45 @@ function dibujar() {
     b.addEventListener("click", () => { categoria = b.dataset.cat; dibujar(); }));
   document.querySelectorAll("[data-art]").forEach((b) =>
     b.addEventListener("click", () => abrirProducto(b.dataset.art)));
+}
 
-  pie();
+function barra() {
+  const n = cuantos();
+  $("#barra").innerHTML = `
+    <div class="barra"><div class="ancho">
+      <div class="marca">
+        ${negocio.logo_path
+          ? `<img src="${esc(foto(negocio.logo_path))}" alt="">`
+          : `<span class="punto"></span>`}
+        <h1>${esc(negocio.nombre)}</h1>
+      </div>
+      <button class="pedido" id="verPedido" data-vacio="${n ? "no" : "si"}" aria-label="Ver el pedido">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 6h15l-1.6 8.4a2 2 0 0 1-2 1.6H9.3a2 2 0 0 1-2-1.6L5.4 4H3"/>
+          <circle cx="10" cy="20" r="1.3"/><circle cx="18" cy="20" r="1.3"/>
+        </svg>
+        <span>Pedido</span>
+        ${n ? `<span class="n">${n}</span>` : ""}
+      </button>
+    </div></div>
+  `;
+  $("#verPedido").onclick = () => (cuantos() ? abrirPedido() : avisoVacio());
 }
 
 function tarjeta(a) {
   const u = foto(a.imagen_path);
+  const q = carrito[a.id]?.qty || 0;
   return `
-    <button class="card" data-art="${esc(a.id)}">
-      ${u ? `<img class="foto" src="${esc(u)}" alt="" loading="lazy">`
-          : `<div class="sinfoto">${esc(a.nombre.trim()[0] || "·")}</div>`}
-      <div class="cuerpo">
-        <div class="nom">${esc(a.nombre)}</div>
-        ${a.descripcion ? `<div class="cat">${esc(a.descripcion)}</div>`
-                      : a.categoria ? `<div class="cat">${esc(a.categoria)}</div>` : ""}
-        <div class="precio">${gs(a.precio)}</div>
+    <button class="art" data-art="${esc(a.id)}">
+      <div class="marco">
+        ${u ? `<img src="${esc(u)}" alt="" loading="lazy">`
+            : `<div class="sinfoto">${esc(inicial(a.nombre))}</div>`}
+        ${q ? `<span class="llevo">${q}</span>` : ""}
       </div>
+      <h3>${esc(a.nombre)}</h3>
+      ${a.descripcion ? `<p class="desc">${esc(a.descripcion)}</p>` : ""}
+      <div class="precio">${gs(a.precio)}</div>
     </button>`;
 }
 
@@ -379,24 +564,26 @@ function abrirProducto(id) {
   let qty = ya?.qty || 1;
 
   capa(`
-    ${u ? `<img class="foto" src="${esc(u)}" alt="">`
-        : `<div class="sinfoto">${esc(a.nombre.trim()[0] || "·")}</div>`}
+    <div class="grande">
+      ${u ? `<img src="${esc(u)}" alt="">`
+          : `<div class="sinfoto" style="font-size:52px">${esc(inicial(a.nombre))}</div>`}
+    </div>
     <h2>${esc(a.nombre)}</h2>
-    ${a.categoria ? `<div class="cat" style="color:var(--tinta3);font-size:12.5px">${esc(a.categoria)}</div>` : ""}
-    <div class="precio">${gs(a.precio)}</div>
-    ${a.descripcion ? `<p class="desc">${esc(a.descripcion)}</p>` : ""}
+    ${a.categoria ? `<div class="cat">${esc(a.categoria)}</div>` : ""}
+    <div class="precio-g">${gs(a.precio)}</div>
+    ${a.descripcion ? `<p class="texto">${esc(a.descripcion)}</p>` : ""}
 
     <div class="contador">
       <button id="menos" aria-label="Menos">−</button>
-      <span id="qty">${qty}</span>
+      <span class="q" id="qty">${qty}</span>
       <button id="mas" aria-label="Más">+</button>
-      <div style="margin-left:auto;font-weight:700" id="sub">${gs(a.precio * qty)}</div>
+      <div class="sub" id="sub">${gs(a.precio * qty)}</div>
     </div>
 
     <label for="nota">Nota para este producto</label>
     <textarea id="nota" placeholder="Color, tamaño, lo que haga falta">${esc(ya?.nota || "")}</textarea>
 
-    <button class="primario" id="agregar">${ya ? "Actualizar" : "Agregar al pedido"}</button>
+    <button class="primario" id="agregar">${ya ? "Actualizar el pedido" : "Agregar al pedido"}</button>
     <button class="secundario" id="cerrar">Seguir mirando</button>
   `);
 
@@ -409,36 +596,36 @@ function abrirProducto(id) {
   $("#agregar").onclick = () => {
     carrito[a.id] = { id: a.id, nombre: a.nombre, precio: a.precio, imagen_path: a.imagen_path,
                       qty, nota: $("#nota").value.trim() };
-    guardar(); cerrarCapa(); pie();
+    guardar(); cerrarCapa(); dibujar();
   };
   $("#cerrar").onclick = cerrarCapa;
 }
 
-// ---------- carrito ----------
+// ---------- el pedido ----------
 
-function pie() {
-  const n = items().reduce((a, l) => a + l.qty, 0);
-  $("#pie").innerHTML = n
-    ? `<div class="pie"><button id="verCarrito">
-         <span>Ver el pedido · ${n} ${n === 1 ? "producto" : "productos"}</span>
-         <span>${gs(total())}</span></button></div>`
-    : "";
-  if (n) $("#verCarrito").onclick = abrirCarrito;
+function avisoVacio() {
+  capa(`
+    <div class="aviso" style="padding:28px 0 8px">
+      <b>Tu pedido está vacío</b>
+      <p>Tocá un producto para agregarlo.</p>
+    </div>
+    <button class="primario" id="cerrar">Ver los productos</button>
+  `);
+  $("#cerrar").onclick = cerrarCapa;
 }
 
-function abrirCarrito() {
+function abrirPedido() {
   const ls = items();
-  if (!ls.length) return;
+  if (!ls.length) return avisoVacio();
 
-  const datos = JSON.parse(localStorage.getItem("datos:" + slug) || "{}");
+  let datos = {};
+  try { datos = JSON.parse(localStorage.getItem("datos:" + slug) || "{}"); } catch {}
 
   capa(`
     <h2 style="margin-top:0">Tu pedido</h2>
-    <div id="lineas">${ls.map(linea).join("")}</div>
+    <div>${ls.map(linea).join("")}</div>
 
-    <div style="display:flex;justify-content:space-between;font-weight:700;font-size:17px;padding:14px 0">
-      <span>Total</span><span>${gs(total())}</span>
-    </div>
+    <div class="total"><span>Total</span><span class="n">${gs(total())}</span></div>
 
     <label for="nom">Tu nombre</label>
     <input id="nom" type="text" value="${esc(datos.nombre || "")}" placeholder="Para saber a quién le preparamos">
@@ -454,8 +641,8 @@ function abrirCarrito() {
   document.querySelectorAll("[data-quitar]").forEach((b) =>
     b.addEventListener("click", () => {
       delete carrito[b.dataset.quitar];
-      guardar(); pie();
-      items().length ? abrirCarrito() : cerrarCapa();
+      guardar(); dibujar();
+      items().length ? abrirPedido() : cerrarCapa();
     }));
 
   $("#cerrar").onclick = cerrarCapa;
@@ -472,11 +659,11 @@ function linea(l) {
   const u = foto(l.imagen_path);
   return `<div class="linea">
     ${u ? `<img class="mini" src="${esc(u)}" alt="">`
-        : `<div class="minisin">${esc(l.nombre.trim()[0] || "·")}</div>`}
+        : `<div class="minisin">${esc(inicial(l.nombre))}</div>`}
     <div class="info">
       <b>${esc(l.nombre)}</b>
-      <small>${l.qty} × ${gs(l.precio)} = ${gs(l.qty * l.precio)}</small>
-      ${l.nota ? `<small style="display:block">“${esc(l.nota)}”</small>` : ""}
+      <small>${l.qty} × ${gs(l.precio)} · ${gs(l.qty * l.precio)}</small>
+      ${l.nota ? `<small>“${esc(l.nota)}”</small>` : ""}
     </div>
     <button class="quitar" data-quitar="${esc(l.id)}">Quitar</button>
   </div>`;
@@ -505,7 +692,7 @@ function enlaceWhatsapp(nombre, tel, obs) {
 // ---------- hoja ----------
 
 function capa(html) {
-  $("#capa").innerHTML = `<div class="velo"><div class="hoja">${html}</div></div>`;
+  $("#capa").innerHTML = `<div class="velo"><div class="hoja"><div class="cuerpo">${html}</div></div></div>`;
   document.body.style.overflow = "hidden";
   $("#capa .velo").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) cerrarCapa();
@@ -516,6 +703,8 @@ function cerrarCapa() {
   $("#capa").innerHTML = "";
   document.body.style.overflow = "";
 }
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") cerrarCapa(); });
 </script>
 </body>
 </html>

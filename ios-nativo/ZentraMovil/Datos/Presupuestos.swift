@@ -141,7 +141,7 @@ struct Catalogo: Equatable {
 
     /// Dónde vive el catálogo. Un solo sitio para todos los negocios: quién es
     /// cada uno lo dice la dirección.
-    static let sitio = "https://bartsilvera12-gif.github.io/zentra-catalogo"
+    static let sitio = "https://catalogo.neura.com.py"
 
     var enlace: String { "\(Self.sitio)/\(direccion)" }
 
