@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Catálogo</title>
 <meta name="description" content="Mirá los productos y pedí por WhatsApp.">
+<meta name="theme-color" content="#042E3B">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;800&display=swap">
@@ -40,45 +41,36 @@
   que se vende.
 -->
 <style>
-  /* Vitrina: barra fija arriba con el pedido, y abajo una grilla de fotos sin
-     marco. El color del negocio sólo en lo que se toca. */
+  /* Vitrina de marca: la página entera es el color del negocio, profundizado
+     para que el texto blanco se lea. Las fotos flotan sobre ese color sin
+     marco, y lo único claro es lo que hay que tocar. */
   :root {
+    /* Los tres los reescribe el script con el color del negocio. Lo que queda
+       acá es el azul de Zentra, por si la página se abre sin negocio. */
     --marca: #04617A;
-    /* Sobre el color del negocio siempre va blanco: los seis de la paleta son
-       oscuros y saturados, elegidos para eso. */
-    --sobre-marca: #ffffff;
+    --fondo: #053F50;
+    --fondo-hondo: #042E3B;
 
-    --papel: #ffffff;
-    --papel-2: #f7f7f8;
-    --tinta: #16181d;
-    --tinta-2: #5f646e;
-    --tinta-3: #9aa0ab;
-    --linea: #e8e9ec;
+    /* Sobre el color van blancos con alfa y no grises fijos: así el tono del
+       negocio se transparenta en cada superficie y la página se ve de un solo
+       material, no de parches. */
+    --superficie: rgba(255, 255, 255, .085);
+    --superficie-2: rgba(255, 255, 255, .14);
+    --borde: rgba(255, 255, 255, .16);
 
-    --radio: 10px;
+    --tinta: #ffffff;
+    --tinta-2: rgba(255, 255, 255, .76);
+    --tinta-3: rgba(255, 255, 255, .54);
+
+    /* Lo claro: botones principales y campos. Es el contraste más fuerte que
+       hay en la página, así que se guarda para lo que se toca. */
+    --claro: #ffffff;
+    --claro-tinta: #16181d;
+
+    --radio: 12px;
     --gutter: 18px;
-
     --tipo: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  }
 
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --papel: #111216;
-      --papel-2: #191a1f;
-      --tinta: #f2f3f5;
-      --tinta-2: #a5abb6;
-      --tinta-3: #6e7682;
-      --linea: #26282e;
-      color-scheme: dark;
-    }
-  }
-  :root[data-theme="dark"] {
-    --papel: #111216;
-    --papel-2: #191a1f;
-    --tinta: #f2f3f5;
-    --tinta-2: #a5abb6;
-    --tinta-3: #6e7682;
-    --linea: #26282e;
     color-scheme: dark;
   }
 
@@ -89,13 +81,14 @@
     font-size: 15px;
     line-height: 1.5;
     color: var(--tinta);
-    background: var(--papel);
+    background: var(--fondo);
+    min-height: 100%;
     -webkit-font-smoothing: antialiased;
   }
   img { display: block; max-width: 100%; }
   button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
   a { color: inherit; }
-  :focus-visible { outline: 2px solid var(--marca); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--claro); outline-offset: 2px; }
 
   .ancho {
     max-width: 1080px; margin: 0 auto;
@@ -107,14 +100,8 @@
 
   .barra {
     position: sticky; top: 0; z-index: 30;
-    background: var(--papel);
-    border-bottom: 1px solid var(--linea);
-  }
-  @supports (backdrop-filter: blur(1px)) {
-    .barra {
-      background: color-mix(in srgb, var(--papel) 86%, transparent);
-      backdrop-filter: saturate(1.6) blur(14px);
-    }
+    background: var(--fondo-hondo);
+    border-bottom: 1px solid var(--borde);
   }
   .barra .ancho {
     display: flex; align-items: center; gap: 12px;
@@ -122,60 +109,60 @@
     padding-top: max(11px, env(safe-area-inset-top, 0px));
   }
   .marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .marca img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
-  /* Sin logo, un punto del color del negocio. Alcanza para que el nombre deje
-     de ser texto suelto y se lea como una marca. */
-  .punto { width: 9px; height: 9px; border-radius: 999px; background: var(--marca); flex: 0 0 auto; }
+  .marca img { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; }
   .marca h1 {
     margin: 0; font-size: 16.5px; font-weight: 800; letter-spacing: -.02em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* El botón del pedido va claro sobre el color: es lo único de la barra que
+     se toca, y el blanco es el contraste más fuerte que tiene la página. */
   .pedido {
     margin-left: auto; flex: 0 0 auto;
     display: flex; align-items: center; gap: 8px;
     padding: 9px 14px; border-radius: 999px;
-    background: var(--marca); color: var(--sobre-marca);
-    font-size: 13.5px; font-weight: 600;
+    background: var(--claro); color: var(--claro-tinta);
+    font-size: 13.5px; font-weight: 700;
     transition: transform .16s ease;
   }
   .pedido:active { transform: scale(.96); }
   .pedido .n {
     font-variant-numeric: tabular-nums; font-weight: 800;
-    background: color-mix(in srgb, var(--sobre-marca) 24%, transparent);
+    background: var(--marca); color: #fff;
     border-radius: 999px; padding: 1px 7px;
   }
-  /* Vacío queda como contorno: un botón sólido que no lleva a ningún lado
+  /* Vacío queda como contorno: un botón lleno que no lleva a ningún lado
      promete algo que todavía no existe. */
   .pedido[data-vacio="si"] {
     background: none; color: var(--tinta-2);
-    box-shadow: inset 0 0 0 1px var(--linea);
+    box-shadow: inset 0 0 0 1px var(--borde);
   }
 
   /* ---------- presentación ---------- */
 
-  .tapa { padding-block: 26px 4px; }
+  .tapa { padding-block: 30px 4px; }
   .tapa h2 {
-    margin: 0; font-size: clamp(26px, 7vw, 38px); font-weight: 800;
-    letter-spacing: -.035em; line-height: 1.08; text-wrap: balance;
+    margin: 0; font-size: clamp(30px, 9vw, 46px); font-weight: 800;
+    letter-spacing: -.04em; line-height: 1.02; text-wrap: balance;
   }
-  .tapa .donde { margin: 7px 0 0; font-size: 14px; color: var(--tinta-3); }
+  .tapa .donde { margin: 9px 0 0; font-size: 14px; color: var(--tinta-3); }
   .tapa .nota {
-    margin: 16px 0 0; font-size: 14px; color: var(--tinta-2);
+    margin: 18px 0 0; font-size: 14px; color: var(--tinta-2);
     max-width: 62ch; white-space: pre-wrap;
-    padding-left: 13px; border-left: 2px solid var(--marca);
+    padding: 12px 14px; border-radius: var(--radio);
+    background: var(--superficie);
   }
 
   /* ---------- filtros ---------- */
 
-  .filtros { padding-block: 22px 6px; display: flex; flex-direction: column; gap: 14px; }
+  .filtros { padding-block: 24px 6px; display: flex; flex-direction: column; gap: 14px; }
   .buscador {
     display: flex; align-items: center; gap: 10px;
     padding: 0 14px; height: 46px;
-    border-radius: var(--radio); background: var(--papel-2);
-    box-shadow: inset 0 0 0 1px var(--linea);
+    border-radius: var(--radio); background: var(--superficie);
+    box-shadow: inset 0 0 0 1px var(--borde);
   }
-  .buscador:focus-within { box-shadow: inset 0 0 0 1.5px var(--marca); }
+  .buscador:focus-within { box-shadow: inset 0 0 0 1.5px var(--claro); }
   .buscador svg { flex: 0 0 auto; color: var(--tinta-3); }
   .buscador input {
     flex: 1; min-width: 0; height: 100%;
@@ -193,45 +180,48 @@
   .chip {
     flex: 0 0 auto; padding: 7px 13px; border-radius: 999px;
     font-size: 13px; font-weight: 600; color: var(--tinta-2);
-    box-shadow: inset 0 0 0 1px var(--linea);
+    box-shadow: inset 0 0 0 1px var(--borde);
     transition: color .15s ease, box-shadow .15s ease, background .15s ease;
   }
-  .chip[aria-pressed="true"] { background: var(--marca); color: var(--sobre-marca); box-shadow: none; }
+  .chip[aria-pressed="true"] {
+    background: var(--claro); color: var(--claro-tinta); box-shadow: none; font-weight: 700;
+  }
 
   /* ---------- la grilla ---------- */
 
   .grilla {
     display: grid; grid-template-columns: repeat(2, 1fr);
     column-gap: 14px; row-gap: 28px;
-    padding-block: 22px 56px;
+    padding-block: 24px 56px;
   }
   @media (min-width: 560px) { .grilla { grid-template-columns: repeat(3, 1fr); column-gap: 20px; row-gap: 36px; } }
   @media (min-width: 860px) { .grilla { grid-template-columns: repeat(4, 1fr); } }
 
-  /* Sin marco, sin sombra, sin fondo: en una grilla de veinte productos,
-     veinte marcos compiten entre sí y no gana ninguno. */
-  .art { text-align: left; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  /* Sin marco, sin sombra: la foto se apoya en el color y ya se recorta sola.
+     En una grilla de veinte productos, veinte marcos compiten entre sí y no
+     gana ninguno. */
+  .art { text-align: left; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
   .art .marco {
     position: relative; aspect-ratio: 1; width: 100%; max-width: 100%;
-    border-radius: var(--radio); overflow: hidden; background: var(--papel-2);
+    border-radius: var(--radio); overflow: hidden; background: var(--superficie);
   }
   .art .marco img { width: 100%; height: 100%; object-fit: cover; transition: transform .45s cubic-bezier(.2,.7,.3,1); }
   .art:hover .marco img { transform: scale(1.035); }
   .sinfoto { width: 100%; height: 100%; display: grid; place-items: center;
-             font-size: 26px; font-weight: 300; color: var(--tinta-3); }
+             font-size: 28px; font-weight: 300; color: var(--tinta-3); }
   .art h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; }
   .art .desc {
     margin: 0; font-size: 12.5px; color: var(--tinta-3); line-height: 1.4;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .art .precio { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-  /* La marca de lo que ya está en el pedido. Un número y no un tilde: lo que
-     se quiere saber al volver a la grilla es cuántos llevo. */
+  .art .precio { font-size: 14.5px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  /* Un número y no un tilde: al volver a la grilla, lo que se quiere saber es
+     cuántos lleva, no si lleva. */
   .art .llevo {
     position: absolute; top: 8px; right: 8px;
-    min-width: 24px; height: 24px; padding: 0 7px;
+    min-width: 25px; height: 25px; padding: 0 7px;
     display: grid; place-items: center; border-radius: 999px;
-    background: var(--marca); color: var(--sobre-marca);
+    background: var(--claro); color: var(--claro-tinta);
     font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
   }
 
@@ -239,14 +229,15 @@
 
   .velo {
     position: fixed; inset: 0; z-index: 50;
-    background: rgba(12, 14, 20, .45);
+    background: rgba(4, 6, 10, .6);
     display: grid; align-items: end; justify-items: center;
     animation: aparecer .18s ease;
   }
   .hoja {
-    background: var(--papel); width: 100%; max-width: 540px;
-    border-radius: 20px 20px 0 0;
+    background: var(--fondo-hondo); width: 100%; max-width: 540px;
+    border-radius: 22px 22px 0 0;
     max-height: 92vh; overflow-y: auto; overscroll-behavior: contain;
+    box-shadow: 0 -1px 0 var(--borde);
     animation: subir .26s cubic-bezier(.2,.8,.25,1);
   }
   .hoja > .cuerpo {
@@ -255,7 +246,7 @@
   }
   @media (min-width: 560px) {
     .velo { align-items: center; }
-    .hoja { border-radius: 18px; }
+    .hoja { border-radius: 20px; }
   }
   @keyframes aparecer { from { opacity: 0 } }
   @keyframes subir { from { transform: translateY(14px) } }
@@ -264,19 +255,19 @@
     .art .marco img { transition: none; }
   }
 
-  .hoja .grande { aspect-ratio: 1; width: 100%; border-radius: 14px; overflow: hidden; background: var(--papel-2); }
+  .hoja .grande { aspect-ratio: 1; width: 100%; border-radius: 14px; overflow: hidden; background: var(--superficie); }
   .hoja .grande img { width: 100%; height: 100%; object-fit: cover; }
-  .hoja h2 { margin: 16px 0 3px; font-size: 21px; font-weight: 800; letter-spacing: -.02em; text-wrap: balance; }
+  .hoja h2 { margin: 16px 0 3px; font-size: 22px; font-weight: 800; letter-spacing: -.025em; text-wrap: balance; }
   .hoja .cat { font-size: 12.5px; color: var(--tinta-3); }
-  .hoja .precio-g { margin-top: 6px; font-size: 24px; font-weight: 800;
-                    font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .hoja .precio-g { margin-top: 6px; font-size: 26px; font-weight: 800;
+                    font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
   .hoja .texto { margin: 12px 0 0; font-size: 14px; color: var(--tinta-2); white-space: pre-wrap; }
 
   .contador { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
   .contador button {
     width: 42px; height: 42px; border-radius: 999px;
     font-size: 19px; line-height: 1;
-    box-shadow: inset 0 0 0 1px var(--linea);
+    box-shadow: inset 0 0 0 1px var(--borde);
     transition: transform .14s ease;
   }
   .contador button:active { transform: scale(.92); }
@@ -288,18 +279,19 @@
           text-transform: uppercase; color: var(--tinta-3); margin: 18px 0 7px; }
   textarea, input[type="text"], input[type="tel"] {
     width: 100%; font: inherit; font-size: 16px; padding: 12px 13px;
-    color: var(--tinta); background: var(--papel-2);
+    color: var(--tinta); background: var(--superficie);
     border: 0; border-radius: var(--radio); outline: none;
-    box-shadow: inset 0 0 0 1px var(--linea);
+    box-shadow: inset 0 0 0 1px var(--borde);
     appearance: none; -webkit-appearance: none;
   }
-  textarea:focus, input:focus { box-shadow: inset 0 0 0 1.5px var(--marca); }
+  textarea::placeholder, input::placeholder { color: var(--tinta-3); }
+  textarea:focus, input:focus { box-shadow: inset 0 0 0 1.5px var(--claro); }
   textarea { resize: vertical; min-height: 68px; }
 
   .primario {
     width: 100%; margin-top: 20px; padding: 16px;
-    border-radius: 13px; font-size: 15.5px; font-weight: 700;
-    background: var(--marca); color: var(--sobre-marca);
+    border-radius: 14px; font-size: 15.5px; font-weight: 800;
+    background: var(--claro); color: var(--claro-tinta);
     transition: transform .14s ease;
   }
   .primario:active { transform: scale(.985); }
@@ -308,25 +300,25 @@
 
   /* ---------- el pedido ---------- */
 
-  .linea { display: flex; gap: 12px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--linea); }
-  .linea .mini { width: 52px; height: 52px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; background: var(--papel-2); }
-  .linea .minisin { width: 52px; height: 52px; border-radius: 9px; flex: 0 0 auto; display: grid; place-items: center;
-                    background: var(--papel-2); color: var(--tinta-3); font-weight: 300; font-size: 17px; }
+  .linea { display: flex; gap: 12px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--borde); }
+  .linea .mini { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; background: var(--superficie); }
+  .linea .minisin { width: 52px; height: 52px; border-radius: 10px; flex: 0 0 auto; display: grid; place-items: center;
+                    background: var(--superficie); color: var(--tinta-3); font-weight: 300; font-size: 17px; }
   .linea .info { flex: 1; min-width: 0; }
   .linea .info b { display: block; font-size: 13.5px; font-weight: 600; }
   .linea .info small { display: block; color: var(--tinta-3); font-size: 12px; font-variant-numeric: tabular-nums; }
   .quitar { color: var(--tinta-3); font-size: 12.5px; font-weight: 600; padding: 6px 2px; }
   .total { display: flex; justify-content: space-between; align-items: baseline; padding: 18px 0 2px; font-weight: 800; }
-  .total .n { font-size: 22px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .total .n { font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
 
   /* ---------- avisos ---------- */
 
   .aviso { padding: 72px 0; text-align: center; color: var(--tinta-2); }
-  .aviso b { display: block; color: var(--tinta); font-size: 19px; font-weight: 800;
-             letter-spacing: -.02em; margin-bottom: 7px; }
+  .aviso b { display: block; color: var(--tinta); font-size: 20px; font-weight: 800;
+             letter-spacing: -.025em; margin-bottom: 7px; }
   .aviso p { margin: 0 auto; font-size: 14px; max-width: 42ch; }
 
-  .pie { padding-block: 34px 44px; border-top: 1px solid var(--linea); text-align: center; }
+  .pie { padding-block: 34px 44px; border-top: 1px solid var(--borde); text-align: center; }
   .pie small { font-size: 12px; color: var(--tinta-3); }
 </style>
 </head>
@@ -442,9 +434,45 @@ const total = () => items().reduce((a, l) => a + l.precio * l.qty, 0);
                              "Puede que el negocio lo haya apagado, o que la dirección esté mal escrita.");
 
   document.title = negocio.nombre + " · Catálogo";
-  if (negocio.color) document.documentElement.style.setProperty("--marca", negocio.color);
+  pintar(negocio.color);
   dibujar();
 })();
+
+/**
+ * Pinta la página con el color del negocio.
+ *
+ * El fondo no es el color tal cual: es una versión profundizada. Los seis de
+ * la paleta están pensados para llevar blanco encima en un botón, no en una
+ * página entera — el rosa con blanco da 3,9 de contraste y hace falta 4,5. Al
+ * hundirlo hacia el negro se gana la lectura y se conserva el tono: sigue
+ * siendo claramente su color.
+ *
+ * Se calcula en JavaScript y no con `color-mix` en CSS: esto es el fondo de
+ * toda la página, y `color-mix` no existe en los navegadores de hace unos
+ * años. Un fondo que no carga deja el texto blanco sobre blanco.
+ */
+function pintar(color) {
+  const hex = /^#?[0-9a-f]{6}$/i.test(String(color || "").trim()) ? color.trim() : null;
+  if (!hex) return;
+
+  const n = parseInt(hex.replace("#", ""), 16);
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  // Hacia un negro con una pizca de azul: un gris neutro apaga el tono y deja
+  // el color sucio en vez de profundo.
+  const negro = [8, 10, 13];
+  const hundir = (f) => "#" + rgb
+    .map((c, i) => Math.round(c * f + negro[i] * (1 - f)).toString(16).padStart(2, "0"))
+    .join("");
+
+  const raiz = document.documentElement.style;
+  raiz.setProperty("--marca", hex);
+  raiz.setProperty("--fondo", hundir(0.72));
+  raiz.setProperty("--fondo-hondo", hundir(0.52));
+  // La barra del navegador en el teléfono toma este color: sin esto, arriba
+  // queda una franja blanca que corta la página por la mitad.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", hundir(0.52));
+}
 
 function vacio(titulo, texto) {
   $("#app").innerHTML = `<div class="aviso"><b>${esc(titulo)}</b><p>${esc(texto)}</p></div>`;
