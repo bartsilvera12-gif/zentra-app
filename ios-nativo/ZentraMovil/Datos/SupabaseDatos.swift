@@ -719,11 +719,20 @@ enum SupabaseDatos {
     /// puede quedar tapada por la que el teléfono o el navegador del cliente
     /// ya tenían guardada con ese nombre.
     static func subirFoto(_ jpeg: Data, productoId: String) async throws -> String {
+        try await subirImagen(jpeg, como: productoId)
+    }
+
+    /// Sube el logo del negocio y devuelve su camino.
+    static func subirLogo(_ jpeg: Data) async throws -> String {
+        try await subirImagen(jpeg, como: "logo")
+    }
+
+    private static func subirImagen(_ jpeg: Data, como nombre: String) async throws -> String {
         guard let t = await Auth.shared.tenantActivo(), !t.supabaseUrl.isEmpty else {
             throw ApiError.sinApi
         }
         let empresa = try await empresaActual()
-        let camino = "\(empresa)/\(productoId)-\(Int(Date().timeIntervalSince1970)).jpg"
+        let camino = "\(empresa)/\(nombre)-\(Int(Date().timeIntervalSince1970)).jpg"
 
         guard let url = URL(string: "\(t.supabaseUrl)/storage/v1/object/catalogo/\(camino)")
         else { throw ApiError.sinApi }
@@ -767,7 +776,7 @@ enum SupabaseDatos {
     /// Lee los ajustes del catálogo de la empresa de quien entró.
     static func catalogo() async throws -> Catalogo {
         let crudo = try await pedir("GET", "/empresas", query: [
-            "select": "id,nombre,catalogo_activo,catalogo_slug,catalogo_color,catalogo_whatsapp,catalogo_mensaje",
+            "select": "id,nombre,catalogo_activo,catalogo_slug,catalogo_color,catalogo_whatsapp,catalogo_mensaje,catalogo_logo_path",
             "limit": "1",
         ])
         guard let e = filas(crudo).first else {
@@ -779,7 +788,8 @@ enum SupabaseDatos {
             direccion: (e["catalogo_slug"] as? String) ?? "",
             color: (e["catalogo_color"] as? String) ?? "",
             whatsapp: (e["catalogo_whatsapp"] as? String) ?? "",
-            mensaje: (e["catalogo_mensaje"] as? String) ?? ""
+            mensaje: (e["catalogo_mensaje"] as? String) ?? "",
+            logoPath: (e["catalogo_logo_path"] as? String) ?? ""
         )
     }
 
@@ -791,6 +801,7 @@ enum SupabaseDatos {
             "catalogo_color": c.color.isEmpty ? NSNull() : c.color,
             "catalogo_whatsapp": c.whatsapp.isEmpty ? NSNull() : c.whatsapp,
             "catalogo_mensaje": c.mensaje.isEmpty ? NSNull() : c.mensaje,
+            "catalogo_logo_path": c.logoPath.isEmpty ? NSNull() : c.logoPath,
         ]
         // La dirección sólo si viene: mandarla vacía la borraría, y con ella
         // todos los enlaces que el negocio ya repartió.

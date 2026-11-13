@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// El catálogo público: prenderlo, pintarlo y repartir el enlace.
@@ -16,6 +17,10 @@ struct CatalogoView: View {
     @State private var copiado = false
     @State private var cuantos: Int?
     @State private var verAyuda = false
+    @State private var eligiendoLogo: PhotosPickerItem?
+    @State private var subiendoLogo = false
+    @State private var logoNuevo: UIImage?
+    @State private var logoUrl: URL?
 
     /// Los colores que se ofrecen.
     ///
@@ -47,8 +52,43 @@ struct CatalogoView: View {
             AyudaCatalogoView()
                 .presentationDragIndicator(.visible)
         }
+        .onChange(of: eligiendoLogo) { _, nuevo in
+            guard let nuevo else { return }
+            Task { await ponerLogo(nuevo) }
+        }
         .task { await cargar() }
         .refreshable { await cargar() }
+    }
+
+    /// Achica el logo y lo sube.
+    ///
+    /// Cuadrado y de 400: arriba de la página se ve a 56 puntos, y un logo de
+    /// cuatro megas haría esperar a cada cliente que entra para ver una
+    /// miniatura.
+    private func ponerLogo(_ item: PhotosPickerItem) async {
+        subiendoLogo = true
+        defer { subiendoLogo = false; eligiendoLogo = nil }
+
+        guard let datos = try? await item.loadTransferable(type: Data.self),
+              let img = UIImage(data: datos) else {
+            error = "No pudimos leer esa imagen."
+            return
+        }
+        let chica = NuevoProductoView.achicar(img, lado: 400)
+        guard let jpeg = chica.jpegData(compressionQuality: 0.85) else {
+            error = "No pudimos preparar esa imagen."
+            return
+        }
+        do {
+            let camino = try await RepoERP.subirLogo(jpeg)
+            logoNuevo = chica
+            logoUrl = nil
+            error = nil
+            cambiar { $0.logoPath = camino }
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos subir el logo."
+        }
     }
 
     private var resumen: String? {
@@ -61,7 +101,58 @@ struct CatalogoView: View {
 
     @ViewBuilder
     private func contenido(_ c: Catalogo) -> some View {
-        // Lo primero: la dirección. Es lo que la persona vino a buscar.
+        // El logo primero: es lo que el cliente ve arriba de todo en la
+        // página, y lo que convierte una lista de productos en una marca.
+        FilaCard {
+            HStack(spacing: 14) {
+                PhotosPicker(selection: $eligiendoLogo, matching: .images) {
+                    ZStack {
+                        if let logoNuevo {
+                            Image(uiImage: logoNuevo).resizable().scaledToFill()
+                        } else if let logoUrl {
+                            AsyncImage(url: logoUrl) { $0.resizable().scaledToFill() }
+                                placeholder: { ProgressView() }
+                        } else {
+                            VStack(spacing: 3) {
+                                Image(systemName: "photo.badge.plus").font(.system(size: 17))
+                                Text("Logo").font(Tipo.barlow(.semibold, 10.5))
+                            }
+                            .foregroundStyle(t.ink3)
+                        }
+                        if subiendoLogo {
+                            Color.black.opacity(0.35)
+                            ProgressView().tint(.white)
+                        }
+                    }
+                    .frame(width: 72, height: 72)
+                    .background(t.bg)
+                    .clipShape(.rect(cornerRadius: 16))
+                    .overlay { RoundedRectangle(cornerRadius: 16).stroke(t.border) }
+                }
+                .disabled(subiendoLogo)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(c.logoPath.isEmpty ? "Poné tu logo" : "Tu logo")
+                        .font(Tipo.barlow(.semibold, 15)).foregroundStyle(t.ink)
+                    Text(c.logoPath.isEmpty
+                         ? "Se ve arriba de todo en tu catálogo. Sin logo va el nombre solo."
+                         : "Se ve arriba de todo en tu catálogo. Tocalo para cambiarlo.")
+                        .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !c.logoPath.isEmpty {
+                        Button("Sacar el logo") {
+                            logoNuevo = nil; logoUrl = nil
+                            cambiar { $0.logoPath = "" }
+                        }
+                        .font(Tipo.barlow(.semibold, 12))
+                        .foregroundStyle(Tint.errorInk)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+
+        // Después la dirección. Es lo que la persona vino a buscar.
         FilaCard {
             VStack(alignment: .leading, spacing: 9) {
                 Text(c.activo ? "LA DIRECCIÓN DE TU CATÁLOGO" : "VA A ESTAR EN")
@@ -253,6 +344,9 @@ struct CatalogoView: View {
         do {
             c = try await RepoERP.catalogo()
             error = nil
+            if let camino = c?.logoPath, !camino.isEmpty, logoNuevo == nil {
+                logoUrl = await RepoERP.urlDeFoto(camino)
+            }
             // Cuántos productos llegan a la vidriera de verdad: los que tienen
             // precio. Decirlo acá evita la pregunta de por qué el catálogo
             // tiene menos cosas que el inventario.

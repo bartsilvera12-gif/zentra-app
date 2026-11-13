@@ -430,6 +430,11 @@ enum RepoERP {
         try await SupabaseDatos.subirFoto(jpeg, productoId: productoId)
     }
 
+    /// Sube el logo del negocio y devuelve su camino en el bucket.
+    static func subirLogo(_ jpeg: Data) async throws -> String {
+        try await SupabaseDatos.subirLogo(jpeg)
+    }
+
     /// La dirección pública de una foto ya subida.
     static func urlDeFoto(_ camino: String) async -> URL? {
         guard let t = await Auth.shared.tenantActivo() else { return nil }

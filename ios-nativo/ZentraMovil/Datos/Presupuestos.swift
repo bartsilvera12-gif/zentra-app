@@ -138,6 +138,9 @@ struct Catalogo: Equatable {
     var color: String
     var whatsapp: String
     var mensaje: String
+    /// El camino del logo dentro del bucket. Vacío = sin logo, y entonces en
+    /// la página va un punto del color del negocio.
+    var logoPath: String = ""
 
     /// Dónde vive el catálogo. Un solo sitio para todos los negocios: quién es
     /// cada uno lo dice la dirección.

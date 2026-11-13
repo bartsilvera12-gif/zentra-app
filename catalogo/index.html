@@ -109,7 +109,13 @@
     padding-top: max(11px, env(safe-area-inset-top, 0px));
   }
   .marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .marca img { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; }
+  .marca img {
+    width: 34px; height: 34px; border-radius: 10px; object-fit: cover; flex: 0 0 auto;
+    box-shadow: 0 0 0 1px var(--borde);
+  }
+  /* Sin logo, un punto claro. El color del negocio ya es el fondo, así que un
+     punto de ese mismo color desaparecería. */
+  .punto { width: 9px; height: 9px; border-radius: 999px; background: var(--claro); flex: 0 0 auto; }
   .marca h1 {
     margin: 0; font-size: 16.5px; font-weight: 800; letter-spacing: -.02em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -140,16 +146,40 @@
 
   /* ---------- presentación ---------- */
 
-  .tapa { padding-block: 30px 4px; }
+  /* Un resplandor del color del negocio detrás de la presentación. Le da
+     profundidad a un fondo plano sin agregar nada que haya que mirar: se
+     percibe, no se ve. Si el navegador no sabe mezclar colores, no va: el
+     fondo plano se defiende solo. */
+  body::before {
+    content: ""; position: fixed; inset: 0 0 auto; height: 70vh; z-index: -1;
+    pointer-events: none;
+  }
+  @supports (background: color-mix(in srgb, red, blue)) {
+    body::before {
+      background: radial-gradient(90% 60% at 50% -10%,
+        color-mix(in srgb, var(--marca) 60%, transparent), transparent 70%);
+    }
+  }
+
+  /* El logo arriba de todo y centrado: es lo que convierte una lista de
+     productos en una marca. El aro claro lo despega del fondo, que si no se
+     lo come cuando el logo tiene el mismo tono. */
+  .tapa .logo {
+    width: 86px; height: 86px; margin: 0 auto 16px;
+    border-radius: 24px; object-fit: cover; background: var(--superficie);
+    box-shadow: 0 0 0 1px var(--borde), 0 14px 34px rgba(0, 0, 0, .22);
+  }
+
+  .tapa { padding-block: 34px 4px; text-align: center; }
   .tapa h2 {
     margin: 0; font-size: clamp(30px, 9vw, 46px); font-weight: 800;
     letter-spacing: -.04em; line-height: 1.02; text-wrap: balance;
   }
   .tapa .donde { margin: 9px 0 0; font-size: 14px; color: var(--tinta-3); }
   .tapa .nota {
-    margin: 18px 0 0; font-size: 14px; color: var(--tinta-2);
-    max-width: 62ch; white-space: pre-wrap;
-    padding: 12px 14px; border-radius: var(--radio);
+    margin: 20px auto 0; font-size: 14px; color: var(--tinta-2);
+    max-width: 52ch; white-space: pre-wrap; text-align: left;
+    padding: 13px 15px; border-radius: var(--radio);
     background: var(--superficie);
   }
 
@@ -203,7 +233,10 @@
   .art { text-align: left; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
   .art .marco {
     position: relative; aspect-ratio: 1; width: 100%; max-width: 100%;
-    border-radius: var(--radio); overflow: hidden; background: var(--superficie);
+    border-radius: 14px; overflow: hidden; background: var(--superficie);
+    /* Un aro de un pelo por dentro: sobre un fondo de color, una foto oscura
+       se funde con la página y pierde el borde. */
+    box-shadow: inset 0 0 0 1px var(--borde);
   }
   .art .marco img { width: 100%; height: 100%; object-fit: cover; transition: transform .45s cubic-bezier(.2,.7,.3,1); }
   .art:hover .marco img { transform: scale(1.035); }
@@ -503,6 +536,7 @@ function dibujar() {
 
   $("#app").innerHTML = `
     <header class="tapa">
+      ${negocio.logo_path ? `<img class="logo" src="${esc(foto(negocio.logo_path))}" alt="">` : ""}
       <h2>${esc(negocio.nombre)}</h2>
       ${negocio.ciudad ? `<p class="donde">${esc(negocio.ciudad)}</p>` : ""}
       ${negocio.mensaje ? `<p class="nota">${esc(negocio.mensaje)}</p>` : ""}
