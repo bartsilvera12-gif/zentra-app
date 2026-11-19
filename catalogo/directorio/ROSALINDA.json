@@ -1,0 +1,7 @@
+{
+  "nombre": "Rosa Linda",
+  "supabaseUrl": "https://api.neura.com.py",
+  "anonKey": "__ANON__",
+  "apiUrl": "https://rosalinda.neura.com.py",
+  "chat": false
+}

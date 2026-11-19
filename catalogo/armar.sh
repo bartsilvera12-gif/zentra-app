@@ -34,4 +34,20 @@ sed -e "s|__ANON__|$KEY|" \
 # dirección limpia funciona sin que haya que crear un archivo por cliente.
 cp dist/index.html dist/404.html
 
-echo "dist listo · Supabase: $URL · base: ${BASE:-(raíz)}"
+# ---------- el directorio de empresas ----------
+#
+# Un archivo por código, sin extensión: la app pide `<DIRECTORIO_URL>/<CÓDIGO>`
+# y la dirección que se le dicta al cliente es el código, nada más.
+#
+# Acá también se reemplaza `__ANON__`, por lo mismo que en la página: la clave
+# es pública por diseño pero no entra al control de versiones.
+mkdir -p dist/d
+n=0
+for f in directorio/*.json; do
+  [ -e "$f" ] || continue
+  nombre=$(basename "$f" .json)
+  sed -e "s|__ANON__|$KEY|" "$f" > "dist/d/$nombre"
+  n=$((n + 1))
+done
+
+echo "dist listo · Supabase: $URL · base: ${BASE:-(raíz)} · empresas: $n"
