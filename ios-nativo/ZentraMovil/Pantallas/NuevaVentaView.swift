@@ -85,7 +85,8 @@ struct NuevaVentaView: View {
     @State private var notas = ""
     @State private var clientes: [Cliente] = []
     @State private var catalogo: [InvProducto] = []
-    @State private var cargando = true
+    @State private var cargandoClientes = true
+    @State private var cargandoCatalogo = true
 
     @State private var cliente: Cliente?
     @State private var sinNombre = false
@@ -149,7 +150,20 @@ struct NuevaVentaView: View {
             pasos
             Divider()
             contenido
-            barra
+        }
+        // La barra va como `safeAreaInset` y no como el último de la pila.
+        //
+        // Adentro de la pila quedaba empujada hacia arriba por el alto que se
+        // reserva la barra de pestañas, y entre el botón y las pestañas
+        // quedaba una franja muerta de ochenta puntos. Así se apoya donde
+        // termina la pantalla de verdad, justo encima de las pestañas, y el
+        // contenido de arriba se corre solo para no quedar tapado.
+        // El `-44` baja la barra adentro del espacio que se reserva la barra de
+        // pestañas. Ese espacio es más alto que la pastilla que se ve, así que
+        // apoyarse arriba de él dejaba al botón flotando lejos del borde. Con
+        // esto queda justo encima de las pestañas.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            barra.padding(.bottom, -44)
         }
         .background(t.bg)
         .cerrarTeclado()
@@ -191,9 +205,18 @@ struct NuevaVentaView: View {
         .background(t.card)
     }
 
+    /// Qué está esperando el paso que se está mirando. Sólo eso lo frena.
+    private var esperando: Bool {
+        switch paso {
+        case .cliente: return cargandoClientes
+        case .productos: return cargandoCatalogo
+        case .resumen, .pago: return false
+        }
+    }
+
     @ViewBuilder
     private var contenido: some View {
-        if cargando {
+        if esperando {
             Spacer(); ProgressView(); Spacer()
         } else {
             ScrollView {
@@ -508,16 +531,51 @@ struct NuevaVentaView: View {
         }
     }
 
+    /// Cada lista llega cuando llega, y cada paso espera sólo la suya.
+    ///
+    /// Antes esto aguardaba a las dos antes de dibujar nada, así que abrir la
+    /// venta costaba lo que costara la más lenta. En una ferretería con mil
+    /// productos eso son varios segundos mirando una ruedita para elegir un
+    /// cliente, que es lo primero que se hace y para lo que el catálogo no
+    /// hace ninguna falta.
+    ///
+    /// Y lo que ya se trajo queda guardado: volver a entrar a vender —que es
+    /// lo que más se hace en el día— muestra la lista en el acto y se
+    /// actualiza por detrás.
     private func cargar() async {
+        clientes = Self.guardados.clientes
+        catalogo = Self.guardados.catalogo
+        cargandoClientes = clientes.isEmpty
+        cargandoCatalogo = catalogo.isEmpty
+
         async let c = try? RepoERP.clientes()
         async let p = try? RepoERP.inventario()
-        let (cc, pp) = await (c, p)
-        clientes = cc ?? []
+
+        if let cc = await c {
+            clientes = cc
+            Self.guardados.clientes = cc
+        }
+        cargandoClientes = false
+
         // Sólo lo que se puede vender: ofrecer algo sin stock lleva a una venta
         // que el ERP después rechaza.
-        catalogo = (pp ?? []).filter { $0.stock > 0 }
-        cargando = false
+        if let pp = await p {
+            catalogo = pp.filter { $0.stock > 0 }
+            Self.guardados.catalogo = catalogo
+        }
+        cargandoCatalogo = false
     }
+
+    /// Lo último que se trajo, para que la próxima venta abra en el acto.
+    ///
+    /// En memoria y no en disco: dura lo que dura la app abierta. Guardar
+    /// precios y stock en el teléfono sería peor que esperar — se vendería con
+    /// datos de ayer.
+    private final class Cache {
+        var clientes: [Cliente] = []
+        var catalogo: [InvProducto] = []
+    }
+    private static let guardados = Cache()
 
     private func registrar() async {
         guardando = true; error = nil
