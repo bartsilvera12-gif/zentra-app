@@ -389,7 +389,13 @@ struct Lista<Contenido: View, Encabezado: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
+            // `LazyVStack` y no `VStack`: el común construye TODAS las filas al
+            // dibujarse, se vean o no. Con trece productos no se nota; con los
+            // novecientos de una ferretería, el teléfono se queda sin memoria
+            // y iOS mata la app en el medio de la carga.
+            //
+            // Esto vale para todas las listas, porque todas pasan por acá.
+            LazyVStack(spacing: 10) {
                 if let resumen {
                     Text(resumen)
                         .font(Tipo.barlow(.regular, 12)).foregroundStyle(t.ink2)

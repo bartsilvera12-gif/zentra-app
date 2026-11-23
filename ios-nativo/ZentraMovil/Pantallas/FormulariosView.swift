@@ -1364,7 +1364,8 @@ struct ElegirProductoAjusteView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 10) {
+                // Lazy: lista el inventario entero. Ver el comentario de `Lista`.
+                LazyVStack(spacing: 10) {
                     if vistas.isEmpty {
                         Aviso(texto: productos.isEmpty
                               ? "Todavía no hay productos cargados."

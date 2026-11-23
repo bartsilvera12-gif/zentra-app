@@ -213,7 +213,9 @@ struct NuevaVentaView: View {
     // MARK: pasos
 
     private var pasoCliente: some View {
-        VStack(spacing: 10) {
+        // Lazy: acá se listan todos los clientes de la empresa. Ver el
+        // comentario de `Lista`.
+        LazyVStack(spacing: 10) {
             buscador("Buscar por nombre, RUC o CI…")
 
             Button { sinNombre = true; cliente = nil } label: {
@@ -293,7 +295,7 @@ struct NuevaVentaView: View {
     }
 
     private var pasoProductos: some View {
-        VStack(spacing: 10) {
+        LazyVStack(spacing: 10) {
             buscador("Buscar producto…")
 
             if catalogo.isEmpty {
