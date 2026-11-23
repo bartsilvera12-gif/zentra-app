@@ -15,8 +15,16 @@ cd "$(dirname "$0")"
 PLIST=../ios-nativo/ZentraMovil/Recursos/Secretos.plist
 [ -f "$PLIST" ] || { echo "Falta $PLIST"; exit 1; }
 
+# Dos claves, y no son intercambiables. `KEY` es la de la base de Zentra, que
+# es contra la que lee el catálogo. `COMPARTIDA` es la de la Supabase donde
+# viven los usuarios de los ERP, que es contra la que validan la contraseña.
+#
+# Tienen nombres distintos porque ya se mezclaron una vez: los archivos del
+# directorio salieron con la de Zentra apuntando a la otra Supabase, y el
+# login contestaba "Unauthorized" sin decir por qué.
 KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPABASE_ANON_KEY" "$PLIST")
 URL=$(/usr/libexec/PlistBuddy -c "Print :SUPABASE_URL" "$PLIST")
+COMPARTIDA=$(/usr/libexec/PlistBuddy -c "Print :SUPABASE_ANON_KEY_COMPARTIDA" "$PLIST")
 
 # Lo que hay que sacarle adelante a la dirección cuando el sitio no vive en la
 # raíz del dominio. En GitHub Pages cuelga del nombre del repo; con dominio
@@ -46,7 +54,12 @@ n=0
 for f in directorio/*.json; do
   [ -e "$f" ] || continue
   nombre=$(basename "$f" .json)
-  sed -e "s|__ANON__|$KEY|" "$f" > "dist/d/$nombre"
+  sed -e "s|__ANON_COMPARTIDA__|$COMPARTIDA|" -e "s|__ANON__|$KEY|" "$f" > "dist/d/$nombre"
+  # Un marcador sin reemplazar es un archivo que no sirve, y se descubre
+  # recién cuando alguien no puede entrar.
+  if grep -q "__ANON" "dist/d/$nombre"; then
+    echo "ERROR: a $nombre le quedó un marcador sin reemplazar"; exit 1
+  fi
   n=$((n + 1))
 done
 

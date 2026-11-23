@@ -1,7 +1,7 @@
 {
   "nombre": "Roldán e Hijos",
   "supabaseUrl": "https://api.neura.com.py",
-  "anonKey": "__ANON__",
+  "anonKey": "__ANON_COMPARTIDA__",
   "apiUrl": "https://roldanehijos.neura.com.py",
   "chat": false
 }
