@@ -21,6 +21,13 @@ struct RaizView: View {
     @State private var estado = Estado()
     @State private var locales = AjustesLocales()
     @State private var revisando = true
+    /// Qué pestaña se ve. Antes el `TabView` no la llevaba, y alcanzaba porque
+    /// nadie la cambiaba desde el código. Ahora sí: tocar un aviso tiene que
+    /// entrar al chat, el chat vive en el stack de Inicio, y si la persona
+    /// había dejado la app en Reportes la navegación pasaba sin que se vea
+    /// nada. Con la pestaña en una variable, el aviso la trae acá primero.
+    @State private var pestana = Pestana.inicio
+    private var avisador = Avisador.shared
 
     private var esOscuro: Bool {
         ajustes.resuelto(sistema: sistema) == .oscuro
@@ -66,19 +73,23 @@ struct RaizView: View {
     }
 
     private var app: some View {
-        TabView {
-            Tab("Inicio", systemImage: "house.fill") {
+        TabView(selection: $pestana) {
+            Tab("Inicio", systemImage: "house.fill", value: Pestana.inicio) {
                 InicioView()
             }
 
-            Tab("Reportes", systemImage: "chart.bar.fill") {
+            Tab("Reportes", systemImage: "chart.bar.fill", value: Pestana.reportes) {
                 NavigationStack { ReportesView() }
             }
 
-            Tab("Configuración", systemImage: "gearshape.fill") {
+            Tab("Configuración", systemImage: "gearshape.fill", value: Pestana.ajustes) {
                 ConfiguracionView()
             }
         }
+        // El aviso que hay que abrir manda sobre la pestaña: el chat está en el
+        // stack de Inicio y desde cualquier otra pestaña no se vería.
+        .onChange(of: avisador.avisosTocados) { _, _ in pestana = .inicio }
+        .task { if avisador.entrarA != nil { pestana = .inicio } }
         // La barra se encoge al bajar y vuelve al subir: da la pantalla entera
         // a la lista sin que el usuario tenga que esconder nada a mano.
         //
@@ -138,3 +149,7 @@ struct MarcadorView: View {
 #Preview {
     RaizView()
 }
+
+/// Las tres pestañas de abajo. Existe como tipo —y no como número— para que
+/// `pestana = .inicio` se lea solo y no haya que recordar cuál era la 0.
+enum Pestana: Hashable { case inicio, reportes, ajustes }

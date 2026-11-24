@@ -121,6 +121,7 @@ struct InicioView: View {
     /// vuelva a abrir solo la próxima vez que se mire esta pantalla.
     private func abrir(_ d: ChatDestino?) {
         guard let d else { return }
+        print("[push] abriendo el chat \(d.id) desde el aviso")
         avisador.entrarA = nil
         // La pila se vacía primero: si ya había un chat abierto —el aviso de
         // otra conversación mientras se mira una— quedarían los dos apilados y
