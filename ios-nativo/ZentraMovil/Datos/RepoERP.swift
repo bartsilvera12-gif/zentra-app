@@ -839,15 +839,22 @@ enum RepoERP {
     /// Un error de forma no se tapa con el respaldo: si el endpoint contestó
     /// pero con otra estructura, el problema es ese y hay que verlo.
     static func mensajes(_ chatId: String) async throws -> [Mensaje] {
+        try await conversacion(chatId).mensajes
+    }
+
+    /// Los mensajes y de qué número son. El teléfono viene en la misma
+    /// respuesta, así que pedirlo aparte sería una vuelta al servidor por un
+    /// dato que ya está arriba de la pantalla.
+    static func conversacion(_ chatId: String) async throws
+        -> (mensajes: [Mensaje], telefono: String) {
         do {
             let crudo = try await ApiERP.crudo("/mobile/asesor/conversations/\(esc(chatId))")
-            return mensajesDe(crudo)
+            return (mensajesDe(crudo), telefonoDe(crudo))
         } catch let e as ApiError {
             if case .http(let status, _, _) = e, ![401, 403, 404].contains(status) { throw e }
         }
-        return mensajesDe(
-            try await ApiERP.crudo("/mobile/supervision/conversations/\(esc(chatId))")
-        )
+        let crudo = try await ApiERP.crudo("/mobile/supervision/conversations/\(esc(chatId))")
+        return (mensajesDe(crudo), telefonoDe(crudo))
     }
 
     /// Los mensajes de la respuesta, venga del endpoint que venga: uno los
@@ -857,6 +864,14 @@ enum RepoERP {
         if let o = nivel as? [String: Any], let d = o["data"] { nivel = d }
         let msgs = (nivel as? [String: Any])?["messages"] as? [[String: Any]] ?? []
         return msgs.compactMap(aMensaje)
+    }
+
+    /// El número del contacto, del mismo sobre.
+    private static func telefonoDe(_ crudo: Any) -> String {
+        var nivel = crudo
+        if let o = nivel as? [String: Any], let d = o["data"] { nivel = d }
+        let conv = (nivel as? [String: Any])?["conversation"] as? [String: Any]
+        return primero(conv?["contact_telefono"], conv?["contact_phone"]) ?? ""
     }
 
     /// Manda un mensaje. Con `cita` responde a uno puntual, como el "Responder"
@@ -953,16 +968,39 @@ enum RepoERP {
     static func fichaContacto(_ chatId: String) async throws -> FichaContacto? {
         let crudo = try await ApiERP.crudo("/chat/contactos/ficha",
                                            query: ["conversation_id": chatId])
-        guard let o = desenvolver(crudo) else { return nil }
-        let c = (o["contacto"] as? [String: Any]) ?? o
-        let nombre = primero(c["nombre"], c["nombre_contacto"], c["razon_social"]) ?? ""
-        let tel = primero(c["telefono"], c["phone"]) ?? ""
+        // El ERP contesta `{ ok, ficha: { contacto, cliente, … } }`. Antes acá
+        // se abría sólo `data`/`contacto`, que no existen en esta ruta: la
+        // ficha llegaba entera y se descartaba, y la pantalla decía que el ERP
+        // no tenía ficha para el contacto. La tenía.
+        guard let raiz = crudo as? [String: Any] else { return nil }
+        let f = (raiz["ficha"] as? [String: Any]) ?? (raiz["data"] as? [String: Any]) ?? raiz
+        let c = (f["contacto"] as? [String: Any]) ?? f
+        let cliente = f["cliente"] as? [String: Any]
+
+        let nombreContacto = primero(c["nombre"], c["nombre_contacto"], c["razon_social"]) ?? ""
+        let tel = primero(c["telefono_real"], c["telefono"], c["phone"]) ?? ""
+        // El nombre del cliente manda sobre el del contacto: el contacto se
+        // llama como se puso en WhatsApp, y el cliente es quien figura en el
+        // sistema. Si no está vinculado, queda el de WhatsApp.
+        let nombre = noVacio(cliente?["nombre"]) ?? nombreContacto
         guard !nombre.isEmpty || !tel.isEmpty else { return nil }
 
         var lineas: [(String, String)] = []
-        for (k, etiqueta) in [("ruc", "RUC"), ("email", "Correo"), ("ciudad", "Ciudad"),
-                              ("tipo_cliente", "Lista"), ("estado", "Estado")] {
-            if let v = noVacio(c[k]) { lineas.append((etiqueta, v)) }
+        if let cl = cliente {
+            for (k, etiqueta) in [("ruc", "RUC"), ("email", "Correo"),
+                                  ("telefono_secundario", "Otro teléfono"),
+                                  ("direccion", "Dirección"), ("ciudad", "Ciudad")] {
+                if let v = noVacio(cl[k]) { lineas.append((etiqueta, v)) }
+            }
+        } else {
+            lineas.append(("Cliente", "Sin vincular"))
+        }
+        if let t = f["ultima_tipificacion"] as? [String: Any],
+           let v = primero(t["nombre"], t["etiqueta"], t["codigo"]) {
+            lineas.append(("Última tipificación", v))
+        }
+        if let convs = f["conversaciones"] as? [[String: Any]], convs.count > 1 {
+            lineas.append(("Conversaciones", "\(convs.count)"))
         }
         return FichaContacto(nombre: nombre.isEmpty ? tel : nombre, telefono: tel, lineas: lineas)
     }
@@ -988,6 +1026,51 @@ enum RepoERP {
         return Pauta(url: url,
                      titulo: primero(d["headline"], d["ad_name"], d["campaign_name"]) ?? "",
                      red: noVacio(d["red"]) ?? "no_identificado")
+    }
+
+    /// El pie de una foto, de un video o de un audio, sacado del contenido.
+    ///
+    /// Cuando hay archivo, el ERP guarda el contenido así:
+    ///
+    ///     Imagen: Holaaaa
+    ///     https://…/foto.jpg
+    ///
+    /// y sin pie, `Imagen enviada` y la dirección. Acá se descartaba el
+    /// contenido entero en cuanto había una dirección, con lo cual el mensaje
+    /// que se mandó junto con la foto no aparecía en ningún lado — se veía en
+    /// el inbox de escritorio y no en el teléfono.
+    ///
+    /// Se tiran las líneas que son la dirección y el rótulo del tipo; lo que
+    /// queda es lo que la persona escribió. En el documento la primera línea es
+    /// el nombre del archivo, que ya se muestra aparte.
+    static func pieDeContenido(_ contenido: String) -> String {
+        var lineas = contenido
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.lowercased().hasPrefix("http") }
+        guard var primera = lineas.first else { return "" }
+
+        // "Imagen enviada", "Audio recibido"…: es el rótulo, no un pie.
+        let sueltos = ["imagen enviada", "imagen recibida", "video enviado", "video recibido",
+                       "audio enviado", "audio recibido", "documento enviado",
+                       "documento recibido", "archivo enviado", "archivo recibido"]
+        if sueltos.contains(primera.lowercased()) {
+            lineas.removeFirst()
+            return lineas.joined(separator: "\n")
+        }
+        for rotulo in ["Imagen: ", "Video: ", "Audio: ", "Archivo: "] {
+            guard primera.hasPrefix(rotulo) else { continue }
+            primera = String(primera.dropFirst(rotulo.count))
+            lineas[0] = primera
+            return lineas.joined(separator: "\n")
+        }
+        // El documento trae el nombre del archivo en la primera línea, y eso ya
+        // lo dibuja la tarjeta del documento.
+        if primera.hasPrefix("Documento: ") {
+            lineas.removeFirst()
+            return lineas.joined(separator: "\n")
+        }
+        return lineas.joined(separator: "\n")
     }
 
     private static func esc(_ s: String) -> String {
@@ -1425,7 +1508,8 @@ enum RepoERP {
 
         let contenido = noVacio(m["content"]) ?? ""
         let url = urlDeMedia(crudo) ?? urlEnTexto(contenido)
-        let epigrafe = noVacio((crudo["caption"])) ?? (url == nil ? contenido : "")
+        let epigrafe = noVacio((crudo["caption"]))
+            ?? (url == nil ? contenido : pieDeContenido(contenido))
 
         // "Eliminar para todos" no borra nada acá: WhatsApp avisa que el
         // mensaje se eliminó y el ERP lo guarda como una fila más, de tipo

@@ -11,6 +11,9 @@ struct ChatView: View {
 
     @State private var msgs: [Mensaje] = []
     @State private var texto = ""
+    /// El número del contacto, para mostrarlo bajo el nombre. Viene con los
+    /// mensajes. Vacío mientras carga, y entonces arriba va sólo el nombre.
+    @State private var telefono = ""
     @State private var cargando = true
     @State private var enviando = false
     @State private var error: String?
@@ -96,6 +99,26 @@ struct ChatView: View {
         }
         .navigationTitle(chat.nombre)
         .navigationBarTitleDisplayMode(.inline)
+        // El número debajo del nombre, como en el inbox de escritorio. En un
+        // chat de WhatsApp el nombre lo puso la propia persona y se repite
+        // mucho —tres "Han" distintos—; el número es lo que lo identifica, y
+        // es además lo que el asesor necesita copiar para llamar o buscar.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(chat.nombre)
+                        .font(Tipo.barlow(.semibold, 16))
+                        .lineLimit(1)
+                    if !telefono.isEmpty {
+                        Text(Self.numeroLindo(telefono))
+                            .font(Tipo.barlow(.regular, 11).monospacedDigit())
+                            .foregroundStyle(t.ink2)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: 220)
+            }
+        }
         // La barra con su color y no con el de abajo: iOS le pasa el fondo del
         // primer elemento del contenido, y con la franja arriba el nombre del
         // contacto quedaba blanco sobre lila.
@@ -835,10 +858,27 @@ struct ChatView: View {
         !enviando && !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// `595982246781` → `+595 982 246 781`. Un número pegado es ilegible de un
+    /// vistazo, que es justo para lo que está ahí arriba.
+    static func numeroLindo(_ crudo: String) -> String {
+        let d = crudo.filter(\.isNumber)
+        guard d.count >= 11, d.hasPrefix("595") else { return crudo }
+        let resto = Array(d.dropFirst(3))
+        let grupos = stride(from: 0, to: resto.count, by: 3).map {
+            String(resto[$0..<min($0 + 3, resto.count)])
+        }
+        return "+595 " + grupos.joined(separator: " ")
+    }
+
     // MARK: - Acciones
 
     private func cargar() async {
-        do { msgs = try await RepoERP.mensajes(chat.id); error = nil }
+        do {
+            let r = try await RepoERP.conversacion(chat.id)
+            msgs = r.mensajes
+            if !r.telefono.isEmpty { telefono = r.telefono }
+            error = nil
+        }
         catch { self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar." }
         cargando = false
     }
@@ -1026,6 +1066,9 @@ struct FichaContactoView: View {
     @State private var ficha: FichaContacto?
     @State private var cargando = true
     @State private var error: String?
+    /// Se acaba de copiar el número: el botón muestra un tilde un segundo. Sin
+    /// eso, tocarlo no da ninguna señal de que algo pasó.
+    @State private var copiado = false
 
     var body: some View {
         NavigationStack {
@@ -1040,10 +1083,28 @@ struct FichaContactoView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(f.nombre).font(Tipo.barlow(.semibold, 16))
                                         .foregroundStyle(t.ink)
-                                    Text(f.telefono).font(Tipo.barlow(.regular, 12))
+                                    Text(ChatView.numeroLindo(f.telefono))
+                                        .font(Tipo.barlow(.regular, 12).monospacedDigit())
                                         .foregroundStyle(t.ink2)
                                 }
                                 Spacer(minLength: 0)
+                                // Copiar el número es lo que más se hace con una
+                                // ficha: se pega en el buscador del ERP, en la
+                                // agenda, en un mensaje a un compañero. Antes
+                                // había que seleccionarlo a mano de un texto que
+                                // ni siquiera era seleccionable.
+                                if !f.telefono.isEmpty {
+                                    Button { copiar(f.telefono) } label: {
+                                        Image(systemName: copiado
+                                              ? "checkmark" : "doc.on.doc")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(copiado ? Tint.okInk : C.cian)
+                                            .frame(width: 34, height: 34)
+                                            .background(t.ink.opacity(0.07), in: .circle)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Copiar el número")
+                                }
                             }
                         }
                         if !f.lineas.isEmpty {
@@ -1076,6 +1137,18 @@ struct FichaContactoView: View {
                 catch { self.error = (error as? LocalizedError)?.errorDescription ?? "No pudimos cargar la ficha." }
                 cargando = false
             }
+        }
+    }
+
+    /// Copia el número pelado, no el bonito: lo que se copia se pega en el
+    /// buscador del ERP o en la agenda, y ahí los espacios estorban.
+    private func copiar(_ telefono: String) {
+        UIPasteboard.general.string = telefono.filter(\.isNumber)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        copiado = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            copiado = false
         }
     }
 }
