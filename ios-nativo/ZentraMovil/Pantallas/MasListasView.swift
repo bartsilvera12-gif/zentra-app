@@ -665,6 +665,21 @@ struct NuevaConversacionView: View {
     @State private var q = ""
     @State private var elegida: Chat?
 
+    // ---- Escribirle a un número que todavía no escribió ----
+    @State private var telefono = ""
+    @State private var nombreNuevo = ""
+    @State private var canales: [Canal] = []
+    @State private var canal = ""
+    @State private var abriendo = false
+    @State private var error: String?
+    /// La conversación recién abierta, a la que se entra derecho.
+    @State private var reciente: Chat?
+
+    /// Ocho dígitos es el mínimo con el que el ERP acepta un número.
+    private var puedeEscribir: Bool {
+        telefono.filter(\.isNumber).count >= 8 && !canal.isEmpty && !abriendo
+    }
+
     private var vistas: [Chat] {
         let n = q.trimmingCharacters(in: .whitespaces).lowercased()
         let vivas = abiertas.filter { !$0.cerrada }
@@ -675,7 +690,17 @@ struct NuevaConversacionView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 10) {
+                LazyVStack(spacing: 10) {
+                    bloqueNumero
+
+                    if !vistas.isEmpty {
+                        Text("CONVERSACIONES ABIERTAS")
+                            .font(Tipo.barlow(.semibold, 10)).tracking(1.4)
+                            .foregroundStyle(t.ink2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16).padding(.top, 6)
+                    }
+
                     if vistas.isEmpty {
                         Aviso(texto: abiertas.isEmpty
                               ? "Sin contactos"
@@ -714,6 +739,91 @@ struct NuevaConversacionView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
             }
+            .navigationDestination(isPresented: Binding(
+                get: { reciente != nil },
+                set: { if !$0 { reciente = nil } }
+            )) {
+                if let reciente { ChatView(chat: reciente) }
+            }
+            .task {
+                canales = (try? await RepoERP.canales()) ?? []
+                // Con un solo canal no hay nada que elegir: se elige solo.
+                if canal.isEmpty { canal = canales.first?.id ?? "" }
+            }
+        }
+    }
+
+    /// Escribirle a alguien que todavía no escribió.
+    ///
+    /// Va arriba de las conversaciones abiertas y no escondido detrás de un
+    /// botón: quien entra acá o busca a alguien que ya le escribió, o quiere
+    /// escribirle a un número, y las dos cosas son igual de frecuentes.
+    private var bloqueNumero: some View {
+        FilaCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("ESCRIBIRLE A UN NÚMERO")
+                    .font(Tipo.barlow(.semibold, 10)).tracking(1.4)
+                    .foregroundStyle(t.ink2)
+
+                TextField("0981 123 456", text: $telefono)
+                    .font(Tipo.barlow(.regular, 16))
+                    .keyboardType(.phonePad)
+                    .padding(.horizontal, 12).frame(height: 44)
+                    .background(t.bg, in: .rect(cornerRadius: 11))
+                    .overlay { RoundedRectangle(cornerRadius: 11).stroke(t.border) }
+
+                TextField("Nombre (opcional)", text: $nombreNuevo)
+                    .font(Tipo.barlow(.regular, 15))
+                    .padding(.horizontal, 12).frame(height: 44)
+                    .background(t.bg, in: .rect(cornerRadius: 11))
+                    .overlay { RoundedRectangle(cornerRadius: 11).stroke(t.border) }
+
+                // El selector sólo si hay más de uno: con un canal, elegir no
+                // es una decisión, es un trámite.
+                if canales.count > 1 {
+                    Picker("Sale por", selection: $canal) {
+                        ForEach(canales) { Text($0.nombre).tag($0.id) }
+                    }
+                    .pickerStyle(.menu).tint(C.azulMedio)
+                }
+
+                if let error {
+                    Aviso(texto: error, bg: Tint.errorBg, ink: Tint.errorInk)
+                }
+
+                Button { Task { await abrirConNumero() } } label: {
+                    HStack(spacing: 8) {
+                        if abriendo { ProgressView().tint(.white) }
+                        else { Image(systemName: "paperplane.fill").font(.system(size: 14, weight: .semibold)) }
+                        Text("Abrir conversación").font(Tipo.barlow(.semibold, 15))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).frame(height: 46)
+                    .background(puedeEscribir ? C.azulMedio : t.dim, in: .rect(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(!puedeEscribir)
+
+                Text("Si la persona no te escribió en las últimas 24 horas, WhatsApp sólo deja mandarle una plantilla aprobada.")
+                    .font(Tipo.barlow(.regular, 11.5)).foregroundStyle(t.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func abrirConNumero() async {
+        abriendo = true; error = nil
+        defer { abriendo = false }
+        do {
+            let id = try await RepoERP.iniciarConversacion(
+                telefono: telefono, nombre: nombreNuevo, canal: canal)
+            let visible = nombreNuevo.trimmingCharacters(in: .whitespaces)
+            reciente = Chat(id: id,
+                            nombre: visible.isEmpty ? telefono : visible,
+                            hora: "", noLeidos: 0, vistaPrevia: "")
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? "No pudimos abrir la conversación."
         }
     }
 }

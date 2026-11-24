@@ -239,6 +239,12 @@ struct Pauta {
     }
 }
 
+/// Un canal de WhatsApp de la empresa: el número por el que sale el mensaje.
+struct Canal: Identifiable, Hashable {
+    var id: String
+    var nombre: String
+}
+
 struct Destino: Identifiable, Hashable {
     var id: String
     var nombre: String
@@ -622,6 +628,44 @@ enum RepoERP {
         // ser quien supervisa, que en la compu las ve todas.
         let ajenas = try await ApiERP.crudo("/mobile/supervision/conversations")
         return try chatsDe(ajenas, ruta: "/mobile/supervision/conversations")
+    }
+
+    /// Los canales de WhatsApp de la empresa: por cuál número sale el mensaje.
+    ///
+    /// Vienen en la misma respuesta del listado, así que no es un viaje más.
+    static func canales() async throws -> [Canal] {
+        if await !conErp() { return [] }
+        let crudo = try await ApiERP.crudo("/mobile/asesor/conversations")
+        var nivel: Any = crudo
+        if let o = nivel as? [String: Any], let d = o["data"] { nivel = d }
+        let filas = (nivel as? [String: Any])?["channels"] as? [[String: Any]] ?? []
+        return filas.compactMap { c in
+            let id = texto(c["id"])
+            guard !id.isEmpty else { return nil }
+            return Canal(id: id, nombre: noVacio(c["nombre"]) ?? "Canal")
+        }
+    }
+
+    /// Abre (o reabre) una conversación con un número suelto y devuelve su id.
+    ///
+    /// El ERP crea el contacto si no existe, deja la conversación en modo
+    /// humano —sin bot— y se la asigna a quien la empieza.
+    static func iniciarConversacion(telefono: String, nombre: String,
+                                    canal: String) async throws -> String {
+        var cuerpo: [String: Any] = ["channelId": canal, "phone": telefono]
+        let n = nombre.trimmingCharacters(in: .whitespaces)
+        if !n.isEmpty { cuerpo["name"] = n }
+
+        let crudo = try await ApiERP.post("/chat/conversations/start", cuerpo: cuerpo)
+        guard let o = crudo as? [String: Any],
+              let id = noVacio(o["conversation_id"])
+        else {
+            throw ApiError.http(status: 200,
+                                mensaje: noVacio((crudo as? [String: Any])?["error"])
+                                    ?? "El ERP no devolvió la conversación.",
+                                ruta: "/chat/conversations/start")
+        }
+        return id
     }
 
     /// `is_agent: false` llega suelto o dentro de `data`, según la ruta.
