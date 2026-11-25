@@ -20,7 +20,8 @@ import UIKit
 /// entornos distintos de APNs, y el `aps-environment` del entitlement decide
 /// cuál. Probar con cable no demuestra que ande en TestFlight.
 @MainActor
-final class Push: NSObject, MessagingDelegate, UNUserNotificationCenterDelegate {
+final class Push: NSObject, MessagingDelegate,
+                  @preconcurrency UNUserNotificationCenterDelegate {
     static let shared = Push()
 
     /// El último token que entregó Firebase.
@@ -95,7 +96,7 @@ final class Push: NSObject, MessagingDelegate, UNUserNotificationCenterDelegate 
     /// Con la app abierta, iOS no muestra el aviso salvo que se lo pidan.
     /// Se muestra igual: un mensaje nuevo mientras mirás otra pantalla de la
     /// app es exactamente lo que hay que avisar.
-    nonisolated func userNotificationCenter(
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
@@ -109,15 +110,21 @@ final class Push: NSObject, MessagingDelegate, UNUserNotificationCenterDelegate 
     /// acá porque esto también corre con la app cerrada: iOS la arranca, llama
     /// a esto, y recién después aparece la primera pantalla. Dejarlo guardado
     /// es lo que hace que lo encuentre cuando por fin existe.
-    nonisolated func userNotificationCenter(
+    ///
+    /// **Va en el hilo principal, y no es un detalle de estilo: la app se
+    /// cerraba.** Estaba escrito `nonisolated` con un salto al hilo principal
+    /// adentro, que parece lo mismo y no lo es. Lo de adentro corría bien, pero
+    /// cuando el método termina, iOS avisa que se atendió el aviso y ahí UIKit
+    /// toca la pantalla —guarda el estado y la miniatura de la app—. Eso vuelve
+    /// en el hilo en que haya quedado la función, que no es el principal, y
+    /// UIKit corta el proceso: *"Call must be made on main thread"*. O sea que
+    /// la app se cerraba siempre, al toque, tanto abierta como cerrada; por eso
+    /// el aviso nunca llevaba a ninguna parte.
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
         let contenido = response.notification.request.content
-        let datos = contenido.userInfo
-        let titulo = contenido.title
-        await MainActor.run {
-            Avisador.shared.desdeAviso(datos, titulo: titulo)
-        }
+        Avisador.shared.desdeAviso(contenido.userInfo, titulo: contenido.title)
     }
 }
